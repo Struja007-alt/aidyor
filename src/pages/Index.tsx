@@ -72,7 +72,7 @@ const Index = () => {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Shield className="w-5 h-5 text-primary" />
-              <span className="font-display text-foreground">TOKENGUARD</span>
+              <span className="font-display text-foreground">AIDYOR</span>
             </div>
             <p className="text-sm text-muted-foreground text-center">
               Always DYOR. This tool provides analysis but not financial advice.

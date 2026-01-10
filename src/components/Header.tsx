@@ -15,10 +15,10 @@ export const Header = () => {
               <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-display text-xl font-bold text-foreground tracking-wide">
-                TOKEN<span className="text-primary">GUARD</span>
-              </h1>
-              <p className="text-xs text-muted-foreground">Crypto Security Scanner</p>
+            <h1 className="font-display text-xl font-bold text-foreground tracking-wide">
+              AI<span className="text-primary">DYOR</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">Do Your Own Research</p>
             </div>
           </div>
 
