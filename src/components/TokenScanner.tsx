@@ -36,13 +36,25 @@ export const TokenScanner = () => {
     setIsScanning(true);
     setScanResult(null);
     
-    // Simulate scanning
+    // Simulate scanning - extract token name from address or use address
     setTimeout(() => {
       const mockScore = Math.floor(Math.random() * 60) + 30;
       setScanResult(mockScore);
       setRiskFactors(mockRiskFactors);
       setIsScanning(false);
     }, 2000);
+  };
+
+  // Derive display name from address (for demo purposes)
+  const getTokenDisplayName = () => {
+    const addr = tokenAddress.toLowerCase();
+    if (addr.includes("pepe")) return "PEPE";
+    if (addr.includes("shib")) return "SHIBA INU";
+    if (addr.includes("doge")) return "DOGE";
+    // Show truncated address if no known token
+    return tokenAddress.length > 10 
+      ? `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`
+      : tokenAddress;
   };
 
   const getStatusIcon = (status: RiskFactor["status"]) => {
@@ -119,7 +131,10 @@ export const TokenScanner = () => {
         <div className="grid md:grid-cols-2 gap-6 animate-fade-in">
           {/* Risk Score */}
           <div className="glass-card p-6 flex flex-col items-center justify-center">
-            <h3 className="font-display text-lg text-foreground mb-6">Risk Score</h3>
+            <h3 className="font-display text-lg text-foreground mb-2">Risk Score</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {getTokenDisplayName()} on {selectedNetwork}
+            </p>
             <RiskGauge score={scanResult} />
           </div>
 

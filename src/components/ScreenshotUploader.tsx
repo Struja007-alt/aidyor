@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Upload, Image, X, Scan, CheckCircle, AlertTriangle } from "lucide-react";
+import { Upload, Image, X, Scan, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,14 @@ interface AnalysisResult {
   riskLevel: "safe" | "warning" | "danger";
   warnings: string[];
 }
+
+// Sample token data for demo - simulates detected tokens
+const sampleTokens = [
+  { name: "PEPE", network: "Ethereum", amount: "1,000,000 PEPE" },
+  { name: "SHIBA INU", network: "Ethereum", amount: "50,000,000 SHIB" },
+  { name: "DOGE", network: "BNB Chain", amount: "25,000 DOGE" },
+  { name: "BONK", network: "Solana", amount: "10,000,000 BONK" },
+];
 
 export const ScreenshotUploader = () => {
   const [isDragging, setIsDragging] = useState(false);
@@ -68,16 +76,30 @@ export const ScreenshotUploader = () => {
     setResult(null);
     
     setTimeout(() => {
+      // Randomly select a token for demo purposes
+      const randomToken = sampleTokens[Math.floor(Math.random() * sampleTokens.length)];
+      const riskLevels: Array<"safe" | "warning" | "danger"> = ["safe", "warning", "danger"];
+      const randomRisk = riskLevels[Math.floor(Math.random() * riskLevels.length)];
+      
+      const warningsPool = [
+        "Token has high volatility",
+        "Recently created contract (< 30 days)",
+        "Limited trading history",
+        "Large holder concentration detected",
+        "Unverified contract source",
+        "Low liquidity pool",
+      ];
+      
+      // Select 2-3 random warnings
+      const shuffled = warningsPool.sort(() => 0.5 - Math.random());
+      const selectedWarnings = shuffled.slice(0, Math.floor(Math.random() * 2) + 2);
+      
       setResult({
-        tokenName: "PEPE Token",
-        network: "Ethereum",
-        amount: "1,000,000 PEPE",
-        riskLevel: "warning",
-        warnings: [
-          "Token has high volatility",
-          "Recently created contract (< 30 days)",
-          "Limited trading history"
-        ]
+        tokenName: randomToken.name,
+        network: randomToken.network,
+        amount: randomToken.amount,
+        riskLevel: randomRisk,
+        warnings: randomRisk === "safe" ? [] : selectedWarnings
       });
       setIsAnalyzing(false);
     }, 2500);
