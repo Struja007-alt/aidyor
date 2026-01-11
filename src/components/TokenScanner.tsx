@@ -30,29 +30,42 @@ export const TokenScanner = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<number | null>(null);
   const [riskFactors, setRiskFactors] = useState<RiskFactor[]>([]);
+  const [tokenName, setTokenName] = useState<string>("");
 
   const handleScan = () => {
     if (!tokenAddress) return;
     
     setIsScanning(true);
     setScanResult(null);
+    setTokenName("");
     
-    // Simulate scanning - extract token name from address or use address
+    // Simulate scanning - derive token name from address
     setTimeout(() => {
       const mockScore = Math.floor(Math.random() * 60) + 30;
+      const detectedName = getTokenNameFromAddress(tokenAddress);
       setScanResult(mockScore);
+      setTokenName(detectedName);
       setRiskFactors(mockRiskFactors);
       setIsScanning(false);
     }, 2000);
   };
 
-  // Derive display name from address (for demo purposes)
-  const getTokenDisplayName = () => {
-    const addr = tokenAddress.toLowerCase();
+  // Derive token name from address (for demo purposes)
+  const getTokenNameFromAddress = (address: string): string => {
+    const addr = address.toLowerCase();
     if (addr.includes("pepe")) return "PEPE";
     if (addr.includes("shib")) return "SHIBA INU";
     if (addr.includes("doge")) return "DOGE";
-    // Show truncated address if no known token
+    if (addr.includes("bonk")) return "BONK";
+    if (addr.includes("floki")) return "FLOKI";
+    if (addr.includes("wojak")) return "WOJAK";
+    // Generate a mock name for unknown tokens
+    const mockNames = ["Unknown Token", "MYSTERY", "TOKEN-X", "ALPHA"];
+    return mockNames[Math.floor(Math.random() * mockNames.length)];
+  };
+
+  // Format address for display
+  const getFormattedAddress = () => {
     return tokenAddress.length > 10 
       ? `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`
       : tokenAddress;
@@ -155,9 +168,12 @@ export const TokenScanner = () => {
         <div className="grid md:grid-cols-2 gap-6 animate-fade-in">
           {/* Risk Score */}
           <div className="glass-card p-6 flex flex-col items-center justify-center">
-            <h3 className="font-display text-lg text-foreground mb-2">Risk Score</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {getTokenDisplayName()} on {selectedNetwork}
+            <h3 className="font-display text-2xl text-foreground mb-1">{tokenName}</h3>
+            <p className="text-xs text-muted-foreground mb-1 font-mono">
+              {getFormattedAddress()}
+            </p>
+            <p className="text-sm text-primary mb-4">
+              {selectedNetwork} Network
             </p>
             <RiskGauge score={scanResult} />
           </div>
