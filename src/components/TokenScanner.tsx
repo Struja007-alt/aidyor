@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, ClipboardEvent } from "react";
+import { Clipboard } from "lucide-react";
 import { Search, Scan, Shield, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,12 +93,35 @@ export const TokenScanner = () => {
           Token Address
         </h3>
         <div className="flex gap-3">
-          <Input
-            placeholder="Enter token contract address..."
-            value={tokenAddress}
-            onChange={(e) => setTokenAddress(e.target.value)}
-            className="flex-1 bg-secondary/50 border-border/50 focus:border-primary/50 h-12 text-foreground placeholder:text-muted-foreground"
-          />
+          <div className="flex-1 flex gap-2">
+            <Input
+              placeholder="Enter or paste token contract address..."
+              value={tokenAddress}
+              onChange={(e) => setTokenAddress(e.target.value)}
+              onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
+                e.preventDefault();
+                const pastedText = e.clipboardData.getData('text').trim();
+                setTokenAddress(pastedText);
+              }}
+              className="flex-1 bg-secondary/50 border-border/50 focus:border-primary/50 h-12 text-foreground placeholder:text-muted-foreground"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText();
+                  setTokenAddress(text.trim());
+                } catch (err) {
+                  console.error('Failed to read clipboard');
+                }
+              }}
+              className="h-12 px-3 border-border/50 hover:bg-secondary/50"
+              title="Paste from clipboard"
+            >
+              <Clipboard className="w-5 h-5" />
+            </Button>
+          </div>
           <Button 
             onClick={handleScan}
             disabled={!tokenAddress || isScanning}
