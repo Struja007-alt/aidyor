@@ -2,11 +2,13 @@ import { Header } from "@/components/Header";
 import { TokenScanner } from "@/components/TokenScanner";
 import { TelegramGameChecker } from "@/components/TelegramGameChecker";
 import { ScreenshotUploader } from "@/components/ScreenshotUploader";
+import DisclaimerDialog from "@/components/DisclaimerDialog";
 import { Shield, Zap, Eye } from "lucide-react";
 
 const Index = () => {
   return (
     <div className="min-h-screen bg-background">
+      <DisclaimerDialog />
       <Header />
       
       <main className="container mx-auto px-4 py-8 space-y-12">
