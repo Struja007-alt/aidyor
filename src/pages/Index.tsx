@@ -21,9 +21,25 @@ const Index = () => {
           <h1 className="font-display text-4xl md:text-6xl font-bold text-foreground mb-4 tracking-tight">
             Protect Your <span className="text-gradient-safe">Crypto</span>
           </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
             Advanced token scanner with risk analysis, P2E game verification, and screenshot-based token detection.
           </p>
+          
+          {/* Feature Highlights */}
+          <div className="flex flex-wrap justify-center gap-4 text-sm">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/30">
+              <span>🔐</span>
+              <span className="text-muted-foreground">No wallet connection required</span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/30">
+              <span>📡</span>
+              <span className="text-muted-foreground">Real-time blockchain data</span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/30">
+              <span>🛡️</span>
+              <span className="text-muted-foreground">Scam pattern detection</span>
+            </div>
+          </div>
         </section>
 
         {/* Feature Stats */}
