@@ -15,6 +15,13 @@ interface RiskFactor {
   description: string;
 }
 
+interface MarketData {
+  price: number;
+  change24h: number;
+  marketCap: number;
+  volume24h: number;
+}
+
 interface TokenSuggestion {
   name: string;
   symbol: string;
@@ -50,6 +57,7 @@ export const TokenScanner = () => {
   const [selectedNetwork, setSelectedNetwork] = useState<Network>("ETH");
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<number | null>(null);
+  const [marketData, setMarketData] = useState<MarketData | null>(null);
   const [riskFactors, setRiskFactors] = useState<RiskFactor[]>([]);
   const [tokenName, setTokenName] = useState<string>("");
   const [suggestions, setSuggestions] = useState<TokenSuggestion[]>([]);
@@ -103,6 +111,7 @@ export const TokenScanner = () => {
     setIsScanning(true);
     setScanResult(null);
     setTokenName("");
+    setMarketData(null);
     
     // Simulate scanning - derive token name from address
     setTimeout(() => {
@@ -111,6 +120,15 @@ export const TokenScanner = () => {
       setScanResult(mockScore);
       setTokenName(detectedName);
       setRiskFactors(mockRiskFactors);
+      
+      // Generate mock market data
+      setMarketData({
+        price: Math.random() * 100,
+        change24h: (Math.random() - 0.5) * 40,
+        marketCap: Math.random() * 10000000000,
+        volume24h: Math.random() * 500000000,
+      });
+      
       setIsScanning(false);
     }, 2000);
   };
@@ -140,6 +158,21 @@ export const TokenScanner = () => {
     return tokenAddress.length > 10 
       ? `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`
       : tokenAddress;
+  };
+
+  // Format currency for display
+  const formatCurrency = (value: number) => {
+    if (value >= 1000000000) {
+      return `$${(value / 1000000000).toFixed(2)}B`;
+    } else if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(2)}M`;
+    } else if (value >= 1000) {
+      return `$${(value / 1000).toFixed(2)}K`;
+    } else if (value >= 1) {
+      return `$${value.toFixed(2)}`;
+    } else {
+      return `$${value.toFixed(6)}`;
+    }
   };
 
   const getStatusIcon = (status: RiskFactor["status"]) => {
@@ -278,41 +311,78 @@ export const TokenScanner = () => {
 
       {/* Results */}
       {scanResult !== null && !isScanning && (
-        <div className="grid md:grid-cols-2 gap-6 animate-fade-in">
-          {/* Risk Score */}
-          <div className="glass-card p-6 flex flex-col items-center justify-center">
-            <h3 className="font-display text-2xl text-foreground mb-1">{tokenName}</h3>
-            <p className="text-xs text-muted-foreground mb-1 font-mono">
-              {getFormattedAddress()}
-            </p>
-            <p className="text-sm text-primary mb-4">
-              {selectedNetwork} Network
-            </p>
-            <RiskGauge score={scanResult} />
-          </div>
+        <div className="space-y-6 animate-fade-in">
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Risk Score */}
+            <div className="glass-card p-6 flex flex-col items-center justify-center">
+              <h3 className="font-display text-2xl text-foreground mb-1">{tokenName}</h3>
+              <p className="text-xs text-muted-foreground mb-1 font-mono">
+                {getFormattedAddress()}
+              </p>
+              <p className="text-sm text-primary mb-4">
+                {selectedNetwork} Network
+              </p>
+              <RiskGauge score={scanResult} />
+            </div>
 
-          {/* Risk Factors */}
-          <div className="glass-card p-6">
-            <h3 className="font-display text-lg text-foreground mb-4">Analysis Breakdown</h3>
-            <div className="space-y-3">
-              {riskFactors.map((factor, index) => (
-                <div 
-                  key={factor.name}
-                  className={cn(
-                    "flex items-start gap-3 p-3 rounded-lg bg-secondary/30 border border-border/30",
-                    "animate-fade-in"
-                  )}
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  {getStatusIcon(factor.status)}
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{factor.name}</p>
-                    <p className="text-sm text-muted-foreground">{factor.description}</p>
+            {/* Risk Factors */}
+            <div className="glass-card p-6">
+              <h3 className="font-display text-lg text-foreground mb-4">Analysis Breakdown</h3>
+              <div className="space-y-3">
+                {riskFactors.map((factor, index) => (
+                  <div 
+                    key={factor.name}
+                    className={cn(
+                      "flex items-start gap-3 p-3 rounded-lg bg-secondary/30 border border-border/30",
+                      "animate-fade-in"
+                    )}
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    {getStatusIcon(factor.status)}
+                    <div className="flex-1">
+                      <p className="font-medium text-foreground">{factor.name}</p>
+                      <p className="text-sm text-muted-foreground">{factor.description}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
+
+          {/* Market Data */}
+          {marketData && (
+            <div className="glass-card p-6 animate-fade-in" style={{ animationDelay: '200ms' }}>
+              <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+                Market Data
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Price</p>
+                  <p className="font-display text-xl text-foreground">{formatCurrency(marketData.price)}</p>
+                </div>
+                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">24h Change</p>
+                  <p className={cn(
+                    "font-display text-xl",
+                    marketData.change24h >= 0 ? "text-safe" : "text-danger"
+                  )}>
+                    {marketData.change24h >= 0 ? '+' : ''}{marketData.change24h.toFixed(2)}%
+                  </p>
+                </div>
+                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Market Cap</p>
+                  <p className="font-display text-xl text-foreground">{formatCurrency(marketData.marketCap)}</p>
+                </div>
+                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Volume 24h</p>
+                  <p className="font-display text-xl text-foreground">{formatCurrency(marketData.volume24h)}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
