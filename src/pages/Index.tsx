@@ -2,8 +2,9 @@ import { Header } from "@/components/Header";
 import { TokenScanner } from "@/components/TokenScanner";
 import { TelegramGameChecker } from "@/components/TelegramGameChecker";
 import { ScreenshotUploader } from "@/components/ScreenshotUploader";
+import { Watchlist } from "@/components/Watchlist";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye } from "lucide-react";
+import { Shield, Zap, Eye, Star } from "lucide-react";
 
 const Index = () => {
   return (
