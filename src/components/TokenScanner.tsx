@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2 } from "lucide-react";
+import { Clipboard, Loader2, Star } from "lucide-react";
 import { Search, Scan, Shield, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NetworkBadge } from "./NetworkBadge";
 import { RiskGauge } from "./RiskGauge";
+import { useWatchlist } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX";
 
