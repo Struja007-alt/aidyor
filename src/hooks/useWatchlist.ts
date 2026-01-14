@@ -70,3 +70,4 @@ export const useWatchlist = () => {
   }, [saveWatchlist]);
 
   return { watchlist, addToken, removeToken, isInWatchlist, updateToken, updateAllTokens };
+};
