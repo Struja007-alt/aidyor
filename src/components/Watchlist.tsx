@@ -1,7 +1,9 @@
-import { Star, Trash2, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { Star, Trash2, ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useWatchlist } from "@/hooks/useWatchlist";
+import { useWatchlist, WatchlistToken } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const getRiskColor = (score: number) => {
   if (score >= 70) return "text-safe";
@@ -24,6 +26,21 @@ const getNetworkExplorer = (network: string, address: string) => {
     AVAX: `https://snowtrace.io/token/${address}`,
   };
   return explorers[network] || "#";
+};
+
+// Simulate re-scanning a token (returns new mock risk score)
+const rescanToken = async (token: WatchlistToken): Promise<WatchlistToken> => {
+  // Simulate API delay
+  await new Promise((resolve) => setTimeout(resolve, 300 + Math.random() * 400));
+  
+  // Generate a new risk score with slight variation from original
+  const variation = Math.floor(Math.random() * 20) - 10;
+  const newScore = Math.max(0, Math.min(100, token.riskScore + variation));
+  
+  return {
+    ...token,
+    riskScore: newScore,
+  };
 };
 
 export const Watchlist = () => {
