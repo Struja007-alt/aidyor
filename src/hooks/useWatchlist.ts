@@ -57,5 +57,16 @@ export const useWatchlist = () => {
     );
   }, [watchlist]);
 
-  return { watchlist, addToken, removeToken, isInWatchlist };
-};
+  const updateToken = useCallback((address: string, updates: Partial<WatchlistToken>) => {
+    saveWatchlist(watchlist.map((t) =>
+      t.address.toLowerCase() === address.toLowerCase()
+        ? { ...t, ...updates }
+        : t
+    ));
+  }, [watchlist, saveWatchlist]);
+
+  const updateAllTokens = useCallback((updatedTokens: WatchlistToken[]) => {
+    saveWatchlist(updatedTokens);
+  }, [saveWatchlist]);
+
+  return { watchlist, addToken, removeToken, isInWatchlist, updateToken, updateAllTokens };
