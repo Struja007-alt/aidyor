@@ -23,6 +23,10 @@ import {
   analyzeSolanaSecurity,
   type GoPlusSecurityResult 
 } from "@/lib/api/goplus";
+import {
+  getLiquidityLockInfo,
+  analyzeLockSecurity,
+} from "@/lib/api/unicrypt";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -474,6 +478,18 @@ export const TokenScanner = () => {
                   hasHiddenOwner: goplusData.hiddenOwner,
                 };
               }
+              
+              // Fetch Unicrypt/Team Finance liquidity lock data for EVM chains
+              try {
+                const lockInfo = await getLiquidityLockInfo(mainPair.baseToken.address, network);
+                if (lockInfo) {
+                  const { score: lockScore, factors: lockFactors } = analyzeLockSecurity(lockInfo);
+                  securityScore += lockScore;
+                  securityFactors = [...securityFactors, ...lockFactors];
+                }
+              } catch (lockError) {
+                console.error('Unicrypt lock check error:', lockError);
+              }
             }
           } catch (error) {
             console.error('Security fetch error:', error);
@@ -482,9 +498,9 @@ export const TokenScanner = () => {
           // Merge risk factors (security factors first, then DEX factors)
           const allFactors = [...securityFactors, ...dexFactors];
           
-          // Combined score: weighted average of DEX (60%) and security (40%) if available
+          // Combined score: weighted average of DEX (55%) and security (45%) if available
           const combinedScore = securityFactors.length > 0
-            ? Math.max(0, Math.min(100, Math.round(dexScore * 0.6 + (50 + securityScore) * 0.4)))
+            ? Math.max(0, Math.min(100, Math.round(dexScore * 0.55 + (50 + securityScore) * 0.45)))
             : dexScore;
           
           return {
