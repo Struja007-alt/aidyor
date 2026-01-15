@@ -126,6 +126,12 @@ const Index = () => {
                 >
                   Transparency
                 </a>
+                <a 
+                  href="/faq" 
+                  className="text-sm text-primary hover:underline"
+                >
+                  FAQ
+                </a>
               </div>
             </div>
           </div>
