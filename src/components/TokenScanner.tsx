@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, ArrowRightLeft, FileText } from "lucide-react";
+import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, ArrowRightLeft, FileText, TrendingUp, TrendingDown, Activity, BarChart3, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, Twitter } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1018,7 +1018,7 @@ export const TokenScanner = () => {
                 </div>
               </div>
 
-              {/* Market Data */}
+              {/* Market Data - Enhanced */}
               {selectedResult.marketData && (
                 <div className="glass-card p-6 md:col-span-2">
                   <h3 className="font-display text-lg text-foreground mb-4">Live Market Data</h3>
@@ -1057,6 +1057,265 @@ export const TokenScanner = () => {
                         {formatCurrency(selectedResult.marketData.liquidity)}
                       </p>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Price Changes at Multiple Timeframes */}
+              {selectedResult.pairs[0] && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-primary" />
+                    Price Performance
+                  </h3>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: "5m", value: selectedResult.pairs[0].priceChange?.m5 },
+                      { label: "1h", value: selectedResult.pairs[0].priceChange?.h1 },
+                      { label: "6h", value: selectedResult.pairs[0].priceChange?.h6 },
+                      { label: "24h", value: selectedResult.pairs[0].priceChange?.h24 },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="p-3 rounded-lg bg-secondary/30 border border-border/30 text-center">
+                        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                        <p className={cn(
+                          "font-display text-base",
+                          value === undefined ? "text-muted-foreground" :
+                          value >= 0 ? "text-safe" : "text-danger"
+                        )}>
+                          {value !== undefined ? `${value >= 0 ? "+" : ""}${value.toFixed(2)}%` : "N/A"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transaction Activity */}
+              {selectedResult.pairs[0]?.txns && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-primary" />
+                    Trading Activity (24h)
+                  </h3>
+                  <div className="space-y-4">
+                    {/* Buy/Sell Summary */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-lg bg-safe/10 border border-safe/30">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-muted-foreground">Buys (24h)</span>
+                          <TrendingUp className="w-4 h-4 text-safe" />
+                        </div>
+                        <p className="font-display text-2xl text-safe">
+                          {selectedResult.pairs[0].txns.h24?.buys || 0}
+                        </p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-danger/10 border border-danger/30">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-muted-foreground">Sells (24h)</span>
+                          <TrendingDown className="w-4 h-4 text-danger" />
+                        </div>
+                        <p className="font-display text-2xl text-danger">
+                          {selectedResult.pairs[0].txns.h24?.sells || 0}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Transaction breakdown by timeframe */}
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      {[
+                        { label: "5m", data: selectedResult.pairs[0].txns.m5 },
+                        { label: "1h", data: selectedResult.pairs[0].txns.h1 },
+                        { label: "6h", data: selectedResult.pairs[0].txns.h6 },
+                        { label: "24h", data: selectedResult.pairs[0].txns.h24 },
+                      ].map(({ label, data }) => (
+                        <div key={label} className="p-2 rounded bg-secondary/30 border border-border/20">
+                          <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                          <div className="flex items-center justify-center gap-1 text-xs">
+                            <span className="text-safe">{data?.buys || 0}</span>
+                            <span className="text-muted-foreground">/</span>
+                            <span className="text-danger">{data?.sells || 0}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Volume Breakdown */}
+              {selectedResult.pairs[0]?.volume && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-primary" />
+                    Volume Breakdown
+                  </h3>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: "5m", value: selectedResult.pairs[0].volume.m5 },
+                      { label: "1h", value: selectedResult.pairs[0].volume.h1 },
+                      { label: "6h", value: selectedResult.pairs[0].volume.h6 },
+                      { label: "24h", value: selectedResult.pairs[0].volume.h24 },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="p-3 rounded-lg bg-secondary/30 border border-border/30 text-center">
+                        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatCurrency(value || 0)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pair & DEX Info */}
+              {selectedResult.pairs[0] && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-primary" />
+                    Pair Information
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">DEX</span>
+                      <span className="text-sm font-medium text-foreground capitalize">
+                        {selectedResult.pairs[0].dexId}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">Trading Pair</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {selectedResult.pairs[0].baseToken.symbol}/{selectedResult.pairs[0].quoteToken.symbol}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">Pair Address</span>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs font-mono text-foreground">
+                          {truncateAddress(selectedResult.pairAddress)}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyAddress(selectedResult.pairAddress)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">Price (Native)</span>
+                      <span className="text-sm font-mono text-foreground">
+                        {parseFloat(selectedResult.pairs[0].priceNative).toFixed(8)} {selectedResult.pairs[0].quoteToken.symbol}
+                      </span>
+                    </div>
+                    {selectedResult.pairs[0].fdv && (
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                        <span className="text-sm text-muted-foreground">Fully Diluted Value</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {formatCurrency(selectedResult.pairs[0].fdv)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Social Links & Websites */}
+              {(selectedResult.pairs[0]?.info?.websites?.length || selectedResult.pairs[0]?.info?.socials?.length) && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-primary" />
+                    Links & Socials
+                  </h3>
+                  <div className="space-y-3">
+                    {/* Websites */}
+                    {selectedResult.pairs[0]?.info?.websites?.map((site, idx) => (
+                      <a
+                        key={idx}
+                        href={site.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                          <span className="text-sm text-foreground">{site.label || "Website"}</span>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                      </a>
+                    ))}
+                    {/* Social Links */}
+                    {selectedResult.pairs[0]?.info?.socials?.map((social, idx) => (
+                      <a
+                        key={idx}
+                        href={social.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          {social.type === "twitter" && <Twitter className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                          {social.type === "telegram" && <MessageCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                          {social.type === "discord" && <Users className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                          {!["twitter", "telegram", "discord"].includes(social.type) && <LinkIcon className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                          <span className="text-sm text-foreground capitalize">{social.type}</span>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Multiple Trading Pools */}
+              {selectedResult.pairs.length > 1 && (
+                <div className="glass-card p-6 md:col-span-2">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Droplets className="w-5 h-5 text-primary" />
+                    All Trading Pools ({selectedResult.pairs.length})
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border/30">
+                          <th className="text-left p-3 text-muted-foreground font-medium">DEX</th>
+                          <th className="text-left p-3 text-muted-foreground font-medium">Pair</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">Liquidity</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">Volume 24h</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">Price</th>
+                          <th className="text-center p-3 text-muted-foreground font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedResult.pairs.slice(0, 10).map((pair, idx) => (
+                          <tr key={idx} className="border-b border-border/20 hover:bg-secondary/20">
+                            <td className="p-3 capitalize">{pair.dexId}</td>
+                            <td className="p-3 font-mono text-xs">
+                              {pair.baseToken.symbol}/{pair.quoteToken.symbol}
+                            </td>
+                            <td className="p-3 text-right">{formatCurrency(pair.liquidity?.usd || 0)}</td>
+                            <td className="p-3 text-right">{formatCurrency(pair.volume?.h24 || 0)}</td>
+                            <td className="p-3 text-right">{formatPrice(parseFloat(pair.priceUsd) || 0)}</td>
+                            <td className="p-3 text-center">
+                              <a
+                                href={pair.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+                              >
+                                View <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {selectedResult.pairs.length > 10 && (
+                      <p className="text-xs text-muted-foreground text-center mt-3">
+                        + {selectedResult.pairs.length - 10} more pools
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
