@@ -343,84 +343,99 @@ export const TokenScanner = () => {
     <div className="space-y-6">
       {/* Unified Token Search & Scan */}
       {scanMode === "address" ? (
-        <div className="glass-card p-6 animate-fade-in">
-          <div className="space-y-4">
-            {/* Unified Smart Search Input with Screenshot Toggle */}
+        <div className="glass-card p-8 animate-fade-in relative overflow-hidden">
+          {/* Decorative elements */}
+          <div className="absolute top-0 left-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute bottom-0 right-0 w-40 h-40 bg-accent/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          
+          <div className="relative space-y-6">
+            {/* Header */}
+            <div className="text-center mb-2">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 mb-4">
+                <Scan className="w-7 h-7 text-primary" />
+              </div>
+              <h3 className="font-display text-xl text-foreground mb-1">Scan Any Token</h3>
+              <p className="text-sm text-muted-foreground">Multi-chain risk analysis powered by real-time data</p>
+            </div>
+
+            {/* Unified Smart Search Input */}
             <div className="relative">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  placeholder="Paste contract address or type token name..."
-                  value={tokenQuery}
-                  onChange={(e) => {
-                    setTokenQuery(e.target.value);
-                    setScanResults([]);
-                    setSelectedResult(null);
-                  }}
-                  onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
-                    e.preventDefault();
-                    const pastedText = e.clipboardData.getData('text').trim();
-                    setTokenQuery(pastedText);
-                    setDisplayAddress(pastedText);
-                    // Auto-scan if it's a contract address
-                    if (isContractAddress(pastedText)) {
-                      setTimeout(() => handleScanWithAddress(pastedText), 100);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && tokenQuery) {
-                      handleScan();
-                    }
-                  }}
-                  onFocus={() => tokenQuery.length >= 2 && !isContractAddress(tokenQuery) && setShowSuggestions(suggestions.length > 0)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  className="w-full bg-secondary/50 border-border/50 focus:border-primary/50 h-14 pl-12 pr-24 text-foreground placeholder:text-muted-foreground text-base"
-                />
-                {isSearching && (
-                  <Loader2 className="absolute right-20 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground animate-spin" />
-                )}
-                <Button 
-                  onClick={handleScan}
-                  disabled={!tokenQuery || isScanning}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 h-10 px-4 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
-                >
-                  {isScanning ? (
-                    <Scan className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      <Scan className="w-4 h-4 mr-2" />
-                      SCAN
-                    </>
+              <div className="relative group">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-500" />
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    placeholder="Paste contract address or type token name..."
+                    value={tokenQuery}
+                    onChange={(e) => {
+                      setTokenQuery(e.target.value);
+                      setScanResults([]);
+                      setSelectedResult(null);
+                    }}
+                    onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
+                      e.preventDefault();
+                      const pastedText = e.clipboardData.getData('text').trim();
+                      setTokenQuery(pastedText);
+                      setDisplayAddress(pastedText);
+                      if (isContractAddress(pastedText)) {
+                        setTimeout(() => handleScanWithAddress(pastedText), 100);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && tokenQuery) {
+                        handleScan();
+                      }
+                    }}
+                    onFocus={() => tokenQuery.length >= 2 && !isContractAddress(tokenQuery) && setShowSuggestions(suggestions.length > 0)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    className="w-full bg-secondary/80 border-border/50 focus:border-primary/50 h-16 pl-12 pr-28 text-foreground placeholder:text-muted-foreground text-base rounded-xl"
+                  />
+                  {isSearching && (
+                    <Loader2 className="absolute right-24 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground animate-spin" />
                   )}
-                </Button>
+                  <Button 
+                    onClick={handleScan}
+                    disabled={!tokenQuery || isScanning}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-12 px-5 bg-primary hover:bg-primary/90 text-primary-foreground font-display rounded-lg shadow-lg shadow-primary/20"
+                  >
+                    {isScanning ? (
+                      <Scan className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Scan className="w-4 h-4 mr-2" />
+                        SCAN
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
               
               {/* Input Type Indicator */}
               {tokenQuery && (
-                <div className="absolute -bottom-5 left-0">
+                <div className="absolute -bottom-6 left-0">
                   <span className="text-xs text-muted-foreground">
                     {isContractAddress(tokenQuery) ? (
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                        Contract address detected
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                        Contract address detected — scanning automatically
                       </span>
                     ) : tokenQuery.length >= 2 ? (
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-                        Searching tokens...
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-accent/70" />
+                        Searching tokens across all chains...
                       </span>
                     ) : null}
                   </span>
                 </div>
               )}
               
-              {/* Real-time Suggestions Dropdown */}
+              {/* Suggestions Dropdown */}
               {showSuggestions && (
-                <div className="absolute z-50 w-full mt-1 bg-card border border-border/50 rounded-lg shadow-xl overflow-hidden max-h-80 overflow-y-auto">
+                <div className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto">
                   {suggestions.map((pair, index) => (
                     <button
                       key={`${pair.chainId}-${pair.pairAddress}-${index}`}
-                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/20 last:border-b-0"
                       onMouseDown={() => handleSelectSuggestion(pair)}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -428,61 +443,44 @@ export const TokenScanner = () => {
                           <img 
                             src={pair.info.imageUrl} 
                             alt={pair.baseToken.symbol}
-                            className="w-8 h-8 rounded-full bg-secondary"
+                            className="w-9 h-9 rounded-full bg-secondary ring-2 ring-border/30"
                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
                           />
                         )}
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-foreground truncate">{pair.baseToken.name}</span>
-                            <span className="text-muted-foreground">({pair.baseToken.symbol})</span>
+                            <span className="text-muted-foreground text-sm">({pair.baseToken.symbol})</span>
                           </div>
                           <p className="text-xs text-muted-foreground font-mono truncate">
                             {truncateAddress(pair.baseToken.address)}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-xs px-2 py-1 rounded bg-secondary/50 text-muted-foreground">
-                          {chainIdToNetwork[pair.chainId] || pair.chainId}
-                        </span>
-                      </div>
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium shrink-0 ml-2">
+                        {chainIdToNetwork[pair.chainId] || pair.chainId}
+                      </span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Screenshot Mode Toggle */}
-            <div className="flex justify-center">
+            {/* Screenshot Toggle */}
+            <div className="flex justify-center pt-2">
               <button
                 onClick={() => { setScanMode("screenshot"); resetScan(); }}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 text-sm text-muted-foreground hover:text-primary bg-secondary/30 hover:bg-secondary/50 rounded-lg transition-all"
               >
                 <Upload className="w-4 h-4" />
                 Or upload a screenshot
               </button>
             </div>
 
-            {/* Display Contract Address Prominently */}
-            {displayAddress && isContractAddress(displayAddress) && !isScanning && scanResults.length === 0 && (
-              <div className="p-4 rounded-lg bg-secondary/30 border border-border/50 mt-8">
-                <p className="text-xs text-muted-foreground mb-1">Contract Address</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 font-mono text-sm text-foreground break-all">
-                    {displayAddress}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyAddress(displayAddress)}
-                    className="shrink-0"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
+            {/* Ghost description text */}
+            <p className="text-center text-xs text-muted-foreground/60 pt-2 max-w-md mx-auto leading-relaxed">
+              Analyzes liquidity, trading volume, holder distribution, and on-chain activity to detect potential rug pulls, honeypots, and scam patterns across ETH, BSC, Solana, Polygon, and more.
+            </p>
           </div>
         </div>
       ) : (
