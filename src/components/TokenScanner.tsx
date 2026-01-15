@@ -335,6 +335,14 @@ export const TokenScanner = () => {
       if (pairs.length === 0) {
         setScanResults([]);
         setIsScanning(false);
+        // Ensure display address is set so "Token Not Found" UI shows
+        if (!displayAddress) {
+          setDisplayAddress(address);
+        }
+        if (!tokenQuery) {
+          setTokenQuery(address);
+        }
+        toast.warning("Token not found on DEXScreener. It may not be listed on any DEX yet.");
         return;
       }
 
