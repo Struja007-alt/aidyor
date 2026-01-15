@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Star, Trash2, ExternalLink, RefreshCw } from "lucide-react";
+import { Star, Trash2, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWatchlist, WatchlistToken } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { getTokenByAddress, analyzeTokenRisk } from "@/lib/api/dexscreener";
 
 const getRiskColor = (score: number) => {
   if (score >= 70) return "text-safe";
@@ -28,23 +29,52 @@ const getNetworkExplorer = (network: string, address: string) => {
   return explorers[network] || "#";
 };
 
-// Simulate re-scanning a token (returns new mock risk score)
-const rescanToken = async (token: WatchlistToken): Promise<WatchlistToken> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 300 + Math.random() * 400));
-  
-  // Generate a new risk score with slight variation from original
-  const variation = Math.floor(Math.random() * 20) - 10;
-  const newScore = Math.max(0, Math.min(100, token.riskScore + variation));
-  
-  return {
-    ...token,
-    riskScore: newScore,
-  };
+// Rescan a token using real DEXScreener API data
+const rescanToken = async (token: WatchlistToken): Promise<WatchlistToken | null> => {
+  try {
+    const pairs = await getTokenByAddress(token.address);
+    
+    if (pairs.length === 0) {
+      return null; // Token no longer found
+    }
+    
+    const { score } = analyzeTokenRisk(pairs);
+    
+    return {
+      ...token,
+      riskScore: score,
+    };
+  } catch (error) {
+    console.error("Rescan error:", error);
+    return null;
+  }
 };
 
 export const Watchlist = () => {
-  const { watchlist, removeToken } = useWatchlist();
+  const { watchlist, removeToken, updateToken } = useWatchlist();
+  const [rescanning, setRescanning] = useState<string | null>(null);
+
+  const handleRescan = async (token: WatchlistToken) => {
+    setRescanning(token.address);
+    try {
+      const updated = await rescanToken(token);
+      if (updated) {
+        updateToken(token.address, { riskScore: updated.riskScore });
+        const diff = updated.riskScore - token.riskScore;
+        if (diff !== 0) {
+          toast.success(`${token.name} updated: Risk score ${diff > 0 ? '+' : ''}${diff}`);
+        } else {
+          toast.info(`${token.name}: Risk score unchanged`);
+        }
+      } else {
+        toast.error(`Failed to rescan ${token.name}`);
+      }
+    } catch (error) {
+      toast.error("Rescan failed");
+    } finally {
+      setRescanning(null);
+    }
+  };
 
   if (watchlist.length === 0) {
     return (
@@ -109,6 +139,20 @@ export const Watchlist = () => {
               </div>
 
               <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 hover:bg-primary/10"
+                  onClick={() => handleRescan(token)}
+                  disabled={rescanning === token.address}
+                  title="Rescan token"
+                >
+                  {rescanning === token.address ? (
+                    <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 text-muted-foreground" />
+                  )}
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
