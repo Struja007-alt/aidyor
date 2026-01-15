@@ -66,6 +66,7 @@ export const chainIdToNetwork: Record<string, string> = {
   'arbitrum': 'ARB',
   'base': 'BASE',
   'optimism': 'OP',
+  'ton': 'TON',
 };
 
 export const networkToChainId: Record<string, string> = {
@@ -74,6 +75,10 @@ export const networkToChainId: Record<string, string> = {
   'SOL': 'solana',
   'POLYGON': 'polygon',
   'AVAX': 'avalanche',
+  'ARB': 'arbitrum',
+  'BASE': 'base',
+  'OP': 'optimism',
+  'TON': 'ton',
 };
 
 // Search tokens by name, symbol, or address

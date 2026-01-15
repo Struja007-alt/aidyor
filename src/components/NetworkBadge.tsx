@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 interface NetworkBadgeProps {
-  network: "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "TON";
+  network: "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "TON" | "ARB" | "BASE" | "OP";
   selected?: boolean;
   onClick?: () => void;
 }
@@ -65,6 +65,28 @@ const NetworkIcon = ({ network, size = 20 }: { network: string; size?: number })
           <path d="M16 10L22 16L16 22L10 16L16 10Z" fill="white"/>
         </svg>
       );
+    case "ARB":
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+          <path d="M16 4L28 28H4L16 4Z" fill="#28A0F0"/>
+          <path d="M16 10L22 22H10L16 10Z" fill="#FFFFFF"/>
+          <circle cx="16" cy="18" r="3" fill="#28A0F0"/>
+        </svg>
+      );
+    case "BASE":
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="12" fill="#0052FF"/>
+          <path d="M16 8C11.58 8 8 11.58 8 16C8 20.42 11.58 24 16 24C19.73 24 22.84 21.45 23.71 18H18C17.28 19.19 15.99 20 14.5 20C12.29 20 10.5 18.21 10.5 16C10.5 13.79 12.29 12 14.5 12C15.99 12 17.28 12.81 18 14H23.71C22.84 10.55 19.73 8 16 8Z" fill="white"/>
+        </svg>
+      );
+    case "OP":
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="12" fill="#FF0420"/>
+          <text x="16" y="20" fontSize="12" fontWeight="bold" fill="white" textAnchor="middle">OP</text>
+        </svg>
+      );
     default:
       return null;
   }
@@ -77,6 +99,9 @@ const networkConfig = {
   POLYGON: { name: "Polygon", color: "hsl(263, 75%, 58%)" },
   AVAX: { name: "Avalanche", color: "hsl(0, 78%, 58%)" },
   TON: { name: "TON", color: "hsl(200, 100%, 46%)" },
+  ARB: { name: "Arbitrum", color: "hsl(207, 88%, 55%)" },
+  BASE: { name: "Base", color: "hsl(220, 100%, 50%)" },
+  OP: { name: "Optimism", color: "hsl(0, 100%, 50%)" },
 };
 
 export const NetworkBadge = ({ network, selected, onClick }: NetworkBadgeProps) => {
