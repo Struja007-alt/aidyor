@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink } from "lucide-react";
+import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, ArrowRightLeft } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,7 @@ interface NetworkResult {
   pairAddress: string;
   dexUrl: string;
   pairs: DexPair[];
+  tokenStatus: "original" | "bridged" | "suspicious";
 }
 
 interface TokenInfo {
@@ -167,10 +168,13 @@ export const TokenScanner = () => {
         chainGroups[chain].push(pair);
       });
 
-      // Build results for each chain
-      const results: NetworkResult[] = Object.entries(chainGroups).map(([chainId, chainPairs]) => {
+      // Build results for each chain with market data
+      const resultsWithData = Object.entries(chainGroups).map(([chainId, chainPairs]) => {
         const mainPair = chainPairs[0];
         const { score, factors } = analyzeTokenRisk(chainPairs);
+        const liquidity = mainPair.liquidity?.usd || 0;
+        const volume24h = mainPair.volume?.h24 || 0;
+        const hasSocials = !!(mainPair.info?.websites?.length || mainPair.info?.socials?.length);
         
         return {
           network: chainIdToNetwork[chainId] || chainId.toUpperCase(),
@@ -185,11 +189,50 @@ export const TokenScanner = () => {
             price: parseFloat(mainPair.priceUsd) || 0,
             change24h: mainPair.priceChange?.h24 || 0,
             marketCap: mainPair.marketCap || mainPair.fdv || 0,
-            volume24h: mainPair.volume?.h24 || 0,
-            liquidity: mainPair.liquidity?.usd || 0,
+            volume24h,
+            liquidity,
           },
           riskFactors: factors,
+          // Temp values for status calculation
+          _liquidity: liquidity,
+          _volume: volume24h,
+          _hasSocials: hasSocials,
+          _score: score,
         };
+      });
+
+      // Determine original vs bridged/suspicious
+      // Original = highest liquidity + volume + has socials + good score
+      // Bridged = similar token on different chain
+      // Suspicious = low liquidity, no socials, poor score
+      const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
+      const maxVolume = Math.max(...resultsWithData.map(r => r._volume));
+      
+      const results: NetworkResult[] = resultsWithData.map(r => {
+        let tokenStatus: "original" | "bridged" | "suspicious";
+        
+        // Check if this is the original (highest liquidity + volume, has socials)
+        const isHighestLiquidity = r._liquidity === maxLiquidity && maxLiquidity > 0;
+        const hasGoodLiquidity = r._liquidity >= 10000;
+        const hasGoodVolume = r._volume >= 1000;
+        
+        if (r._score < 30) {
+          // Very low score = suspicious
+          tokenStatus = "suspicious";
+        } else if (isHighestLiquidity && hasGoodLiquidity && hasGoodVolume) {
+          // Best metrics = original
+          tokenStatus = "original";
+        } else if (r._liquidity < 1000 || r._score < 40) {
+          // Low liquidity or poor score = suspicious
+          tokenStatus = "suspicious";
+        } else {
+          // Decent metrics but not the best = bridged
+          tokenStatus = "bridged";
+        }
+        
+        // Remove temp properties and add status
+        const { _liquidity, _volume, _hasSocials, _score, ...rest } = r;
+        return { ...rest, tokenStatus };
       });
 
       // Set token info from best result
@@ -207,9 +250,10 @@ export const TokenScanner = () => {
 
       setScanResults(results);
       
-      // Auto-select highest liquidity result
+      // Auto-select original or highest liquidity result
       if (results.length > 0) {
-        const best = results.reduce((a, b) => 
+        const original = results.find(r => r.tokenStatus === "original");
+        const best = original || results.reduce((a, b) => 
           (a.marketData?.liquidity || 0) > (b.marketData?.liquidity || 0) ? a : b
         );
         setSelectedResult(best);
@@ -302,6 +346,32 @@ export const TokenScanner = () => {
       case "safe": return <CheckCircle className="w-5 h-5 text-safe" />;
       case "warning": return <AlertTriangle className="w-5 h-5 text-warning" />;
       case "danger": return <XCircle className="w-5 h-5 text-danger" />;
+    }
+  };
+
+  const getTokenStatusBadge = (status: "original" | "bridged" | "suspicious") => {
+    switch (status) {
+      case "original":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-safe/20 text-safe text-xs font-medium border border-safe/30">
+            <ShieldCheck className="w-3 h-3" />
+            Original
+          </span>
+        );
+      case "bridged":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium border border-primary/30">
+            <ArrowRightLeft className="w-3 h-3" />
+            Bridged
+          </span>
+        );
+      case "suspicious":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger/20 text-danger text-xs font-medium border border-danger/30">
+            <ShieldAlert className="w-3 h-3" />
+            Suspicious
+          </span>
+        );
     }
   };
 
@@ -655,35 +725,85 @@ export const TokenScanner = () => {
               Found on {foundNetworks.length} chain{foundNetworks.length !== 1 ? 's' : ''}
             </p>
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {scanResults.map((result) => (
-                <button
+                <div
                   key={result.chainId}
-                  onClick={() => result.found && setSelectedResult(result)}
-                  disabled={!result.found}
                   className={cn(
                     "p-4 rounded-lg border transition-all relative",
                     result.found 
                       ? selectedResult?.chainId === result.chainId
                         ? "border-primary bg-primary/20"
                         : "border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50"
-                      : "border-border/30 bg-secondary/10 opacity-50 cursor-not-allowed"
+                      : "border-border/30 bg-secondary/10 opacity-50"
                   )}
                 >
-                  <div className="text-sm font-medium text-foreground mb-1">{result.network}</div>
-                  {result.found && (
-                    <div className="mt-1">
-                      <span className={cn(
-                        "font-display text-lg",
-                        result.riskScore >= 70 ? "text-safe" : 
-                        result.riskScore >= 40 ? "text-warning" : "text-danger"
-                      )}>
-                        {result.riskScore}
-                      </span>
-                      <span className="text-muted-foreground text-xs ml-1">/ 100</span>
+                  {/* Clickable area for selection */}
+                  <button
+                    onClick={() => result.found && setSelectedResult(result)}
+                    disabled={!result.found}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-medium text-foreground">{result.network}</div>
+                      {result.found && getTokenStatusBadge(result.tokenStatus)}
+                    </div>
+                    {result.found && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className={cn(
+                            "font-display text-lg",
+                            result.riskScore >= 70 ? "text-safe" : 
+                            result.riskScore >= 40 ? "text-warning" : "text-danger"
+                          )}>
+                            {result.riskScore}
+                          </span>
+                          <span className="text-muted-foreground text-xs ml-1">/ 100</span>
+                        </div>
+                        {result.marketData && (
+                          <div className="text-right">
+                            <div className="text-xs text-muted-foreground">Liquidity</div>
+                            <div className="text-sm font-medium text-foreground">
+                              {formatCurrency(result.marketData.liquidity)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </button>
+                  
+                  {/* Watchlist button */}
+                  {result.found && tokenInfo && (
+                    <div className="mt-3 pt-3 border-t border-border/30">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const added = addToken({
+                            address: result.address,
+                            name: tokenInfo.name,
+                            network: result.network as Network,
+                            riskScore: result.riskScore,
+                          });
+                          if (added) {
+                            toast.success(`${tokenInfo.name} (${result.network}) added to watchlist!`);
+                          } else {
+                            toast.info("Already in watchlist");
+                          }
+                        }}
+                        disabled={isInWatchlist(result.address)}
+                        className="w-full gap-2 h-8 text-xs"
+                      >
+                        <Star className={cn(
+                          "w-3.5 h-3.5",
+                          isInWatchlist(result.address) && "fill-warning text-warning"
+                        )} />
+                        {isInWatchlist(result.address) ? "In Watchlist" : "Add to Watchlist"}
+                      </Button>
                     </div>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -693,7 +813,10 @@ export const TokenScanner = () => {
             <div className="grid md:grid-cols-2 gap-6">
               {/* Risk Score */}
               <div className="glass-card p-6 flex flex-col items-center justify-center">
-                <h3 className="font-display text-xl text-foreground mb-1">{tokenInfo?.name}</h3>
+                <div className="flex items-center gap-3 mb-1">
+                  <h3 className="font-display text-xl text-foreground">{tokenInfo?.name}</h3>
+                  {getTokenStatusBadge(selectedResult.tokenStatus)}
+                </div>
                 <p className="text-sm text-primary mb-4">
                   {selectedResult.network} Network
                 </p>
