@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Star, Trash2, ExternalLink, RefreshCw, Loader2, Rocket, TrendingDown, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWatchlist, WatchlistToken } from "@/hooks/useWatchlist";
@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getTokenByAddress, analyzeTokenRisk } from "@/lib/api/dexscreener";
 import { analyzePumpDump, PumpDumpAnalysis, getPumpDumpColor, getPumpDumpBg, getPumpDumpLabel } from "@/lib/api/pumpDump";
-import { PumpDumpBadge } from "./PumpDumpBadge";
 
 const getRiskColor = (score: number) => {
   if (score >= 70) return "text-safe";
@@ -33,9 +32,6 @@ const getNetworkExplorer = (network: string, address: string) => {
   return explorers[network] || "#";
 };
 
-interface TokenWithAnalysis extends WatchlistToken {
-  pumpDumpAnalysis?: PumpDumpAnalysis;
-}
 
 // Rescan a token using real DEXScreener API data
 const rescanToken = async (token: WatchlistToken): Promise<{ token: WatchlistToken; analysis: PumpDumpAnalysis } | null> => {

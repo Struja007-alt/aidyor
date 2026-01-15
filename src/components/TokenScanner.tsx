@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, ArrowRightLeft, FileText, TrendingUp, TrendingDown, Activity, BarChart3, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, Twitter } from "lucide-react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Twitter } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NetworkBadge } from "./NetworkBadge";
 import { RiskGauge } from "./RiskGauge";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
@@ -21,7 +20,6 @@ import {
   analyzeGoPlusSecurity,
   getSolanaTokenSecurity,
   analyzeSolanaSecurity,
-  type GoPlusSecurityResult 
 } from "@/lib/api/goplus";
 import {
   getLiquidityLockInfo,
