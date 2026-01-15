@@ -1,10 +1,9 @@
 import { Header } from "@/components/Header";
 import { TokenScanner } from "@/components/TokenScanner";
 import { TelegramGameChecker } from "@/components/TelegramGameChecker";
-import { ScreenshotUploader } from "@/components/ScreenshotUploader";
 import { Watchlist } from "@/components/Watchlist";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Star } from "lucide-react";
+import { Shield, Zap, Eye } from "lucide-react";
 
 const Index = () => {
   return (
@@ -67,23 +66,13 @@ const Index = () => {
           <TokenScanner />
         </section>
 
-        {/* Two Column Layout for Game Checker and Screenshot */}
-        <section className="grid md:grid-cols-2 gap-6">
-          <div id="games" className="scroll-mt-20">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-1 h-8 bg-accent rounded-full" />
-              <h2 className="font-display text-2xl font-bold text-foreground">P2E Games</h2>
-            </div>
-            <TelegramGameChecker />
+        {/* P2E Games Section */}
+        <section id="games" className="scroll-mt-20">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-1 h-8 bg-accent rounded-full" />
+            <h2 className="font-display text-2xl font-bold text-foreground">P2E Games</h2>
           </div>
-
-          <div id="upload" className="scroll-mt-20">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-1 h-8 bg-primary rounded-full" />
-              <h2 className="font-display text-2xl font-bold text-foreground">Upload Screenshot</h2>
-            </div>
-            <ScreenshotUploader />
-          </div>
+          <TelegramGameChecker />
         </section>
 
         {/* Footer */}
