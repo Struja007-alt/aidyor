@@ -91,9 +91,17 @@ const Index = () => {
               <Shield className="w-5 h-5 text-primary" />
               <span className="font-display text-foreground">AIDYOR</span>
             </div>
-            <p className="text-sm text-muted-foreground text-center">
-              Always DYOR. This tool provides analysis but not financial advice.
-            </p>
+            <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4">
+              <p className="text-sm text-muted-foreground text-center">
+                Always DYOR. This tool provides analysis but not financial advice.
+              </p>
+              <a 
+                href="/privacy-policy" 
+                className="text-sm text-primary hover:underline"
+              >
+                Privacy Policy
+              </a>
+            </div>
           </div>
         </footer>
       </main>
