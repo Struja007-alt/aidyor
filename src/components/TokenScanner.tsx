@@ -101,33 +101,83 @@ export const TokenScanner = () => {
     tron: /T[A-Za-z1-9]{33}/g,
   };
 
+  // Normalize text for multi-line address detection
+  const normalizeOcrText = useCallback((text: string): string => {
+    // Remove common line-breaking characters while preserving word boundaries
+    let normalized = text
+      // Replace newlines that split addresses (no space between hex chars)
+      .replace(/([a-fA-F0-9])\n([a-fA-F0-9])/g, '$1$2')
+      // Replace newlines after 0x prefix
+      .replace(/(0x)\n([a-fA-F0-9])/g, '$1$2')
+      // Replace newlines in Solana addresses (Base58 chars)
+      .replace(/([1-9A-HJ-NP-Za-km-z])\n([1-9A-HJ-NP-Za-km-z])/g, '$1$2')
+      // Replace newlines after T for Tron
+      .replace(/(T)\n([A-Za-z1-9])/g, '$1$2')
+      // Remove soft hyphens and word-break characters
+      .replace(/[\u00AD\u200B\u200C\u200D]/g, '')
+      // Collapse multiple whitespace but keep single spaces
+      .replace(/[ \t]+/g, ' ')
+      // Remove spaces within potential hex sequences (addresses shown with spaces)
+      .replace(/0x\s*([a-fA-F0-9])/g, '0x$1');
+    
+    // Second pass: join hex characters separated by single spaces (common in formatted addresses)
+    // Match pattern like "0x ab cd ef" -> "0xabcdef"
+    const hexWithSpaces = /0x(\s*[a-fA-F0-9]{2,4})+/g;
+    normalized = normalized.replace(hexWithSpaces, (match) => {
+      return match.replace(/\s+/g, '');
+    });
+    
+    return normalized;
+  }, []);
+
   const extractAddressesFromText = useCallback((text: string): string[] => {
     const addresses = new Set<string>();
     
-    // Extract Ethereum-style addresses
-    const ethMatches = text.match(ADDRESS_PATTERNS.ethereum);
+    // First normalize the text to handle multi-line addresses
+    const normalizedText = normalizeOcrText(text);
+    
+    // Extract Ethereum-style addresses from normalized text
+    const ethMatches = normalizedText.match(ADDRESS_PATTERNS.ethereum);
     if (ethMatches) {
       ethMatches.forEach(addr => addresses.add(addr));
     }
     
+    // Also check original text (in case normalization broke something)
+    const ethMatchesOriginal = text.replace(/\n/g, '').match(ADDRESS_PATTERNS.ethereum);
+    if (ethMatchesOriginal) {
+      ethMatchesOriginal.forEach(addr => addresses.add(addr));
+    }
+    
     // Extract Solana addresses (Base58, 32-44 chars)
-    const words = text.split(/\s+/);
-    words.forEach(word => {
-      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(word)) {
-        if (word.length >= 40 && !/^[A-Za-z]+$/.test(word)) {
-          addresses.add(word);
+    // Check both normalized and line-stripped versions
+    const textVariants = [normalizedText, text.replace(/\n/g, '')];
+    textVariants.forEach(variant => {
+      const words = variant.split(/\s+/);
+      words.forEach(word => {
+        // Clean the word of any remaining special chars
+        const cleanWord = word.replace(/[^1-9A-HJ-NP-Za-km-z]/g, '');
+        if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(cleanWord)) {
+          if (cleanWord.length >= 40 && !/^[A-Za-z]+$/.test(cleanWord)) {
+            addresses.add(cleanWord);
+          }
         }
-      }
+      });
     });
     
-    // Extract Tron addresses
-    const tronMatches = text.match(ADDRESS_PATTERNS.tron);
+    // Extract Tron addresses from normalized text
+    const tronMatches = normalizedText.match(ADDRESS_PATTERNS.tron);
     if (tronMatches) {
       tronMatches.forEach(addr => addresses.add(addr));
     }
     
+    // Try stripping all newlines as fallback for Tron
+    const tronMatchesFallback = text.replace(/\n/g, '').match(ADDRESS_PATTERNS.tron);
+    if (tronMatchesFallback) {
+      tronMatchesFallback.forEach(addr => addresses.add(addr));
+    }
+    
     return Array.from(addresses);
-  }, []);
+  }, [normalizeOcrText]);
 
   // Image preprocessing for better OCR accuracy
   const preprocessImage = async (imageData: string): Promise<string> => {
