@@ -341,41 +341,11 @@ export const TokenScanner = () => {
 
   return (
     <div className="space-y-6">
-      {/* Scan Mode Selector */}
-      <div className="glass-card p-2">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => { setScanMode("address"); resetScan(); }}
-            className={cn(
-              "flex items-center justify-center gap-3 p-4 rounded-lg font-display text-sm transition-all",
-              scanMode === "address"
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary/30 text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-            )}
-          >
-            <Search className="w-5 h-5" />
-            Search Token
-          </button>
-          <button
-            onClick={() => { setScanMode("screenshot"); resetScan(); }}
-            className={cn(
-              "flex items-center justify-center gap-3 p-4 rounded-lg font-display text-sm transition-all",
-              scanMode === "screenshot"
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary/30 text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-            )}
-          >
-            <Upload className="w-5 h-5" />
-            Upload Screenshot
-          </button>
-        </div>
-      </div>
-
-      {/* Paste Token Address Mode */}
-      {scanMode === "address" && (
+      {/* Unified Token Search & Scan */}
+      {scanMode === "address" ? (
         <div className="glass-card p-6 animate-fade-in">
           <div className="space-y-4">
-            {/* Unified Smart Search Input */}
+            {/* Unified Smart Search Input with Screenshot Toggle */}
             <div className="relative">
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -483,6 +453,17 @@ export const TokenScanner = () => {
               )}
             </div>
 
+            {/* Screenshot Mode Toggle */}
+            <div className="flex justify-center">
+              <button
+                onClick={() => { setScanMode("screenshot"); resetScan(); }}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                Or upload a screenshot
+              </button>
+            </div>
+
             {/* Display Contract Address Prominently */}
             {displayAddress && isContractAddress(displayAddress) && !isScanning && scanResults.length === 0 && (
               <div className="p-4 rounded-lg bg-secondary/30 border border-border/50 mt-8">
@@ -504,15 +485,22 @@ export const TokenScanner = () => {
             )}
           </div>
         </div>
-      )}
-
-      {/* Upload Screenshot Mode */}
-      {scanMode === "screenshot" && (
+      ) : (
+        // Upload Screenshot Mode
         <div className="glass-card p-6 animate-fade-in">
-          <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
-            <Image className="w-5 h-5 text-primary" />
-            Screenshot Analyzer
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-lg text-foreground flex items-center gap-2">
+              <Image className="w-5 h-5 text-primary" />
+              Screenshot Analyzer
+            </h3>
+            <button
+              onClick={() => { setScanMode("address"); resetScan(); }}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary rounded-lg transition-colors"
+            >
+              <Search className="w-4 h-4" />
+              Back to Search
+            </button>
+          </div>
           <p className="text-sm text-muted-foreground mb-4">
             Upload a screenshot, then paste the contract address you see
           </p>
