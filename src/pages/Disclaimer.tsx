@@ -1,20 +1,24 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 
 const Disclaimer = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to App
-          </Button>
+    <div className="min-h-screen bg-background text-foreground py-12 px-4">
+      <div className="max-w-4xl mx-auto">
+        <Link 
+          to="/" 
+          className="inline-flex items-center gap-2 text-primary hover:text-primary/80 transition-colors mb-8"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to App
         </Link>
 
-        <h1 className="text-3xl font-bold mb-2">Disclaimer for AIDyor</h1>
-        <p className="text-muted-foreground mb-8">Last updated: [Insert date]</p>
+        <div className="flex items-center gap-3 mb-6">
+          <AlertTriangle className="w-8 h-8 text-warning" />
+          <h1 className="text-3xl md:text-4xl font-bold">Disclaimer</h1>
+        </div>
+        
+        <p className="text-muted-foreground mb-8">Last updated: January 15, 2026</p>
 
         <div className="prose prose-invert max-w-none space-y-6">
           <p>
@@ -26,7 +30,7 @@ const Disclaimer = () => {
             <h2 className="text-xl font-semibold mt-8 mb-4">1. No Financial Advice</h2>
             <p>
               AIDyor is a cryptocurrency analysis tool that provides automated risk assessments, token scanning, 
-              and informational data about blockchain assets. The information provided by AIDyor is for 
+              and informational data about blockchain assets. The information provided by AIDyor is for
               <strong> informational and educational purposes only</strong>.
             </p>
             <p className="mt-2 font-medium">
@@ -135,12 +139,25 @@ const Disclaimer = () => {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-4">10. Contact Us</h2>
             <p>
-              If you have any questions about this disclaimer, please contact us at:
-            </p>
-            <p className="mt-2">
-              <strong>Email:</strong> [your email address]
+              If you have any questions about this disclaimer, please contact us through the app.
             </p>
           </section>
+        </div>
+
+        {/* Footer Links */}
+        <div className="mt-12 pt-8 border-t border-border text-center text-sm text-muted-foreground">
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link to="/transparency" className="text-primary hover:text-primary/80 transition-colors">
+              Transparency
+            </Link>
+            <Link to="/privacy-policy" className="text-primary hover:text-primary/80 transition-colors">
+              Privacy Policy
+            </Link>
+            <Link to="/terms-of-service" className="text-primary hover:text-primary/80 transition-colors">
+              Terms of Service
+            </Link>
+          </div>
+          <p className="mt-4">© {new Date().getFullYear()} AIDyor. All rights reserved.</p>
         </div>
       </div>
     </div>

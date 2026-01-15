@@ -1,25 +1,29 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Cookie } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 
 const CookiePolicy = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to App
-          </Button>
+    <div className="min-h-screen bg-background text-foreground py-12 px-4">
+      <div className="max-w-4xl mx-auto">
+        <Link 
+          to="/" 
+          className="inline-flex items-center gap-2 text-primary hover:text-primary/80 transition-colors mb-8"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to App
         </Link>
 
-        <h1 className="text-3xl font-bold mb-2">Cookie Policy for AIDyor</h1>
-        <p className="text-muted-foreground mb-8">Last updated: [Insert date]</p>
+        <div className="flex items-center gap-3 mb-6">
+          <Cookie className="w-8 h-8 text-primary" />
+          <h1 className="text-3xl md:text-4xl font-bold">Cookie Policy</h1>
+        </div>
+        
+        <p className="text-muted-foreground mb-8">Last updated: January 15, 2026</p>
 
         <div className="prose prose-invert max-w-none space-y-6">
           <p>
             This Cookie Policy explains how AIDyor ("we", "our", or "us") uses cookies and similar 
-            technologies when you use our mobile application or related services.
+            technologies when you use our application or related services.
           </p>
 
           <section>
@@ -34,7 +38,7 @@ const CookiePolicy = () => {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-4">2. Does AIDyor Use Cookies?</h2>
             <p>
-              AIDyor does not directly use traditional browser cookies within the mobile application.
+              AIDyor does not directly use traditional browser cookies within the application.
             </p>
             <p className="mt-2">
               However, third-party services integrated into the app (such as analytics or advertising providers) 
@@ -97,12 +101,25 @@ const CookiePolicy = () => {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-4">7. Contact Us</h2>
             <p>
-              If you have any questions about this Cookie Policy, please contact us at:
-            </p>
-            <p className="mt-2">
-              <strong>Email:</strong> [your email address]
+              If you have any questions about this Cookie Policy, please contact us through the app.
             </p>
           </section>
+        </div>
+
+        {/* Footer Links */}
+        <div className="mt-12 pt-8 border-t border-border text-center text-sm text-muted-foreground">
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link to="/privacy-policy" className="text-primary hover:text-primary/80 transition-colors">
+              Privacy Policy
+            </Link>
+            <Link to="/terms-of-service" className="text-primary hover:text-primary/80 transition-colors">
+              Terms of Service
+            </Link>
+            <Link to="/disclaimer" className="text-primary hover:text-primary/80 transition-colors">
+              Disclaimer
+            </Link>
+          </div>
+          <p className="mt-4">© {new Date().getFullYear()} AIDyor. All rights reserved.</p>
         </div>
       </div>
     </div>

@@ -1,25 +1,29 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 
 const PrivacyPolicy = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to App
-          </Button>
+    <div className="min-h-screen bg-background text-foreground py-12 px-4">
+      <div className="max-w-4xl mx-auto">
+        <Link 
+          to="/" 
+          className="inline-flex items-center gap-2 text-primary hover:text-primary/80 transition-colors mb-8"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to App
         </Link>
 
-        <h1 className="text-3xl font-bold mb-2">Privacy Policy for AIDyor</h1>
-        <p className="text-muted-foreground mb-8">Last updated: [Insert date]</p>
+        <div className="flex items-center gap-3 mb-6">
+          <Lock className="w-8 h-8 text-primary" />
+          <h1 className="text-3xl md:text-4xl font-bold">Privacy Policy</h1>
+        </div>
+        
+        <p className="text-muted-foreground mb-8">Last updated: January 15, 2026</p>
 
         <div className="prose prose-invert max-w-none space-y-6">
           <p>
             AIDyor ("we", "our", or "us") respects your privacy and is committed to protecting it. 
-            This Privacy Policy explains how our mobile application AIDyor ("the App") collects, uses, 
+            This Privacy Policy explains how our application AIDyor ("the App") collects, uses, 
             and safeguards information when you use it.
           </p>
 
@@ -57,7 +61,7 @@ const PrivacyPolicy = () => {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-4">3. Permissions Used</h2>
             <p>
-              AIDyor may request certain Android permissions (such as internet access or storage) only when 
+              AIDyor may request certain permissions (such as internet access or storage) only when 
               required for core app functionality. These permissions are used strictly for their intended purpose.
             </p>
           </section>
@@ -112,16 +116,25 @@ const PrivacyPolicy = () => {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-4">8. Contact Us</h2>
             <p>
-              If you have any questions or concerns about this Privacy Policy, please contact us at:
-            </p>
-            <p className="mt-2">
-              <strong>Email:</strong> [your email address]
+              If you have any questions or concerns about this Privacy Policy, please contact us through the app.
             </p>
           </section>
         </div>
 
-        <div className="mt-12 pt-6 border-t border-border text-center text-muted-foreground text-sm">
-          <p>© {new Date().getFullYear()} AIDyor. All rights reserved.</p>
+        {/* Footer Links */}
+        <div className="mt-12 pt-8 border-t border-border text-center text-sm text-muted-foreground">
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link to="/terms-of-service" className="text-primary hover:text-primary/80 transition-colors">
+              Terms of Service
+            </Link>
+            <Link to="/cookie-policy" className="text-primary hover:text-primary/80 transition-colors">
+              Cookie Policy
+            </Link>
+            <Link to="/disclaimer" className="text-primary hover:text-primary/80 transition-colors">
+              Disclaimer
+            </Link>
+          </div>
+          <p className="mt-4">© {new Date().getFullYear()} AIDyor. All rights reserved.</p>
         </div>
       </div>
     </div>
