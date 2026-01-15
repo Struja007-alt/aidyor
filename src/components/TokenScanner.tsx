@@ -1286,6 +1286,7 @@ export const TokenScanner = () => {
                     size="sm"
                     onClick={() => tokenInfo && copyAddress(tokenInfo.address)}
                     className="h-6 w-6 p-0"
+                    aria-label="Copy token address"
                   >
                     <Copy className="w-3 h-3" />
                   </Button>
@@ -1793,6 +1794,7 @@ export const TokenScanner = () => {
                           size="sm"
                           onClick={() => copyAddress(selectedResult.pairAddress)}
                           className="h-6 w-6 p-0"
+                          aria-label="Copy pair address"
                         >
                           <Copy className="w-3 h-3" />
                         </Button>

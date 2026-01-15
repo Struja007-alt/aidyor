@@ -145,6 +145,7 @@ export const Watchlist = () => {
                   className="h-8 w-8 p-0 hover:bg-primary/10"
                   onClick={() => handleRescan(token)}
                   disabled={rescanning === token.address}
+                  aria-label={`Rescan ${token.name}`}
                   title="Rescan token"
                 >
                   {rescanning === token.address ? (
@@ -158,6 +159,7 @@ export const Watchlist = () => {
                   size="sm"
                   className="h-8 w-8 p-0 hover:bg-primary/10"
                   onClick={() => window.open(getNetworkExplorer(token.network, token.address), "_blank")}
+                  aria-label={`View ${token.name} on explorer`}
                   title="View on explorer"
                 >
                   <ExternalLink className="w-4 h-4 text-muted-foreground" />
@@ -167,6 +169,7 @@ export const Watchlist = () => {
                   size="sm"
                   className="h-8 w-8 p-0 hover:bg-danger/10"
                   onClick={() => removeToken(token.address)}
+                  aria-label={`Remove ${token.name} from watchlist`}
                   title="Remove from watchlist"
                 >
                   <Trash2 className="w-4 h-4 text-danger" />
