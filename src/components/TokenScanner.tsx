@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2, Star, Upload, Image, X } from "lucide-react";
+import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ interface TokenSuggestion {
   symbol: string;
   address: string;
   network: Network;
+  isOriginal: boolean;
 }
 
 interface NetworkResult {
@@ -40,6 +41,7 @@ interface NetworkResult {
   marketData: MarketData | null;
   riskFactors: RiskFactor[];
   address: string;
+  isOriginal: boolean;
 }
 
 const mockRiskFactors: RiskFactor[] = [
@@ -51,23 +53,23 @@ const mockRiskFactors: RiskFactor[] = [
   { name: "Holder Distribution", status: "danger", description: "Top holder owns 45%" },
 ];
 
-// Mock token database for real-time search - tokens exist on multiple networks
+// Mock token database - isOriginal marks the original chain deployment
 const mockTokenDatabase: TokenSuggestion[] = [
-  { name: "Pepe", symbol: "PEPE", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", network: "ETH" },
-  { name: "Pepe", symbol: "PEPE", address: "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00", network: "BSC" },
-  { name: "Shiba Inu", symbol: "SHIB", address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", network: "ETH" },
-  { name: "Shiba Inu", symbol: "SHIB", address: "0x2859e4544C4bB03966803b044A93563Bd2D0DD4D", network: "BSC" },
-  { name: "Dogecoin", symbol: "DOGE", address: "0xbA2aE424d960c26247Dd6c32edC70B295c744C43", network: "BSC" },
-  { name: "Bonk", symbol: "BONK", address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", network: "SOL" },
-  { name: "Floki Inu", symbol: "FLOKI", address: "0xcf0C122c6b73ff809C693DB761e7BaeBe62b6a2E", network: "ETH" },
-  { name: "Floki Inu", symbol: "FLOKI", address: "0xfb5B838b6cfEEdC2873aB27866079AC55363D37E", network: "BSC" },
-  { name: "Wojak", symbol: "WOJAK", address: "0x5026F006B85729a8b14553FAE6af249aD16c9aaB", network: "ETH" },
-  { name: "SafeMoon", symbol: "SFM", address: "0x42981d0bfbAf196529376EE702F2a9Eb9092fcB5", network: "BSC" },
-  { name: "Baby Doge", symbol: "BabyDoge", address: "0xc748673057861a797275CD8A068AbB95A902e8de", network: "BSC" },
-  { name: "Polygon", symbol: "MATIC", address: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", network: "ETH" },
-  { name: "Polygon", symbol: "MATIC", address: "0x0000000000000000000000000000000000001010", network: "POLYGON" },
-  { name: "Avalanche", symbol: "AVAX", address: "0x85f138bfEE4ef8e540890CFb48F620571d67Eda3", network: "BSC" },
-  { name: "Avalanche", symbol: "AVAX", address: "FvwEAhmxKfeiG8SnEvq42hc6whRyY3EFYAvebMqDNDGC", network: "AVAX" },
+  { name: "Pepe", symbol: "PEPE", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", network: "ETH", isOriginal: true },
+  { name: "Pepe", symbol: "PEPE", address: "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00", network: "BSC", isOriginal: false },
+  { name: "Shiba Inu", symbol: "SHIB", address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", network: "ETH", isOriginal: true },
+  { name: "Shiba Inu", symbol: "SHIB", address: "0x2859e4544C4bB03966803b044A93563Bd2D0DD4D", network: "BSC", isOriginal: false },
+  { name: "Dogecoin", symbol: "DOGE", address: "0xbA2aE424d960c26247Dd6c32edC70B295c744C43", network: "BSC", isOriginal: false },
+  { name: "Bonk", symbol: "BONK", address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", network: "SOL", isOriginal: true },
+  { name: "Floki Inu", symbol: "FLOKI", address: "0xcf0C122c6b73ff809C693DB761e7BaeBe62b6a2E", network: "ETH", isOriginal: true },
+  { name: "Floki Inu", symbol: "FLOKI", address: "0xfb5B838b6cfEEdC2873aB27866079AC55363D37E", network: "BSC", isOriginal: false },
+  { name: "Wojak", symbol: "WOJAK", address: "0x5026F006B85729a8b14553FAE6af249aD16c9aaB", network: "ETH", isOriginal: true },
+  { name: "SafeMoon", symbol: "SFM", address: "0x42981d0bfbAf196529376EE702F2a9Eb9092fcB5", network: "BSC", isOriginal: true },
+  { name: "Baby Doge", symbol: "BabyDoge", address: "0xc748673057861a797275CD8A068AbB95A902e8de", network: "BSC", isOriginal: true },
+  { name: "Polygon", symbol: "MATIC", address: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", network: "ETH", isOriginal: false },
+  { name: "Polygon", symbol: "MATIC", address: "0x0000000000000000000000000000000000001010", network: "POLYGON", isOriginal: true },
+  { name: "Avalanche", symbol: "AVAX", address: "0x85f138bfEE4ef8e540890CFb48F620571d67Eda3", network: "BSC", isOriginal: false },
+  { name: "Avalanche", symbol: "AVAX", address: "FvwEAhmxKfeiG8SnEvq42hc6whRyY3EFYAvebMqDNDGC", network: "AVAX", isOriginal: true },
 ];
 
 const ALL_NETWORKS: Network[] = ["ETH", "BSC", "SOL", "POLYGON", "AVAX"];
@@ -106,16 +108,14 @@ export const TokenScanner = () => {
           token.symbol.toLowerCase().includes(lowerQuery)
       );
       
-      const uniqueTokens = filtered.reduce((acc, token) => {
-        const key = `${token.name}-${token.symbol}`;
-        if (!acc.find(t => `${t.name}-${t.symbol}` === key)) {
-          acc.push(token);
-        }
-        return acc;
-      }, [] as TokenSuggestion[]);
+      // Sort by: original first, then by network
+      const sorted = filtered.sort((a, b) => {
+        if (a.isOriginal !== b.isOriginal) return a.isOriginal ? -1 : 1;
+        return a.network.localeCompare(b.network);
+      });
       
-      setSuggestions(uniqueTokens);
-      setShowSuggestions(uniqueTokens.length > 0);
+      setSuggestions(sorted);
+      setShowSuggestions(sorted.length > 0);
       setIsSearching(false);
     }, 300);
   }, []);
@@ -162,6 +162,7 @@ export const TokenScanner = () => {
           found: true,
           riskScore,
           address: tokenOnNetwork.address,
+          isOriginal: tokenOnNetwork.isOriginal,
           marketData: {
             price: Math.random() * 100,
             change24h: (Math.random() - 0.5) * 40,
@@ -175,7 +176,7 @@ export const TokenScanner = () => {
         };
       }
       
-      return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "" };
+      return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "", isOriginal: false };
     });
 
     if (matchingTokens.length > 0) {
@@ -264,6 +265,7 @@ export const TokenScanner = () => {
             found: true,
             riskScore,
             address: randomToken.address,
+            isOriginal: randomToken.isOriginal,
             marketData: {
               price: Math.random() * 100,
               change24h: (Math.random() - 0.5) * 40,
@@ -276,7 +278,7 @@ export const TokenScanner = () => {
             })) as RiskFactor[],
           };
         }
-        return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "" };
+        return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "", isOriginal: false };
       });
 
       setScanResults(results);
@@ -433,11 +435,22 @@ export const TokenScanner = () => {
                       className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
                       onMouseDown={() => handleSelectSuggestion(suggestion)}
                     >
-                      <div>
-                        <span className="font-medium text-foreground">{suggestion.name}</span>
-                        <span className="text-muted-foreground ml-2">({suggestion.symbol})</span>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <span className="font-medium text-foreground">{suggestion.name}</span>
+                          <span className="text-muted-foreground ml-2">({suggestion.symbol})</span>
+                        </div>
+                        {suggestion.isOriginal && (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-safe/20 border border-safe/50 text-safe text-[10px] font-display">
+                            <BadgeCheck className="w-2.5 h-2.5" />
+                            ORIGINAL
+                          </span>
+                        )}
                       </div>
-                      <Search className="w-4 h-4 text-muted-foreground" />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{suggestion.network}</span>
+                        <Search className="w-4 h-4 text-muted-foreground" />
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -594,7 +607,7 @@ export const TokenScanner = () => {
                   onClick={() => result.found && setSelectedResult(result)}
                   disabled={!result.found}
                   className={cn(
-                    "p-4 rounded-lg border transition-all",
+                    "p-4 rounded-lg border transition-all relative",
                     result.found 
                       ? selectedResult?.network === result.network
                         ? "border-primary bg-primary/20"
@@ -602,6 +615,12 @@ export const TokenScanner = () => {
                       : "border-border/30 bg-secondary/10 opacity-50 cursor-not-allowed"
                   )}
                 >
+                  {result.found && result.isOriginal && (
+                    <div className="absolute -top-2 -right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-safe/20 border border-safe/50 text-safe text-[10px] font-display">
+                      <BadgeCheck className="w-3 h-3" />
+                      ORIGINAL
+                    </div>
+                  )}
                   <NetworkBadge network={result.network} selected={result.found} />
                   {result.found ? (
                     <div className="mt-2">
@@ -627,7 +646,15 @@ export const TokenScanner = () => {
             <div className="grid md:grid-cols-2 gap-6">
               {/* Risk Score */}
               <div className="glass-card p-6 flex flex-col items-center justify-center">
-                <h3 className="font-display text-xl text-foreground mb-1">{tokenName}</h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-display text-xl text-foreground">{tokenName}</h3>
+                  {selectedResult.isOriginal && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-safe/20 border border-safe/50 text-safe text-xs font-display">
+                      <BadgeCheck className="w-3 h-3" />
+                      ORIGINAL
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-primary mb-4">
                   {selectedResult.network} Network
                 </p>
