@@ -75,6 +75,15 @@ const Index = () => {
           <TelegramGameChecker />
         </section>
 
+        {/* Watchlist Section */}
+        <section id="watchlist" className="scroll-mt-20">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-1 h-8 bg-warning rounded-full" />
+            <h2 className="font-display text-2xl font-bold text-foreground">Watchlist</h2>
+          </div>
+          <Watchlist />
+        </section>
+
         {/* Footer */}
         <footer className="border-t border-border/50 pt-8 pb-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
