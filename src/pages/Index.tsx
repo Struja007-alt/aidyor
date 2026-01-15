@@ -132,6 +132,12 @@ const Index = () => {
                 >
                   FAQ
                 </a>
+                <a 
+                  href="/glossary" 
+                  className="text-sm text-primary hover:underline"
+                >
+                  Glossary
+                </a>
               </div>
             </div>
           </div>

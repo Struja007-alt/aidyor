@@ -11,6 +11,8 @@ import CookiePolicy from "./pages/CookiePolicy";
 import Disclaimer from "./pages/Disclaimer";
 import Transparency from "./pages/Transparency";
 import FAQ from "./pages/FAQ";
+import Glossary from "./pages/Glossary";
+import GlossaryTerm from "./pages/GlossaryTerm";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +30,8 @@ const App = () => (
           <Route path="/disclaimer" element={<Disclaimer />} />
           <Route path="/transparency" element={<Transparency />} />
           <Route path="/faq" element={<FAQ />} />
+          <Route path="/glossary" element={<Glossary />} />
+          <Route path="/glossary/:slug" element={<GlossaryTerm />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
