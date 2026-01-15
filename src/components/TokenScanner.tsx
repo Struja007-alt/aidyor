@@ -110,26 +110,135 @@ export const TokenScanner = () => {
     return Array.from(addresses);
   }, []);
 
+  // Image preprocessing for better OCR accuracy
+  const preprocessImage = async (imageData: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = document.createElement('img');
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(imageData);
+          return;
+        }
+
+        // Set canvas size
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        // Draw original image
+        ctx.drawImage(img, 0, 0);
+
+        // Get image data for processing
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+
+        // Convert to grayscale and enhance contrast
+        for (let i = 0; i < data.length; i += 4) {
+          // Grayscale conversion using luminance formula
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          
+          // Contrast enhancement (increase by 40%)
+          const contrast = 1.4;
+          const factor = (259 * (contrast * 128 + 255)) / (255 * (259 - contrast * 128));
+          let enhanced = factor * (gray - 128) + 128;
+          
+          // Clamp values
+          enhanced = Math.max(0, Math.min(255, enhanced));
+          
+          // Apply threshold to sharpen text (binarization for text)
+          const threshold = 140;
+          const final = enhanced < threshold ? 0 : 255;
+          
+          data[i] = final;     // R
+          data[i + 1] = final; // G
+          data[i + 2] = final; // B
+          // Keep alpha unchanged
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+
+        // Apply slight sharpening using unsharp mask technique
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = canvas.height;
+          
+          // Slight blur
+          tempCtx.filter = 'blur(1px)';
+          tempCtx.drawImage(canvas, 0, 0);
+          
+          // Composite for sharpening effect
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 0.3;
+          ctx.drawImage(tempCanvas, 0, 0);
+          ctx.globalAlpha = 1.0;
+        }
+
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(imageData);
+      img.src = imageData;
+    });
+  };
+
+  // Fix common OCR misreads in addresses
+  const fixOcrMisreads = (text: string): string => {
+    // Common OCR errors: O<->0, l<->1, I<->1, S<->5, B<->8
+    return text
+      // Fix Ethereum addresses: Ox -> 0x (capital O to zero)
+      .replace(/Ox([a-fA-F0-9]{40})/g, '0x$1')
+      .replace(/0X([a-fA-F0-9]{40})/g, '0x$1')
+      // Fix partial matches where O appears at start
+      .replace(/\bOx([a-fA-F0-9])/g, '0x$1')
+      // Fix common letter/number confusions in hex
+      .replace(/0x([a-fA-F0-9]*[oO][a-fA-F0-9]*)/g, (match, group) => 
+        '0x' + group.replace(/[oO]/g, '0')
+      );
+  };
+
   const performOCR = async (imageData: string): Promise<string[]> => {
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
       
+      // Preprocess image for better OCR accuracy
+      setOcrProgress(5);
+      const processedImage = await preprocessImage(imageData);
+      setOcrProgress(15);
+      
       const worker = await createWorker('eng', 1, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
-            setOcrProgress(Math.round(m.progress * 100));
+            // Scale progress from 15-95%
+            setOcrProgress(15 + Math.round(m.progress * 80));
           }
         },
       });
       
-      const { data: { text } } = await worker.recognize(imageData);
+      const { data: { text } } = await worker.recognize(processedImage);
       await worker.terminate();
       
-      console.log("OCR Text:", text);
+      // Apply OCR error corrections
+      const correctedText = fixOcrMisreads(text);
+      console.log("OCR Text (corrected):", correctedText);
       
-      const addresses = extractAddressesFromText(text);
+      // Also try with original image if preprocessed yields no results
+      let addresses = extractAddressesFromText(correctedText);
+      
+      if (addresses.length === 0) {
+        // Fallback: try original image without preprocessing
+        const fallbackWorker = await createWorker('eng', 1);
+        const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
+        await fallbackWorker.terminate();
+        
+        const correctedFallback = fixOcrMisreads(fallbackText);
+        addresses = extractAddressesFromText(correctedFallback);
+      }
+      
       setExtractedAddresses(addresses);
+      setOcrProgress(100);
       
       return addresses;
     } catch (error) {
