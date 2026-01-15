@@ -507,8 +507,8 @@ export const TokenScanner = () => {
         setDisplayAddress(firstAddress);
         toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}! Auto-scanning first one...`);
         
-        // Auto-trigger scan with the first extracted address
-        setTimeout(() => handleScanWithAddress(firstAddress), 300);
+        // Auto-trigger scan with the first extracted address - call directly instead of setTimeout
+        handleScanWithAddress(firstAddress);
       } else {
         toast.warning("No contract addresses found. Try pasting manually.");
       }

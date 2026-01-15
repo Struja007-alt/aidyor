@@ -1,11 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, forwardRef } from "react";
 
 interface RiskGaugeProps {
   score: number; // 0-100, higher = safer
   size?: number;
 }
 
-export const RiskGauge = ({ score, size = 200 }: RiskGaugeProps) => {
+export const RiskGauge = forwardRef<HTMLDivElement, RiskGaugeProps>(({ score, size = 200 }, ref) => {
   const { color, label, glowClass } = useMemo(() => {
     if (score >= 70) return { color: "hsl(160, 100%, 50%)", label: "SAFE", glowClass: "glow-safe" };
     if (score >= 40) return { color: "hsl(45, 100%, 50%)", label: "CAUTION", glowClass: "" };
@@ -18,7 +18,7 @@ export const RiskGauge = ({ score, size = 200 }: RiskGaugeProps) => {
   const progress = (score / 100) * circumference;
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div ref={ref} className="flex flex-col items-center gap-4">
       <div className={`relative ${glowClass}`} style={{ width: size, height: size / 2 + 20 }}>
         <svg width={size} height={size / 2 + 20} className="transform -rotate-0">
           {/* Background arc */}
@@ -67,4 +67,6 @@ export const RiskGauge = ({ score, size = 200 }: RiskGaugeProps) => {
       </div>
     </div>
   );
-};
+});
+
+RiskGauge.displayName = "RiskGauge";
