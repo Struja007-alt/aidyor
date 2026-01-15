@@ -836,8 +836,178 @@ export const TokenScanner = () => {
                 )}
               </div>
               
+              {/* Quick Analysis Summary - Shows after successful scan */}
+              {selectedResult && tokenInfo && !isScanning && !isOcrProcessing && (
+                <div className="p-4 rounded-xl border border-border/50 bg-gradient-to-br from-secondary/50 to-secondary/20 space-y-4 animate-fade-in">
+                  {/* Token Header */}
+                  <div className="flex items-center gap-3">
+                    {tokenInfo.imageUrl && (
+                      <img 
+                        src={tokenInfo.imageUrl} 
+                        alt={tokenInfo.symbol}
+                        className="w-12 h-12 rounded-full bg-secondary ring-2 ring-border/50"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-display text-lg text-foreground truncate">{tokenInfo.name}</h4>
+                        <span className="text-sm text-muted-foreground">({tokenInfo.symbol})</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">
+                          {selectedResult.network}
+                        </span>
+                        {getTokenStatusBadge(selectedResult.tokenStatus)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Risk Score Display */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-background/50 border border-border/30">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center font-display text-lg font-bold",
+                        selectedResult.riskScore >= 70 ? "bg-safe/20 text-safe border-2 border-safe/30" :
+                        selectedResult.riskScore >= 40 ? "bg-warning/20 text-warning border-2 border-warning/30" :
+                        "bg-danger/20 text-danger border-2 border-danger/30"
+                      )}>
+                        {selectedResult.riskScore}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {selectedResult.riskScore >= 70 ? "Low Risk" :
+                           selectedResult.riskScore >= 40 ? "Medium Risk" : "High Risk"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Safety Score</p>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium",
+                      selectedResult.riskScore >= 70 ? "bg-safe/10 text-safe" :
+                      selectedResult.riskScore >= 40 ? "bg-warning/10 text-warning" :
+                      "bg-danger/10 text-danger"
+                    )}>
+                      {selectedResult.riskScore >= 70 ? "SAFE" :
+                       selectedResult.riskScore >= 40 ? "CAUTION" : "DANGER"}
+                    </div>
+                  </div>
+
+                  {/* Key Metrics Grid */}
+                  {selectedResult.marketData && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          <Droplets className="w-3 h-3" /> Liquidity
+                        </p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatCurrency(selectedResult.marketData.liquidity)}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          <BarChart3 className="w-3 h-3" /> 24h Volume
+                        </p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatCurrency(selectedResult.marketData.volume24h)}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">Price</p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatPrice(selectedResult.marketData.price)}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">24h Change</p>
+                        <p className={cn(
+                          "font-display text-sm",
+                          selectedResult.marketData.change24h >= 0 ? "text-safe" : "text-danger"
+                        )}>
+                          {selectedResult.marketData.change24h >= 0 ? "+" : ""}
+                          {selectedResult.marketData.change24h.toFixed(2)}%
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Risk Warnings */}
+                  {selectedResult.riskFactors.filter(f => f.status === "danger" || f.status === "warning").length > 0 && (
+                    <div className="p-3 rounded-lg bg-danger/5 border border-danger/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-danger" />
+                        <h5 className="text-sm font-medium text-danger">Risk Warnings</h5>
+                      </div>
+                      <div className="space-y-1.5">
+                        {selectedResult.riskFactors
+                          .filter(f => f.status === "danger" || f.status === "warning")
+                          .slice(0, 3)
+                          .map((factor, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              {factor.status === "danger" ? (
+                                <XCircle className="w-3.5 h-3.5 text-danger shrink-0 mt-0.5" />
+                              ) : (
+                                <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
+                              )}
+                              <span className={factor.status === "danger" ? "text-danger" : "text-warning"}>
+                                {factor.name}: {factor.description}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Safe Indicators */}
+                  {selectedResult.riskScore >= 70 && (
+                    <div className="p-3 rounded-lg bg-safe/5 border border-safe/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="w-4 h-4 text-safe" />
+                        <h5 className="text-sm font-medium text-safe">Positive Indicators</h5>
+                      </div>
+                      <div className="space-y-1.5">
+                        {selectedResult.riskFactors
+                          .filter(f => f.status === "safe")
+                          .slice(0, 3)
+                          .map((factor, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              <CheckCircle className="w-3.5 h-3.5 text-safe shrink-0 mt-0.5" />
+                              <span className="text-safe">{factor.name}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleAddToWatchlist}
+                      disabled={isInWatchlist(selectedResult.address)}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 gap-2"
+                    >
+                      <Star className={cn("w-4 h-4", isInWatchlist(selectedResult.address) && "fill-warning text-warning")} />
+                      {isInWatchlist(selectedResult.address) ? "Watching" : "Add to Watchlist"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      className="gap-2"
+                    >
+                      <a href={selectedResult.dexUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="w-4 h-4" />
+                        View on DEX
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
               {/* Extracted Addresses Section */}
-              {extractedAddresses.length > 0 && !isOcrProcessing && (
+              {extractedAddresses.length > 0 && !isOcrProcessing && !selectedResult && (
                 <div className="p-4 rounded-xl border border-primary/30 bg-primary/5">
                   <div className="flex items-center gap-2 mb-3">
                     <FileText className="w-4 h-4 text-primary" />
