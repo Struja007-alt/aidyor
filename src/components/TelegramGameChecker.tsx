@@ -12,11 +12,27 @@ interface GameResult {
   warning?: string;
 }
 
-const mockGames: GameResult[] = [
-  { name: "Hamster Kombat", status: "verified", players: "300M+", earnings: "Real P2E rewards" },
-  { name: "Notcoin", status: "verified", players: "35M+", earnings: "Listed on exchanges" },
-  { name: "TapSwap", status: "suspicious", players: "60M+", earnings: "Pending token launch", warning: "No confirmed token yet" },
-];
+// Real Telegram game data - verified games with known status
+const knownGames: Record<string, GameResult> = {
+  // Verified games with confirmed tokens/rewards
+  "hamsterkombat": { name: "Hamster Kombat", status: "verified", players: "300M+", earnings: "HMSTR token listed on exchanges" },
+  "notcoin": { name: "Notcoin", status: "verified", players: "35M+", earnings: "NOT token on TON, listed on major exchanges" },
+  "blum": { name: "Blum", status: "verified", players: "50M+", earnings: "Points system, token announced" },
+  "catizen": { name: "Catizen", status: "verified", players: "25M+", earnings: "CATI token launched" },
+  "dogs": { name: "DOGS", status: "verified", players: "50M+", earnings: "DOGS token airdrop completed" },
+  "yescoin": { name: "Yescoin", status: "verified", players: "15M+", earnings: "YES token on TON" },
+  "major": { name: "Major", status: "verified", players: "10M+", earnings: "Token announced" },
+  "tomarket": { name: "Tomarket", status: "verified", players: "20M+", earnings: "TOMA token launched" },
+  
+  // Suspicious - no confirmed token yet
+  "tapswap": { name: "TapSwap", status: "suspicious", players: "60M+", earnings: "Pending token launch", warning: "Token launch delayed multiple times" },
+  "gemz": { name: "Gemz", status: "suspicious", players: "20M+", earnings: "Points only", warning: "No confirmed token or timeline" },
+  "rockyrabbit": { name: "Rocky Rabbit", status: "suspicious", players: "15M+", earnings: "Points system", warning: "Token timeline unclear" },
+  "memefi": { name: "MemeFi", status: "suspicious", players: "25M+", earnings: "Pending", warning: "Token delayed" },
+  
+  // Known scams or rug pulls
+  "pixelverse": { name: "PixelVerse", status: "scam", players: "10M+", earnings: "Failed launch", warning: "Token launch failed, team silent" },
+};
 
 export const TelegramGameChecker = () => {
   const [gameLink, setGameLink] = useState("");
@@ -29,8 +45,33 @@ export const TelegramGameChecker = () => {
     setIsChecking(true);
     
     setTimeout(() => {
-      const randomGame = mockGames[Math.floor(Math.random() * mockGames.length)];
-      setResult(randomGame);
+      // Extract game name from link or input
+      const input = gameLink.toLowerCase().trim();
+      
+      // Try to find game in known database
+      let foundGame: GameResult | null = null;
+      
+      // Check if it's a direct match in our database
+      for (const [key, game] of Object.entries(knownGames)) {
+        if (input.includes(key) || input.includes(game.name.toLowerCase())) {
+          foundGame = game;
+          break;
+        }
+      }
+      
+      // If not found, return unknown status
+      if (!foundGame) {
+        setResult({
+          name: gameLink.replace(/[^a-zA-Z0-9\s]/g, '').trim() || "Unknown Game",
+          status: "suspicious",
+          players: "Unknown",
+          earnings: "Not verified",
+          warning: "This game is not in our database. Exercise caution and do your own research."
+        });
+      } else {
+        setResult(foundGame);
+      }
+      
       setIsChecking(false);
     }, 1500);
   };

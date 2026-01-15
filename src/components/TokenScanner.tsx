@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck } from "lucide-react";
+import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,8 +8,15 @@ import { RiskGauge } from "./RiskGauge";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { 
+  searchTokens, 
+  getTokenByAddress, 
+  analyzeTokenRisk, 
+  chainIdToNetwork,
+  type DexPair 
+} from "@/lib/api/dexscreener";
 
-export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX";
+export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP";
 
 type ScanMode = "address" | "screenshot";
 
@@ -19,69 +26,41 @@ interface RiskFactor {
   description: string;
 }
 
-interface MarketData {
-  price: number;
-  change24h: number;
-  marketCap: number;
-  volume24h: number;
+interface NetworkResult {
+  network: string;
+  chainId: string;
+  found: boolean;
+  riskScore: number;
+  marketData: {
+    price: number;
+    change24h: number;
+    marketCap: number;
+    volume24h: number;
+    liquidity: number;
+  } | null;
+  riskFactors: RiskFactor[];
+  address: string;
+  pairAddress: string;
+  dexUrl: string;
+  pairs: DexPair[];
 }
 
-interface TokenSuggestion {
+interface TokenInfo {
   name: string;
   symbol: string;
   address: string;
-  network: Network;
-  isOriginal: boolean;
+  chainId: string;
+  imageUrl?: string;
 }
-
-interface NetworkResult {
-  network: Network;
-  found: boolean;
-  riskScore: number;
-  marketData: MarketData | null;
-  riskFactors: RiskFactor[];
-  address: string;
-  isOriginal: boolean;
-}
-
-const mockRiskFactors: RiskFactor[] = [
-  { name: "Contract Verified", status: "safe", description: "Source code is verified on explorer" },
-  { name: "Liquidity Locked", status: "safe", description: "LP tokens locked for 6 months" },
-  { name: "Ownership Renounced", status: "warning", description: "Owner still has control" },
-  { name: "Honeypot Check", status: "safe", description: "Token can be sold freely" },
-  { name: "Tax Analysis", status: "warning", description: "Buy: 5% | Sell: 8%" },
-  { name: "Holder Distribution", status: "danger", description: "Top holder owns 45%" },
-];
-
-// Mock token database - isOriginal marks the original chain deployment
-const mockTokenDatabase: TokenSuggestion[] = [
-  { name: "Pepe", symbol: "PEPE", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", network: "ETH", isOriginal: true },
-  { name: "Pepe", symbol: "PEPE", address: "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00", network: "BSC", isOriginal: false },
-  { name: "Shiba Inu", symbol: "SHIB", address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", network: "ETH", isOriginal: true },
-  { name: "Shiba Inu", symbol: "SHIB", address: "0x2859e4544C4bB03966803b044A93563Bd2D0DD4D", network: "BSC", isOriginal: false },
-  { name: "Dogecoin", symbol: "DOGE", address: "0xbA2aE424d960c26247Dd6c32edC70B295c744C43", network: "BSC", isOriginal: false },
-  { name: "Bonk", symbol: "BONK", address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", network: "SOL", isOriginal: true },
-  { name: "Floki Inu", symbol: "FLOKI", address: "0xcf0C122c6b73ff809C693DB761e7BaeBe62b6a2E", network: "ETH", isOriginal: true },
-  { name: "Floki Inu", symbol: "FLOKI", address: "0xfb5B838b6cfEEdC2873aB27866079AC55363D37E", network: "BSC", isOriginal: false },
-  { name: "Wojak", symbol: "WOJAK", address: "0x5026F006B85729a8b14553FAE6af249aD16c9aaB", network: "ETH", isOriginal: true },
-  { name: "SafeMoon", symbol: "SFM", address: "0x42981d0bfbAf196529376EE702F2a9Eb9092fcB5", network: "BSC", isOriginal: true },
-  { name: "Baby Doge", symbol: "BabyDoge", address: "0xc748673057861a797275CD8A068AbB95A902e8de", network: "BSC", isOriginal: true },
-  { name: "Polygon", symbol: "MATIC", address: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", network: "ETH", isOriginal: false },
-  { name: "Polygon", symbol: "MATIC", address: "0x0000000000000000000000000000000000001010", network: "POLYGON", isOriginal: true },
-  { name: "Avalanche", symbol: "AVAX", address: "0x85f138bfEE4ef8e540890CFb48F620571d67Eda3", network: "BSC", isOriginal: false },
-  { name: "Avalanche", symbol: "AVAX", address: "FvwEAhmxKfeiG8SnEvq42hc6whRyY3EFYAvebMqDNDGC", network: "AVAX", isOriginal: true },
-];
-
-const ALL_NETWORKS: Network[] = ["ETH", "BSC", "SOL", "POLYGON", "AVAX"];
 
 export const TokenScanner = () => {
   const [scanMode, setScanMode] = useState<ScanMode>("address");
   const [tokenQuery, setTokenQuery] = useState("");
+  const [displayAddress, setDisplayAddress] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [scanResults, setScanResults] = useState<NetworkResult[]>([]);
-  const [tokenName, setTokenName] = useState<string>("");
-  const [tokenSymbol, setTokenSymbol] = useState<string>("");
-  const [suggestions, setSuggestions] = useState<TokenSuggestion[]>([]);
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
+  const [suggestions, setSuggestions] = useState<DexPair[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedResult, setSelectedResult] = useState<NetworkResult | null>(null);
@@ -90,8 +69,19 @@ export const TokenScanner = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  const { addToken, isInWatchlist } = useWatchlist();
+
+  // Check if input looks like a contract address
+  const isContractAddress = useCallback((query: string): boolean => {
+    // Ethereum-like address (0x...)
+    if (/^0x[a-fA-F0-9]{40}$/i.test(query)) return true;
+    // Solana address (base58, 32-44 chars)
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query)) return true;
+    return false;
+  }, []);
+
   // Debounced search for real-time suggestions
-  const searchTokens = useCallback((query: string) => {
+  const searchTokensDebounced = useCallback(async (query: string) => {
     if (query.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
@@ -100,102 +90,141 @@ export const TokenScanner = () => {
 
     setIsSearching(true);
     
-    setTimeout(() => {
-      const lowerQuery = query.toLowerCase();
-      const filtered = mockTokenDatabase.filter(
-        token =>
-          token.name.toLowerCase().includes(lowerQuery) ||
-          token.symbol.toLowerCase().includes(lowerQuery)
-      );
+    try {
+      const results = await searchTokens(query);
+      // Filter to unique tokens by address and take top 10
+      const seen = new Set<string>();
+      const unique = results.filter(pair => {
+        const key = `${pair.chainId}-${pair.baseToken.address}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 10);
       
-      // Sort by: original first, then by network
-      const sorted = filtered.sort((a, b) => {
-        if (a.isOriginal !== b.isOriginal) return a.isOriginal ? -1 : 1;
-        return a.network.localeCompare(b.network);
-      });
-      
-      setSuggestions(sorted);
-      setShowSuggestions(sorted.length > 0);
+      setSuggestions(unique);
+      setShowSuggestions(unique.length > 0);
+    } catch (error) {
+      console.error('Search error:', error);
+      setSuggestions([]);
+    } finally {
       setIsSearching(false);
-    }, 300);
+    }
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      searchTokens(tokenQuery);
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [tokenQuery, searchTokens]);
+    // Don't search if it looks like an address - user should click scan
+    if (isContractAddress(tokenQuery)) {
+      setDisplayAddress(tokenQuery);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
 
-  const handleSelectSuggestion = (suggestion: TokenSuggestion) => {
-    setTokenQuery(suggestion.name);
-    setTokenName(suggestion.name);
-    setTokenSymbol(suggestion.symbol);
+    const timer = setTimeout(() => {
+      searchTokensDebounced(tokenQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [tokenQuery, searchTokensDebounced, isContractAddress]);
+
+  const handleSelectSuggestion = (pair: DexPair) => {
+    setTokenQuery(pair.baseToken.symbol);
+    setDisplayAddress(pair.baseToken.address);
+    setTokenInfo({
+      name: pair.baseToken.name,
+      symbol: pair.baseToken.symbol,
+      address: pair.baseToken.address,
+      chainId: pair.chainId,
+      imageUrl: pair.info?.imageUrl,
+    });
     setShowSuggestions(false);
+    
+    // Auto-scan with the selected token
+    handleScanWithAddress(pair.baseToken.address);
   };
 
-  // Scan across ALL networks for the token
-  const handleScan = async () => {
-    if (!tokenQuery) return;
+  // Scan for token data
+  const handleScanWithAddress = async (address: string) => {
+    if (!address) return;
     
     setIsScanning(true);
     setScanResults([]);
     setSelectedResult(null);
     
-    const lowerQuery = tokenQuery.toLowerCase();
-    const matchingTokens = mockTokenDatabase.filter(
-      token =>
-        token.name.toLowerCase().includes(lowerQuery) ||
-        token.symbol.toLowerCase().includes(lowerQuery) ||
-        token.address.toLowerCase() === lowerQuery
-    );
-
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const results: NetworkResult[] = ALL_NETWORKS.map(network => {
-      const tokenOnNetwork = matchingTokens.find(t => t.network === network);
+    try {
+      const pairs = await getTokenByAddress(address);
       
-      if (tokenOnNetwork) {
-        const riskScore = Math.floor(Math.random() * 60) + 30;
-        return {
-          network,
-          found: true,
-          riskScore,
-          address: tokenOnNetwork.address,
-          isOriginal: tokenOnNetwork.isOriginal,
-          marketData: {
-            price: Math.random() * 100,
-            change24h: (Math.random() - 0.5) * 40,
-            marketCap: Math.random() * 10000000000,
-            volume24h: Math.random() * 500000000,
-          },
-          riskFactors: mockRiskFactors.map(f => ({
-            ...f,
-            status: Math.random() > 0.7 ? "warning" : Math.random() > 0.5 ? "safe" : f.status,
-          })) as RiskFactor[],
-        };
+      if (pairs.length === 0) {
+        setScanResults([]);
+        setIsScanning(false);
+        return;
       }
+
+      // Group pairs by chain
+      const chainGroups: Record<string, DexPair[]> = {};
+      pairs.forEach(pair => {
+        const chain = pair.chainId;
+        if (!chainGroups[chain]) chainGroups[chain] = [];
+        chainGroups[chain].push(pair);
+      });
+
+      // Build results for each chain
+      const results: NetworkResult[] = Object.entries(chainGroups).map(([chainId, chainPairs]) => {
+        const mainPair = chainPairs[0];
+        const { score, factors } = analyzeTokenRisk(chainPairs);
+        
+        return {
+          network: chainIdToNetwork[chainId] || chainId.toUpperCase(),
+          chainId,
+          found: true,
+          riskScore: score,
+          address: mainPair.baseToken.address,
+          pairAddress: mainPair.pairAddress,
+          dexUrl: mainPair.url,
+          pairs: chainPairs,
+          marketData: {
+            price: parseFloat(mainPair.priceUsd) || 0,
+            change24h: mainPair.priceChange?.h24 || 0,
+            marketCap: mainPair.marketCap || mainPair.fdv || 0,
+            volume24h: mainPair.volume?.h24 || 0,
+            liquidity: mainPair.liquidity?.usd || 0,
+          },
+          riskFactors: factors,
+        };
+      });
+
+      // Set token info from best result
+      if (pairs.length > 0) {
+        const bestPair = pairs[0];
+        setTokenInfo({
+          name: bestPair.baseToken.name,
+          symbol: bestPair.baseToken.symbol,
+          address: bestPair.baseToken.address,
+          chainId: bestPair.chainId,
+          imageUrl: bestPair.info?.imageUrl,
+        });
+        setDisplayAddress(bestPair.baseToken.address);
+      }
+
+      setScanResults(results);
       
-      return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "", isOriginal: false };
-    });
-
-    if (matchingTokens.length > 0) {
-      setTokenName(matchingTokens[0].name);
-      setTokenSymbol(matchingTokens[0].symbol);
-    } else {
-      setTokenName(tokenQuery);
-      setTokenSymbol("");
+      // Auto-select highest liquidity result
+      if (results.length > 0) {
+        const best = results.reduce((a, b) => 
+          (a.marketData?.liquidity || 0) > (b.marketData?.liquidity || 0) ? a : b
+        );
+        setSelectedResult(best);
+      }
+    } catch (error) {
+      console.error('Scan error:', error);
+      toast.error('Failed to scan token');
+    } finally {
+      setIsScanning(false);
     }
+  };
 
-    setScanResults(results);
-    
-    const foundResults = results.filter(r => r.found);
-    if (foundResults.length > 0) {
-      const safest = foundResults.reduce((a, b) => a.riskScore > b.riskScore ? a : b);
-      setSelectedResult(safest);
-    }
-    
-    setIsScanning(false);
+  const handleScan = () => {
+    const address = displayAddress || tokenQuery;
+    handleScanWithAddress(address);
   };
 
   // Screenshot handlers
@@ -240,63 +269,17 @@ export const TokenScanner = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       setUploadedImage(e.target?.result as string);
-      analyzeScreenshot();
+      toast.info("Screenshot uploaded - paste the contract address to scan");
     };
     reader.readAsDataURL(file);
-  };
-
-  const analyzeScreenshot = () => {
-    setIsScanning(true);
-    setScanResults([]);
-    setSelectedResult(null);
-    
-    setTimeout(() => {
-      // Randomly select a token for demo purposes
-      const randomToken = mockTokenDatabase[Math.floor(Math.random() * mockTokenDatabase.length)];
-      const riskScore = Math.floor(Math.random() * 60) + 30;
-      
-      setTokenName(randomToken.name);
-      setTokenSymbol(randomToken.symbol);
-      
-      const results: NetworkResult[] = ALL_NETWORKS.map(network => {
-        if (network === randomToken.network) {
-          return {
-            network,
-            found: true,
-            riskScore,
-            address: randomToken.address,
-            isOriginal: randomToken.isOriginal,
-            marketData: {
-              price: Math.random() * 100,
-              change24h: (Math.random() - 0.5) * 40,
-              marketCap: Math.random() * 10000000000,
-              volume24h: Math.random() * 500000000,
-            },
-            riskFactors: mockRiskFactors.map(f => ({
-              ...f,
-              status: Math.random() > 0.7 ? "warning" : Math.random() > 0.5 ? "safe" : f.status,
-            })) as RiskFactor[],
-          };
-        }
-        return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "", isOriginal: false };
-      });
-
-      setScanResults(results);
-      const foundResult = results.find(r => r.found);
-      if (foundResult) {
-        setSelectedResult(foundResult);
-      }
-      
-      setIsScanning(false);
-    }, 2500);
   };
 
   const clearUpload = () => {
     setUploadedImage(null);
     setScanResults([]);
     setSelectedResult(null);
-    setTokenName("");
-    setTokenSymbol("");
+    setTokenInfo(null);
+    setDisplayAddress("");
   };
 
   const formatCurrency = (value: number) => {
@@ -304,7 +287,14 @@ export const TokenScanner = () => {
     if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
     if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`;
     if (value >= 1) return `$${value.toFixed(2)}`;
-    return `$${value.toFixed(6)}`;
+    if (value >= 0.0001) return `$${value.toFixed(4)}`;
+    return `$${value.toFixed(8)}`;
+  };
+
+  const formatPrice = (value: number) => {
+    if (value >= 1) return `$${value.toFixed(2)}`;
+    if (value >= 0.0001) return `$${value.toFixed(6)}`;
+    return `$${value.toFixed(10)}`;
   };
 
   const getStatusIcon = (status: RiskFactor["status"]) => {
@@ -315,31 +305,39 @@ export const TokenScanner = () => {
     }
   };
 
-  const foundNetworks = scanResults.filter(r => r.found);
-  
-  const { addToken, isInWatchlist } = useWatchlist();
+  const copyAddress = async (address: string) => {
+    await navigator.clipboard.writeText(address);
+    toast.success("Address copied!");
+  };
+
+  const truncateAddress = (address: string) => {
+    if (address.length <= 16) return address;
+    return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  };
 
   const handleAddToWatchlist = () => {
-    if (!selectedResult || !tokenName) return;
+    if (!selectedResult || !tokenInfo) return;
     
     addToken({
       address: selectedResult.address,
-      name: tokenName,
-      network: selectedResult.network,
+      name: tokenInfo.name,
+      network: selectedResult.network as Network,
       riskScore: selectedResult.riskScore,
     });
     
-    toast.success(`${tokenName} added to watchlist!`);
+    toast.success(`${tokenInfo.name} added to watchlist!`);
   };
 
   const resetScan = () => {
     setScanResults([]);
     setSelectedResult(null);
-    setTokenName("");
-    setTokenSymbol("");
+    setTokenInfo(null);
     setTokenQuery("");
+    setDisplayAddress("");
     setUploadedImage(null);
   };
+
+  const foundNetworks = scanResults.filter(r => r.found);
 
   return (
     <div className="space-y-6">
@@ -381,98 +379,129 @@ export const TokenScanner = () => {
             Multi-Chain Token Search
           </h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Paste a token address or name to scan all networks automatically
+            Paste a contract address or search by token name
           </p>
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    placeholder="Paste token address or name..."
-                    value={tokenQuery}
-                    onChange={(e) => {
-                      setTokenQuery(e.target.value);
-                      setScanResults([]);
-                      setSelectedResult(null);
+          
+          <div className="space-y-4">
+            {/* Search Input */}
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      placeholder="Paste contract address or search token name..."
+                      value={tokenQuery}
+                      onChange={(e) => {
+                        setTokenQuery(e.target.value);
+                        setScanResults([]);
+                        setSelectedResult(null);
+                      }}
+                      onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
+                        e.preventDefault();
+                        const pastedText = e.clipboardData.getData('text').trim();
+                        setTokenQuery(pastedText);
+                        setDisplayAddress(pastedText);
+                      }}
+                      onFocus={() => tokenQuery.length >= 2 && !isContractAddress(tokenQuery) && setShowSuggestions(suggestions.length > 0)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                      className="flex-1 bg-secondary/50 border-border/50 focus:border-primary/50 h-12 text-foreground placeholder:text-muted-foreground font-mono text-sm"
+                    />
+                    {isSearching && (
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        const text = await navigator.clipboard.readText();
+                        setTokenQuery(text.trim());
+                        setDisplayAddress(text.trim());
+                      } catch (err) {
+                        console.error('Failed to read clipboard');
+                      }
                     }}
-                    onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
-                      e.preventDefault();
-                      const pastedText = e.clipboardData.getData('text').trim();
-                      setTokenQuery(pastedText);
-                    }}
-                    onFocus={() => tokenQuery.length >= 2 && setShowSuggestions(suggestions.length > 0)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    className="flex-1 bg-secondary/50 border-border/50 focus:border-primary/50 h-12 text-foreground placeholder:text-muted-foreground pr-10"
-                  />
-                  {isSearching && (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
-                  )}
+                    className="h-12 px-3 border-border/50 hover:bg-secondary/50"
+                    title="Paste from clipboard"
+                  >
+                    <Clipboard className="w-5 h-5" />
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      const text = await navigator.clipboard.readText();
-                      setTokenQuery(text.trim());
-                    } catch (err) {
-                      console.error('Failed to read clipboard');
-                    }
-                  }}
-                  className="h-12 px-3 border-border/50 hover:bg-secondary/50"
-                  title="Paste from clipboard"
-                >
-                  <Clipboard className="w-5 h-5" />
-                </Button>
-              </div>
-              
-              {/* Real-time Suggestions Dropdown */}
-              {showSuggestions && (
-                <div className="absolute z-50 w-full mt-1 bg-card border border-border/50 rounded-lg shadow-xl overflow-hidden">
-                  {suggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
-                      onMouseDown={() => handleSelectSuggestion(suggestion)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div>
-                          <span className="font-medium text-foreground">{suggestion.name}</span>
-                          <span className="text-muted-foreground ml-2">({suggestion.symbol})</span>
+                
+                {/* Real-time Suggestions Dropdown */}
+                {showSuggestions && (
+                  <div className="absolute z-50 w-full mt-1 bg-card border border-border/50 rounded-lg shadow-xl overflow-hidden max-h-80 overflow-y-auto">
+                    {suggestions.map((pair, index) => (
+                      <button
+                        key={`${pair.chainId}-${pair.pairAddress}-${index}`}
+                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
+                        onMouseDown={() => handleSelectSuggestion(pair)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {pair.info?.imageUrl && (
+                            <img 
+                              src={pair.info.imageUrl} 
+                              alt={pair.baseToken.symbol}
+                              className="w-8 h-8 rounded-full bg-secondary"
+                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-foreground truncate">{pair.baseToken.name}</span>
+                              <span className="text-muted-foreground">({pair.baseToken.symbol})</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground font-mono truncate">
+                              {truncateAddress(pair.baseToken.address)}
+                            </p>
+                          </div>
                         </div>
-                        {suggestion.isOriginal && (
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-safe/20 border border-safe/50 text-safe text-[10px] font-display">
-                            <BadgeCheck className="w-2.5 h-2.5" />
-                            ORIGINAL
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className="text-xs px-2 py-1 rounded bg-secondary/50 text-muted-foreground">
+                            {chainIdToNetwork[pair.chainId] || pair.chainId}
                           </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{suggestion.network}</span>
-                        <Search className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground mt-2">
-                Scans ETH, BSC, SOL, POLYGON, AVAX networks automatically
-              </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Button 
+                onClick={handleScan}
+                disabled={!tokenQuery || isScanning}
+                className="h-12 px-6 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
+              >
+                {isScanning ? (
+                  <Scan className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Scan className="w-5 h-5 mr-2" />
+                    SCAN
+                  </>
+                )}
+              </Button>
             </div>
-            <Button 
-              onClick={handleScan}
-              disabled={!tokenQuery || isScanning}
-              className="h-12 px-6 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
-            >
-              {isScanning ? (
-                <Scan className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <Scan className="w-5 h-5 mr-2" />
-                  SCAN
-                </>
-              )}
-            </Button>
+
+            {/* Display Contract Address Prominently */}
+            {displayAddress && isContractAddress(displayAddress) && (
+              <div className="p-4 rounded-lg bg-secondary/30 border border-border/50">
+                <p className="text-xs text-muted-foreground mb-1">Contract Address</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 font-mono text-sm text-foreground break-all">
+                    {displayAddress}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyAddress(displayAddress)}
+                    className="shrink-0"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -485,7 +514,7 @@ export const TokenScanner = () => {
             Screenshot Analyzer
           </h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Upload a token transfer screenshot for automatic analysis
+            Upload a screenshot, then paste the contract address you see
           </p>
 
           {!uploadedImage ? (
@@ -533,6 +562,26 @@ export const TokenScanner = () => {
                   <X className="w-4 h-4 text-foreground" />
                 </button>
               </div>
+              
+              {/* Address input for screenshot mode */}
+              <div className="flex gap-3">
+                <Input
+                  placeholder="Paste the contract address from screenshot..."
+                  value={tokenQuery}
+                  onChange={(e) => {
+                    setTokenQuery(e.target.value);
+                    setDisplayAddress(e.target.value);
+                  }}
+                  className="flex-1 bg-secondary/50 border-border/50 h-12 font-mono text-sm"
+                />
+                <Button 
+                  onClick={handleScan}
+                  disabled={!tokenQuery || isScanning}
+                  className="h-12 px-6 bg-primary hover:bg-primary/90"
+                >
+                  {isScanning ? <Scan className="w-5 h-5 animate-spin" /> : "SCAN"}
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -545,44 +594,38 @@ export const TokenScanner = () => {
           <div className="flex flex-col items-center justify-center">
             <Scan className="w-16 h-16 text-primary animate-scan mb-4" />
             <p className="font-display text-primary animate-pulse">
-              {scanMode === "screenshot" ? "ANALYZING IMAGE..." : "SCANNING ALL NETWORKS..."}
+              FETCHING LIVE DATA...
             </p>
-            <div className="flex gap-2 mt-4">
-              {ALL_NETWORKS.map((network) => (
-                <NetworkBadge key={network} network={network} selected={false} />
-              ))}
-            </div>
+            <p className="text-sm text-muted-foreground mt-2">
+              Querying DEXScreener across all chains
+            </p>
           </div>
         </div>
       )}
 
       {/* No Results Found */}
-      {scanResults.length > 0 && !isScanning && foundNetworks.length === 0 && (
+      {scanResults.length === 0 && !isScanning && tokenQuery && displayAddress && isContractAddress(displayAddress) && (
         <div className="glass-card p-8 text-center animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
             <Search className="w-8 h-8 text-warning" />
           </div>
           <h3 className="font-display text-xl text-foreground mb-2">Token Not Found</h3>
           <p className="text-muted-foreground mb-4 max-w-md mx-auto">
-            We couldn't find "<span className="text-foreground font-medium">{tokenQuery}</span>" on any supported network.
+            No trading pairs found for this address on DEXScreener.
           </p>
           <div className="bg-secondary/30 border border-border/30 rounded-lg p-4 max-w-md mx-auto">
             <h4 className="text-sm font-medium text-foreground mb-2 flex items-center justify-center gap-2">
               <AlertTriangle className="w-4 h-4 text-warning" />
-              Suggestions
+              Possible Reasons
             </h4>
             <ul className="text-sm text-muted-foreground space-y-1 text-left">
-              <li>• Double-check the contract address for typos</li>
-              <li>• Ensure you're using the correct network's address</li>
-              <li>• Try searching by token name or symbol</li>
-              <li>• The token may be too new or not yet indexed</li>
+              <li>• Token is not listed on any DEX yet</li>
+              <li>• Contract address may be incorrect</li>
+              <li>• Token has no liquidity or trading activity</li>
+              <li>• Try searching by token name instead</li>
             </ul>
           </div>
-          <Button
-            onClick={resetScan}
-            variant="outline"
-            className="mt-6"
-          >
+          <Button onClick={resetScan} variant="outline" className="mt-6">
             Try Another Search
           </Button>
         </div>
@@ -591,39 +634,59 @@ export const TokenScanner = () => {
       {/* Results */}
       {scanResults.length > 0 && !isScanning && foundNetworks.length > 0 && (
         <div className="space-y-6 animate-fade-in">
-          {/* Network Results Overview */}
+          {/* Token Header */}
           <div className="glass-card p-6">
-            <h3 className="font-display text-2xl text-foreground mb-2">
-              {tokenName} {tokenSymbol && <span className="text-muted-foreground">({tokenSymbol})</span>}
-            </h3>
+            <div className="flex items-start gap-4 mb-4">
+              {tokenInfo?.imageUrl && (
+                <img 
+                  src={tokenInfo.imageUrl} 
+                  alt={tokenInfo.symbol}
+                  className="w-12 h-12 rounded-full bg-secondary"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display text-2xl text-foreground">
+                  {tokenInfo?.name} <span className="text-muted-foreground">({tokenInfo?.symbol})</span>
+                </h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="text-sm text-muted-foreground font-mono truncate">
+                    {tokenInfo?.address}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => tokenInfo && copyAddress(tokenInfo.address)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
             <p className="text-sm text-muted-foreground mb-4">
-              Found on {foundNetworks.length} network{foundNetworks.length !== 1 ? 's' : ''}
+              Found on {foundNetworks.length} chain{foundNetworks.length !== 1 ? 's' : ''}
             </p>
             
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {scanResults.map((result) => (
                 <button
-                  key={result.network}
+                  key={result.chainId}
                   onClick={() => result.found && setSelectedResult(result)}
                   disabled={!result.found}
                   className={cn(
                     "p-4 rounded-lg border transition-all relative",
                     result.found 
-                      ? selectedResult?.network === result.network
+                      ? selectedResult?.chainId === result.chainId
                         ? "border-primary bg-primary/20"
                         : "border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50"
                       : "border-border/30 bg-secondary/10 opacity-50 cursor-not-allowed"
                   )}
                 >
-                  {result.found && result.isOriginal && (
-                    <div className="absolute -top-2 -right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-safe/20 border border-safe/50 text-safe text-[10px] font-display">
-                      <BadgeCheck className="w-3 h-3" />
-                      ORIGINAL
-                    </div>
-                  )}
-                  <NetworkBadge network={result.network} selected={result.found} />
-                  {result.found ? (
-                    <div className="mt-2">
+                  <div className="text-sm font-medium text-foreground mb-1">{result.network}</div>
+                  {result.found && (
+                    <div className="mt-1">
                       <span className={cn(
                         "font-display text-lg",
                         result.riskScore >= 70 ? "text-safe" : 
@@ -633,8 +696,6 @@ export const TokenScanner = () => {
                       </span>
                       <span className="text-muted-foreground text-xs ml-1">/ 100</span>
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground mt-2">Not found</p>
                   )}
                 </button>
               ))}
@@ -646,35 +707,38 @@ export const TokenScanner = () => {
             <div className="grid md:grid-cols-2 gap-6">
               {/* Risk Score */}
               <div className="glass-card p-6 flex flex-col items-center justify-center">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-display text-xl text-foreground">{tokenName}</h3>
-                  {selectedResult.isOriginal && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-safe/20 border border-safe/50 text-safe text-xs font-display">
-                      <BadgeCheck className="w-3 h-3" />
-                      ORIGINAL
-                    </span>
-                  )}
-                </div>
+                <h3 className="font-display text-xl text-foreground mb-1">{tokenInfo?.name}</h3>
                 <p className="text-sm text-primary mb-4">
                   {selectedResult.network} Network
                 </p>
                 <RiskGauge score={selectedResult.riskScore} />
                 
-                {/* Add to Watchlist Button */}
-                <Button
-                  onClick={handleAddToWatchlist}
-                  disabled={isInWatchlist(selectedResult.address)}
-                  variant="outline"
-                  className="mt-4 gap-2"
-                >
-                  <Star className={cn("w-4 h-4", isInWatchlist(selectedResult.address) && "fill-warning text-warning")} />
-                  {isInWatchlist(selectedResult.address) ? "In Watchlist" : "Add to Watchlist"}
-                </Button>
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    onClick={handleAddToWatchlist}
+                    disabled={isInWatchlist(selectedResult.address)}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Star className={cn("w-4 h-4", isInWatchlist(selectedResult.address) && "fill-warning text-warning")} />
+                    {isInWatchlist(selectedResult.address) ? "Watching" : "Watch"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    asChild
+                    className="gap-2"
+                  >
+                    <a href={selectedResult.dexUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="w-4 h-4" />
+                      DEXScreener
+                    </a>
+                  </Button>
+                </div>
               </div>
 
               {/* Risk Factors */}
               <div className="glass-card p-6">
-                <h3 className="font-display text-lg text-foreground mb-4">Analysis Breakdown</h3>
+                <h3 className="font-display text-lg text-foreground mb-4">Risk Analysis</h3>
                 <div className="space-y-3">
                   {selectedResult.riskFactors.map((factor, index) => (
                     <div 
@@ -698,12 +762,12 @@ export const TokenScanner = () => {
               {/* Market Data */}
               {selectedResult.marketData && (
                 <div className="glass-card p-6 md:col-span-2">
-                  <h3 className="font-display text-lg text-foreground mb-4">Market Data</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <h3 className="font-display text-lg text-foreground mb-4">Live Market Data</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
                       <p className="text-xs text-muted-foreground mb-1">Price</p>
                       <p className="font-display text-lg text-foreground">
-                        {formatCurrency(selectedResult.marketData.price)}
+                        {formatPrice(selectedResult.marketData.price)}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
@@ -726,6 +790,12 @@ export const TokenScanner = () => {
                       <p className="text-xs text-muted-foreground mb-1">24h Volume</p>
                       <p className="font-display text-lg text-foreground">
                         {formatCurrency(selectedResult.marketData.volume24h)}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">Liquidity</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatCurrency(selectedResult.marketData.liquidity)}
                       </p>
                     </div>
                   </div>
