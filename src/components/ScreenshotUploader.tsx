@@ -95,25 +95,31 @@ export const ScreenshotUploader = () => {
     
     const files = e.dataTransfer.files;
     if (files && files[0]) {
-      handleFile(files[0]);
+      processFile(files[0]);
     }
-  }, [ocrEnabled]);
+  }, []);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files[0]) {
-      handleFile(files[0]);
+      processFile(files[0]);
     }
   };
 
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) return;
+  const processFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
+      return;
+    }
     
     const reader = new FileReader();
     reader.onload = (e) => {
       const imageData = e.target?.result as string;
       setUploadedImage(imageData);
-      analyzeImage(imageData);
+      setResult(null); // Reset previous result
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read image file");
     };
     reader.readAsDataURL(file);
   };
@@ -391,13 +397,14 @@ export const ScreenshotUploader = () => {
             </div>
           )}
 
-          {!isAnalyzing && !result && (
+          {!isAnalyzing && (
             <Button 
               onClick={() => uploadedImage && analyzeImage(uploadedImage)}
               className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
+              disabled={!uploadedImage}
             >
               <Scan className="w-5 h-5 mr-2" />
-              ANALYZE SCREENSHOT
+              {result ? "RE-ANALYZE SCREENSHOT" : "ANALYZE SCREENSHOT"}
             </Button>
           )}
         </div>
