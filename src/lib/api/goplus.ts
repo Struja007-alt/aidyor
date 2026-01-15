@@ -1,6 +1,9 @@
 // GoPlus Security API - Free, no auth required
 // Docs: https://docs.gopluslabs.io/
 
+// SolanaFM API - Free, no auth required
+// Docs: https://docs.solana.fm/
+
 export interface GoPlusSecurityResult {
   isHoneypot: boolean;
   isOpenSource: boolean;
@@ -25,6 +28,12 @@ export interface GoPlusSecurityResult {
   transferPausable: boolean;
 }
 
+export interface SolanaSecurityResult {
+  holderCount: number;
+  isFreezeAuthority: boolean;
+  isMintAuthority: boolean;
+}
+
 // Map our network names to GoPlus chain IDs
 const networkToGoPlusChain: Record<string, string> = {
   'ETH': '1',
@@ -36,9 +45,92 @@ const networkToGoPlusChain: Record<string, string> = {
   'OP': '10',
 };
 
+// Fetch Solana token holder count from SolanaFM
+export async function getSolanaTokenSecurity(mintAddress: string): Promise<SolanaSecurityResult | null> {
+  try {
+    // Get holder count from SolanaFM
+    const holdersResponse = await fetch(
+      `https://api.solana.fm/v1/tokens/${mintAddress}/holders?pageSize=1`
+    );
+    
+    let holderCount = 0;
+    if (holdersResponse.ok) {
+      const holdersData = await holdersResponse.json();
+      holderCount = holdersData.totalItemCount || 0;
+    }
+
+    // Get token metadata for mint/freeze authority
+    const metaResponse = await fetch(
+      `https://api.solana.fm/v1/tokens/${mintAddress}`
+    );
+    
+    let isFreezeAuthority = false;
+    let isMintAuthority = false;
+    
+    if (metaResponse.ok) {
+      const metaData = await metaResponse.json();
+      isFreezeAuthority = !!metaData.freezeAuthority;
+      isMintAuthority = !!metaData.mintAuthority;
+    }
+
+    return {
+      holderCount,
+      isFreezeAuthority,
+      isMintAuthority,
+    };
+  } catch (error) {
+    console.error('SolanaFM API error:', error);
+    return null;
+  }
+}
+
+// Analyze Solana security data
+export function analyzeSolanaSecurity(security: SolanaSecurityResult): {
+  score: number;
+  factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[];
+} {
+  const factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[] = [];
+  let score = 0;
+
+  // Holder count
+  if (security.holderCount >= 10000) {
+    factors.push({ name: 'Holders', status: 'safe', description: `${security.holderCount.toLocaleString()} holders` });
+    score += 15;
+  } else if (security.holderCount >= 1000) {
+    factors.push({ name: 'Holders', status: 'safe', description: `${security.holderCount.toLocaleString()} holders` });
+    score += 10;
+  } else if (security.holderCount >= 100) {
+    factors.push({ name: 'Holders', status: 'warning', description: `${security.holderCount} holders - growing` });
+    score += 5;
+  } else if (security.holderCount > 0) {
+    factors.push({ name: 'Holders', status: 'danger', description: `Only ${security.holderCount} holders` });
+    score -= 10;
+  }
+
+  // Freeze authority check
+  if (security.isFreezeAuthority) {
+    factors.push({ name: 'Freeze Authority', status: 'warning', description: 'Token can be frozen by authority' });
+    score -= 5;
+  } else {
+    factors.push({ name: 'Freeze Authority', status: 'safe', description: 'No freeze authority' });
+    score += 5;
+  }
+
+  // Mint authority check
+  if (security.isMintAuthority) {
+    factors.push({ name: 'Mint Authority', status: 'warning', description: 'More tokens can be minted' });
+    score -= 5;
+  } else {
+    factors.push({ name: 'Mint Authority', status: 'safe', description: 'Mint disabled (fixed supply)' });
+    score += 10;
+  }
+
+  return { score, factors };
+}
+
 export async function getTokenSecurity(address: string, network: string): Promise<GoPlusSecurityResult | null> {
   const chainId = networkToGoPlusChain[network];
-  if (!chainId) return null; // Not supported for this chain (e.g., SOL, TON)
+  if (!chainId) return null; // Not supported for this chain (SOL uses separate function)
 
   try {
     const response = await fetch(
