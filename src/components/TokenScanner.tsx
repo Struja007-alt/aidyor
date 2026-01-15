@@ -810,7 +810,7 @@ export const TokenScanner = () => {
       )}
 
       {/* No Results Found */}
-      {scanResults.length === 0 && !isScanning && tokenQuery && displayAddress && isContractAddress(displayAddress) && (
+      {scanResults.length === 0 && !isScanning && tokenQuery && displayAddress && (
         <div className="glass-card p-8 text-center animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
             <Search className="w-8 h-8 text-warning" />
