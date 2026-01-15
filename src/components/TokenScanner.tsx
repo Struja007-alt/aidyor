@@ -19,6 +19,8 @@ import {
 import { 
   getTokenSecurity, 
   analyzeGoPlusSecurity,
+  getSolanaTokenSecurity,
+  analyzeSolanaSecurity,
   type GoPlusSecurityResult 
 } from "@/lib/api/goplus";
 
@@ -40,6 +42,7 @@ interface SecurityData {
   sellTax: number;
   isMintable: boolean;
   hasHiddenOwner: boolean;
+  hasFreezeAuthority?: boolean; // Solana-specific
 }
 
 interface NetworkResult {
@@ -380,29 +383,50 @@ export const TokenScanner = () => {
           const hasSocials = !!(mainPair.info?.websites?.length || mainPair.info?.socials?.length);
           const network = chainIdToNetwork[chainId] || chainId.toUpperCase();
           
-          // Fetch GoPlus security data (for supported EVM chains)
+          // Fetch security data based on network
           let securityData: SecurityData | undefined;
           let securityFactors: RiskFactor[] = [];
           let securityScore = 0;
           
           try {
-            const goplusData = await getTokenSecurity(mainPair.baseToken.address, network);
-            if (goplusData) {
-              const { score: gScore, factors: gFactors } = analyzeGoPlusSecurity(goplusData);
-              securityScore = gScore;
-              securityFactors = gFactors;
-              securityData = {
-                isHoneypot: goplusData.isHoneypot,
-                isVerified: goplusData.isOpenSource,
-                holderCount: parseInt(goplusData.holderCount) || 0,
-                buyTax: parseFloat(goplusData.buyTax) * 100,
-                sellTax: parseFloat(goplusData.sellTax) * 100,
-                isMintable: goplusData.isMintable,
-                hasHiddenOwner: goplusData.hiddenOwner,
-              };
+            if (network === 'SOL') {
+              // Use SolanaFM for Solana tokens
+              const solanaData = await getSolanaTokenSecurity(mainPair.baseToken.address);
+              if (solanaData) {
+                const { score: sScore, factors: sFactors } = analyzeSolanaSecurity(solanaData);
+                securityScore = sScore;
+                securityFactors = sFactors;
+                securityData = {
+                  isHoneypot: false, // Solana doesn't have honeypots in the same way
+                  isVerified: true, // Solana programs are always visible
+                  holderCount: solanaData.holderCount,
+                  buyTax: 0,
+                  sellTax: 0,
+                  isMintable: solanaData.isMintAuthority,
+                  hasHiddenOwner: false,
+                  hasFreezeAuthority: solanaData.isFreezeAuthority,
+                };
+              }
+            } else {
+              // Use GoPlus for EVM chains
+              const goplusData = await getTokenSecurity(mainPair.baseToken.address, network);
+              if (goplusData) {
+                const { score: gScore, factors: gFactors } = analyzeGoPlusSecurity(goplusData);
+                securityScore = gScore;
+                securityFactors = gFactors;
+                securityData = {
+                  isHoneypot: goplusData.isHoneypot,
+                  isVerified: goplusData.isOpenSource,
+                  holderCount: parseInt(goplusData.holderCount) || 0,
+                  buyTax: parseFloat(goplusData.buyTax) * 100,
+                  sellTax: parseFloat(goplusData.sellTax) * 100,
+                  isMintable: goplusData.isMintable,
+                  hasHiddenOwner: goplusData.hiddenOwner,
+                };
+              }
             }
           } catch (error) {
-            console.error('GoPlus fetch error:', error);
+            console.error('Security fetch error:', error);
           }
           
           // Merge risk factors (security factors first, then DEX factors)
@@ -1478,7 +1502,12 @@ export const TokenScanner = () => {
                   <div className="flex flex-wrap gap-2 mt-4">
                     {selectedResult.securityData.isMintable && (
                       <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">
-                        Mintable
+                        {selectedResult.network === 'SOL' ? 'Mint Authority Active' : 'Mintable'}
+                      </span>
+                    )}
+                    {selectedResult.securityData.hasFreezeAuthority && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">
+                        Freeze Authority Active
                       </span>
                     )}
                     {selectedResult.securityData.hasHiddenOwner && (
@@ -1486,7 +1515,7 @@ export const TokenScanner = () => {
                         Hidden Owner
                       </span>
                     )}
-                    {!selectedResult.securityData.isHoneypot && !selectedResult.securityData.isMintable && !selectedResult.securityData.hasHiddenOwner && selectedResult.securityData.isVerified && (
+                    {!selectedResult.securityData.isHoneypot && !selectedResult.securityData.isMintable && !selectedResult.securityData.hasHiddenOwner && !selectedResult.securityData.hasFreezeAuthority && selectedResult.securityData.isVerified && (
                       <span className="px-2 py-1 text-xs rounded-full bg-safe/20 text-safe border border-safe/30">
                         ✓ No Critical Issues
                       </span>
