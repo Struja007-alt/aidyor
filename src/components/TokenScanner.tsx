@@ -543,8 +543,40 @@ export const TokenScanner = () => {
         </div>
       )}
 
+      {/* No Results Found */}
+      {scanResults.length > 0 && !isScanning && foundNetworks.length === 0 && (
+        <div className="glass-card p-8 text-center animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
+            <Search className="w-8 h-8 text-warning" />
+          </div>
+          <h3 className="font-display text-xl text-foreground mb-2">Token Not Found</h3>
+          <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+            We couldn't find "<span className="text-foreground font-medium">{tokenQuery}</span>" on any supported network.
+          </p>
+          <div className="bg-secondary/30 border border-border/30 rounded-lg p-4 max-w-md mx-auto">
+            <h4 className="text-sm font-medium text-foreground mb-2 flex items-center justify-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-warning" />
+              Suggestions
+            </h4>
+            <ul className="text-sm text-muted-foreground space-y-1 text-left">
+              <li>• Double-check the contract address for typos</li>
+              <li>• Ensure you're using the correct network's address</li>
+              <li>• Try searching by token name or symbol</li>
+              <li>• The token may be too new or not yet indexed</li>
+            </ul>
+          </div>
+          <Button
+            onClick={resetScan}
+            variant="outline"
+            className="mt-6"
+          >
+            Try Another Search
+          </Button>
+        </div>
+      )}
+
       {/* Results */}
-      {scanResults.length > 0 && !isScanning && (
+      {scanResults.length > 0 && !isScanning && foundNetworks.length > 0 && (
         <div className="space-y-6 animate-fade-in">
           {/* Network Results Overview */}
           <div className="glass-card p-6">
