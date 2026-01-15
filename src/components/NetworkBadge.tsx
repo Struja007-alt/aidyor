@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 interface NetworkBadgeProps {
-  network: "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX";
+  network: "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "TON";
   selected?: boolean;
   onClick?: () => void;
 }
@@ -12,6 +12,7 @@ const networkConfig = {
   SOL: { name: "Solana", color: "hsl(280, 80%, 60%)", icon: "◎" },
   POLYGON: { name: "Polygon", color: "hsl(270, 80%, 55%)", icon: "⬡" },
   AVAX: { name: "Avalanche", color: "hsl(0, 75%, 55%)", icon: "▲" },
+  TON: { name: "TON", color: "hsl(200, 90%, 50%)", icon: "💎" },
 };
 
 export const NetworkBadge = ({ network, selected, onClick }: NetworkBadgeProps) => {
