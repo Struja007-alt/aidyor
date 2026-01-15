@@ -26,7 +26,9 @@ import {
 import {
   getLiquidityLockInfo,
   analyzeLockSecurity,
+  type LockInfo,
 } from "@/lib/api/unicrypt";
+import { LockStatusBadge } from "./LockStatusBadge";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -68,6 +70,7 @@ interface NetworkResult {
   pairs: DexPair[];
   tokenStatus: "original" | "bridged" | "suspicious";
   securityData?: SecurityData;
+  lockInfo?: LockInfo;
 }
 
 interface TokenInfo {
@@ -441,6 +444,7 @@ export const TokenScanner = () => {
           let securityData: SecurityData | undefined;
           let securityFactors: RiskFactor[] = [];
           let securityScore = 0;
+          let tokenLockInfo: LockInfo | undefined;
           
           try {
             if (network === 'SOL') {
@@ -479,16 +483,17 @@ export const TokenScanner = () => {
                 };
               }
               
-              // Fetch Unicrypt/Team Finance liquidity lock data for EVM chains
+              // Fetch Unicrypt/Team Finance/PinkSale/DXSale liquidity lock data for EVM chains
               try {
                 const lockInfo = await getLiquidityLockInfo(mainPair.baseToken.address, network);
                 if (lockInfo) {
+                  tokenLockInfo = lockInfo;
                   const { score: lockScore, factors: lockFactors } = analyzeLockSecurity(lockInfo);
                   securityScore += lockScore;
                   securityFactors = [...securityFactors, ...lockFactors];
                 }
               } catch (lockError) {
-                console.error('Unicrypt lock check error:', lockError);
+                console.error('Lock check error:', lockError);
               }
             }
           } catch (error) {
@@ -521,6 +526,7 @@ export const TokenScanner = () => {
             },
             riskFactors: allFactors,
             securityData,
+            lockInfo: tokenLockInfo,
             // Temp values for status calculation
             _liquidity: liquidity,
             _volume: volume24h,
@@ -1337,36 +1343,42 @@ export const TokenScanner = () => {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-foreground">{result.network}</span>
                         {/* Quick Security Badges */}
-                        {result.securityData && (
-                          <div className="flex items-center gap-1">
-                            {result.securityData.isHoneypot && (
-                              <span className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5" title="Honeypot Detected!">
-                                <ShieldAlert className="w-2.5 h-2.5" />
-                                HP
-                              </span>
-                            )}
-                            {!result.securityData.isHoneypot && result.securityData.isVerified && (
-                              <span className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5" title="Verified Contract">
-                                <BadgeCheck className="w-2.5 h-2.5" />
-                              </span>
-                            )}
-                            {result.securityData.holderCount > 0 && (
-                              <span className={cn(
-                                "px-1.5 py-0.5 text-[10px] rounded flex items-center gap-0.5",
-                                result.securityData.holderCount >= 1000 
-                                  ? "bg-safe/20 text-safe border border-safe/40" 
-                                  : result.securityData.holderCount >= 100 
-                                    ? "bg-warning/20 text-warning border border-warning/40"
-                                    : "bg-danger/20 text-danger border border-danger/40"
-                              )} title={`${result.securityData.holderCount.toLocaleString()} holders`}>
-                                <Users className="w-2.5 h-2.5" />
-                                {result.securityData.holderCount >= 1000 
-                                  ? `${(result.securityData.holderCount / 1000).toFixed(0)}K`
-                                  : result.securityData.holderCount}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {/* Lock Status Badge */}
+                          {result.network !== 'SOL' && (
+                            <LockStatusBadge lockInfo={result.lockInfo} compact />
+                          )}
+                          {result.securityData && (
+                            <>
+                              {result.securityData.isHoneypot && (
+                                <span className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5" title="Honeypot Detected!">
+                                  <ShieldAlert className="w-2.5 h-2.5" />
+                                  HP
+                                </span>
+                              )}
+                              {!result.securityData.isHoneypot && result.securityData.isVerified && (
+                                <span className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5" title="Verified Contract">
+                                  <BadgeCheck className="w-2.5 h-2.5" />
+                                </span>
+                              )}
+                              {result.securityData.holderCount > 0 && (
+                                <span className={cn(
+                                  "px-1.5 py-0.5 text-[10px] rounded flex items-center gap-0.5",
+                                  result.securityData.holderCount >= 1000 
+                                    ? "bg-safe/20 text-safe border border-safe/40" 
+                                    : result.securityData.holderCount >= 100 
+                                      ? "bg-warning/20 text-warning border border-warning/40"
+                                      : "bg-danger/20 text-danger border border-danger/40"
+                                )} title={`${result.securityData.holderCount.toLocaleString()} holders`}>
+                                  <Users className="w-2.5 h-2.5" />
+                                  {result.securityData.holderCount >= 1000 
+                                    ? `${(result.securityData.holderCount / 1000).toFixed(0)}K`
+                                    : result.securityData.holderCount}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                       {result.found && getTokenStatusBadge(result.tokenStatus)}
                     </div>
@@ -1630,6 +1642,18 @@ export const TokenScanner = () => {
                   </div>
                 </div>
               )}
+              
+              {/* Liquidity Lock Status - Prominent Display */}
+              {selectedResult.network !== 'SOL' && (
+                <div className="glass-card p-6 md:col-span-2">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Droplets className="w-5 h-5 text-primary" />
+                    Liquidity Lock Status
+                  </h3>
+                  <LockStatusBadge lockInfo={selectedResult.lockInfo} />
+                </div>
+              )}
+              
               {/* Market Data - Enhanced */}
               {selectedResult.marketData && (
                 <div className="glass-card p-6 md:col-span-2">
