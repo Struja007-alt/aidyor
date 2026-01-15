@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef } from "react";
 import { Star, Trash2, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWatchlist, WatchlistToken } from "@/hooks/useWatchlist";
@@ -50,7 +50,7 @@ const rescanToken = async (token: WatchlistToken): Promise<WatchlistToken | null
   }
 };
 
-export const Watchlist = () => {
+export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
   const { watchlist, removeToken, updateToken } = useWatchlist();
   const [rescanning, setRescanning] = useState<string | null>(null);
 
@@ -78,7 +78,7 @@ export const Watchlist = () => {
 
   if (watchlist.length === 0) {
     return (
-      <div className="glass-card p-6">
+      <div ref={ref} className="glass-card p-6">
         <div className="flex items-center gap-2 mb-4">
           <Star className="w-5 h-5 text-warning" />
           <h3 className="font-display text-lg text-foreground">Watchlist</h3>
@@ -97,7 +97,7 @@ export const Watchlist = () => {
   }
 
   return (
-    <div className="glass-card p-6">
+    <div ref={ref} className="glass-card p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Star className="w-5 h-5 text-warning fill-warning" />
@@ -178,4 +178,6 @@ export const Watchlist = () => {
       </div>
     </div>
   );
-};
+});
+
+Watchlist.displayName = "Watchlist";
