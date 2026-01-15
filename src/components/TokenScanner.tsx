@@ -1260,7 +1260,40 @@ export const TokenScanner = () => {
                     className="w-full text-left"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm font-medium text-foreground">{result.network}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">{result.network}</span>
+                        {/* Quick Security Badges */}
+                        {result.securityData && (
+                          <div className="flex items-center gap-1">
+                            {result.securityData.isHoneypot && (
+                              <span className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5" title="Honeypot Detected!">
+                                <ShieldAlert className="w-2.5 h-2.5" />
+                                HP
+                              </span>
+                            )}
+                            {!result.securityData.isHoneypot && result.securityData.isVerified && (
+                              <span className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5" title="Verified Contract">
+                                <BadgeCheck className="w-2.5 h-2.5" />
+                              </span>
+                            )}
+                            {result.securityData.holderCount > 0 && (
+                              <span className={cn(
+                                "px-1.5 py-0.5 text-[10px] rounded flex items-center gap-0.5",
+                                result.securityData.holderCount >= 1000 
+                                  ? "bg-safe/20 text-safe border border-safe/40" 
+                                  : result.securityData.holderCount >= 100 
+                                    ? "bg-warning/20 text-warning border border-warning/40"
+                                    : "bg-danger/20 text-danger border border-danger/40"
+                              )} title={`${result.securityData.holderCount.toLocaleString()} holders`}>
+                                <Users className="w-2.5 h-2.5" />
+                                {result.securityData.holderCount >= 1000 
+                                  ? `${(result.securityData.holderCount / 1000).toFixed(0)}K`
+                                  : result.securityData.holderCount}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       {result.found && getTokenStatusBadge(result.tokenStatus)}
                     </div>
                     {result.found && (
