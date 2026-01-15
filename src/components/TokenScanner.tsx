@@ -217,7 +217,7 @@ export const TokenScanner = () => {
       );
   };
 
-  const performOCR = async (imageData: string): Promise<string[]> => {
+  const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
@@ -267,7 +267,7 @@ export const TokenScanner = () => {
     } finally {
       setIsOcrProcessing(false);
     }
-  };
+  }, [extractAddressesFromText]);
 
   // Check if input looks like a contract address
   const isContractAddress = useCallback((query: string): boolean => {
@@ -536,6 +536,11 @@ export const TokenScanner = () => {
   };
 
   // Screenshot handlers
+  // Memoize handleScanWithAddress
+  const handleScanWithAddressMemo = useCallback(async (address: string) => {
+    await handleScanWithAddress(address);
+  }, []);
+
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -553,25 +558,7 @@ export const TokenScanner = () => {
     setIsDragging(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      handleFile(files[0]);
-    }
-  }, []);
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files[0]) {
-      handleFile(files[0]);
-    }
-  };
-
-  const handleFile = async (file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast.error("Please upload an image file");
       return;
@@ -593,7 +580,7 @@ export const TokenScanner = () => {
         setDisplayAddress(firstAddress);
         toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}! Auto-scanning first one...`);
         
-        // Auto-trigger scan with the first extracted address - call directly instead of setTimeout
+        // Auto-trigger scan with the first extracted address
         handleScanWithAddress(firstAddress);
       } else {
         toast.warning("No contract addresses found. Try pasting manually.");
@@ -603,6 +590,26 @@ export const TokenScanner = () => {
       toast.error("Failed to read image file");
     };
     reader.readAsDataURL(file);
+  }, [performOCR]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+  }, [handleFile]);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+    // Reset the input value so the same file can be re-selected
+    e.target.value = '';
   };
 
   const clearUpload = () => {
