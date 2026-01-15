@@ -388,7 +388,7 @@ export const TokenScanner = () => {
                     }}
                     onFocus={() => tokenQuery.length >= 2 && !isContractAddress(tokenQuery) && setShowSuggestions(suggestions.length > 0)}
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    className="w-full bg-secondary/80 border-border/50 focus:border-primary/50 h-16 pl-12 pr-28 text-foreground placeholder:text-muted-foreground text-base rounded-xl"
+                    className="w-full bg-secondary/80 border-border/50 focus:border-primary/50 h-16 pl-12 pr-32 text-foreground placeholder:text-muted-foreground text-base rounded-xl font-mono truncate"
                   />
                   {isSearching && (
                     <Loader2 className="absolute right-24 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground animate-spin" />
@@ -396,14 +396,14 @@ export const TokenScanner = () => {
                   <Button 
                     onClick={handleScan}
                     disabled={!tokenQuery || isScanning}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-12 px-5 bg-primary hover:bg-primary/90 text-primary-foreground font-display rounded-lg shadow-lg shadow-primary/20"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-12 px-4 sm:px-5 bg-primary hover:bg-primary/90 text-primary-foreground font-display rounded-lg shadow-lg shadow-primary/20 shrink-0 min-w-[80px]"
                   >
                     {isScanning ? (
                       <Scan className="w-5 h-5 animate-spin" />
                     ) : (
                       <>
-                        <Scan className="w-4 h-4 mr-2" />
-                        SCAN
+                        <Scan className="w-4 h-4 sm:mr-2" />
+                        <span className="hidden sm:inline">SCAN</span>
                       </>
                     )}
                   </Button>
