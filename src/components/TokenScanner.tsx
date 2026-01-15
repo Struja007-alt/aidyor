@@ -16,6 +16,11 @@ import {
   chainIdToNetwork,
   type DexPair 
 } from "@/lib/api/dexscreener";
+import { 
+  getTokenSecurity, 
+  analyzeGoPlusSecurity,
+  type GoPlusSecurityResult 
+} from "@/lib/api/goplus";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -25,6 +30,16 @@ interface RiskFactor {
   name: string;
   status: "safe" | "warning" | "danger";
   description: string;
+}
+
+interface SecurityData {
+  isHoneypot: boolean;
+  isVerified: boolean;
+  holderCount: number;
+  buyTax: number;
+  sellTax: number;
+  isMintable: boolean;
+  hasHiddenOwner: boolean;
 }
 
 interface NetworkResult {
@@ -45,6 +60,7 @@ interface NetworkResult {
   dexUrl: string;
   pairs: DexPair[];
   tokenStatus: "original" | "bridged" | "suspicious";
+  securityData?: SecurityData;
 }
 
 interface TokenInfo {
@@ -354,43 +370,81 @@ export const TokenScanner = () => {
         chainGroups[chain].push(pair);
       });
 
-      // Build results for each chain with market data
-      const resultsWithData = Object.entries(chainGroups).map(([chainId, chainPairs]) => {
-        const mainPair = chainPairs[0];
-        const { score, factors } = analyzeTokenRisk(chainPairs);
-        const liquidity = mainPair.liquidity?.usd || 0;
-        const volume24h = mainPair.volume?.h24 || 0;
-        const hasSocials = !!(mainPair.info?.websites?.length || mainPair.info?.socials?.length);
-        
-        return {
-          network: chainIdToNetwork[chainId] || chainId.toUpperCase(),
-          chainId,
-          found: true,
-          riskScore: score,
-          address: mainPair.baseToken.address,
-          pairAddress: mainPair.pairAddress,
-          dexUrl: mainPair.url,
-          pairs: chainPairs,
-          marketData: {
-            price: parseFloat(mainPair.priceUsd) || 0,
-            change24h: mainPair.priceChange?.h24 || 0,
-            marketCap: mainPair.marketCap || mainPair.fdv || 0,
-            volume24h,
-            liquidity,
-          },
-          riskFactors: factors,
-          // Temp values for status calculation
-          _liquidity: liquidity,
-          _volume: volume24h,
-          _hasSocials: hasSocials,
-          _score: score,
-        };
-      });
+      // Build results for each chain with market data + security data
+      const resultsWithData = await Promise.all(
+        Object.entries(chainGroups).map(async ([chainId, chainPairs]) => {
+          const mainPair = chainPairs[0];
+          const { score: dexScore, factors: dexFactors } = analyzeTokenRisk(chainPairs);
+          const liquidity = mainPair.liquidity?.usd || 0;
+          const volume24h = mainPair.volume?.h24 || 0;
+          const hasSocials = !!(mainPair.info?.websites?.length || mainPair.info?.socials?.length);
+          const network = chainIdToNetwork[chainId] || chainId.toUpperCase();
+          
+          // Fetch GoPlus security data (for supported EVM chains)
+          let securityData: SecurityData | undefined;
+          let securityFactors: RiskFactor[] = [];
+          let securityScore = 0;
+          
+          try {
+            const goplusData = await getTokenSecurity(mainPair.baseToken.address, network);
+            if (goplusData) {
+              const { score: gScore, factors: gFactors } = analyzeGoPlusSecurity(goplusData);
+              securityScore = gScore;
+              securityFactors = gFactors;
+              securityData = {
+                isHoneypot: goplusData.isHoneypot,
+                isVerified: goplusData.isOpenSource,
+                holderCount: parseInt(goplusData.holderCount) || 0,
+                buyTax: parseFloat(goplusData.buyTax) * 100,
+                sellTax: parseFloat(goplusData.sellTax) * 100,
+                isMintable: goplusData.isMintable,
+                hasHiddenOwner: goplusData.hiddenOwner,
+              };
+            }
+          } catch (error) {
+            console.error('GoPlus fetch error:', error);
+          }
+          
+          // Merge risk factors (security factors first, then DEX factors)
+          const allFactors = [...securityFactors, ...dexFactors];
+          
+          // Combined score: weighted average of DEX (60%) and security (40%) if available
+          const combinedScore = securityFactors.length > 0
+            ? Math.max(0, Math.min(100, Math.round(dexScore * 0.6 + (50 + securityScore) * 0.4)))
+            : dexScore;
+          
+          return {
+            network,
+            chainId,
+            found: true,
+            riskScore: combinedScore,
+            address: mainPair.baseToken.address,
+            pairAddress: mainPair.pairAddress,
+            dexUrl: mainPair.url,
+            pairs: chainPairs,
+            marketData: {
+              price: parseFloat(mainPair.priceUsd) || 0,
+              change24h: mainPair.priceChange?.h24 || 0,
+              marketCap: mainPair.marketCap || mainPair.fdv || 0,
+              volume24h,
+              liquidity,
+            },
+            riskFactors: allFactors,
+            securityData,
+            // Temp values for status calculation
+            _liquidity: liquidity,
+            _volume: volume24h,
+            _hasSocials: hasSocials,
+            _score: combinedScore,
+            _isHoneypot: securityData?.isHoneypot || false,
+          };
+        })
+      );
 
       // Determine original vs bridged/suspicious
       // Original = highest liquidity + volume + has socials + good score
       // Bridged = similar token on different chain
-      // Suspicious = low liquidity, no socials, poor score
+      // Suspicious = low liquidity, no socials, poor score, or honeypot
       const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
       const maxVolume = Math.max(...resultsWithData.map(r => r._volume));
       
@@ -402,8 +456,8 @@ export const TokenScanner = () => {
         const hasGoodLiquidity = r._liquidity >= 10000;
         const hasGoodVolume = r._volume >= 1000;
         
-        if (r._score < 30) {
-          // Very low score = suspicious
+        if (r._isHoneypot || r._score < 30) {
+          // Honeypot or very low score = suspicious
           tokenStatus = "suspicious";
         } else if (isHighestLiquidity && hasGoodLiquidity && hasGoodVolume) {
           // Best metrics = original
@@ -417,7 +471,7 @@ export const TokenScanner = () => {
         }
         
         // Remove temp properties and add status
-        const { _liquidity, _volume, _hasSocials, _score, ...rest } = r;
+        const { _liquidity, _volume, _hasSocials, _score, _isHoneypot, ...rest } = r;
         return { ...rest, tokenStatus };
       });
 
@@ -1305,6 +1359,141 @@ export const TokenScanner = () => {
                 </div>
               </div>
 
+              {/* Security Summary - GoPlus Data */}
+              {selectedResult.securityData && (
+                <div className="glass-card p-6 md:col-span-2">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-primary" />
+                    Contract Security (GoPlus)
+                  </h3>
+                  
+                  {/* Honeypot Warning Banner */}
+                  {selectedResult.securityData.isHoneypot && (
+                    <div className="mb-4 p-4 rounded-lg bg-danger/20 border border-danger/50 flex items-center gap-3">
+                      <ShieldAlert className="w-8 h-8 text-danger flex-shrink-0" />
+                      <div>
+                        <p className="font-display text-lg text-danger">⚠️ HONEYPOT DETECTED</p>
+                        <p className="text-sm text-danger/80">This token cannot be sold! Do not buy.</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {/* Contract Verification */}
+                    <div className={cn(
+                      "p-4 rounded-lg border",
+                      selectedResult.securityData.isVerified 
+                        ? "bg-safe/10 border-safe/30" 
+                        : "bg-warning/10 border-warning/30"
+                    )}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText className="w-4 h-4" />
+                        <p className="text-xs text-muted-foreground">Contract</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-lg",
+                        selectedResult.securityData.isVerified ? "text-safe" : "text-warning"
+                      )}>
+                        {selectedResult.securityData.isVerified ? "Verified ✓" : "Unverified"}
+                      </p>
+                    </div>
+                    
+                    {/* Holder Count */}
+                    <div className={cn(
+                      "p-4 rounded-lg border",
+                      selectedResult.securityData.holderCount >= 1000 
+                        ? "bg-safe/10 border-safe/30" 
+                        : selectedResult.securityData.holderCount >= 100 
+                          ? "bg-warning/10 border-warning/30"
+                          : "bg-danger/10 border-danger/30"
+                    )}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Users className="w-4 h-4" />
+                        <p className="text-xs text-muted-foreground">Holders</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-lg",
+                        selectedResult.securityData.holderCount >= 1000 
+                          ? "text-safe" 
+                          : selectedResult.securityData.holderCount >= 100 
+                            ? "text-warning"
+                            : "text-danger"
+                      )}>
+                        {selectedResult.securityData.holderCount.toLocaleString()}
+                      </p>
+                    </div>
+                    
+                    {/* Buy Tax */}
+                    <div className={cn(
+                      "p-4 rounded-lg border",
+                      selectedResult.securityData.buyTax <= 5 
+                        ? "bg-safe/10 border-safe/30" 
+                        : selectedResult.securityData.buyTax <= 10 
+                          ? "bg-warning/10 border-warning/30"
+                          : "bg-danger/10 border-danger/30"
+                    )}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <TrendingUp className="w-4 h-4" />
+                        <p className="text-xs text-muted-foreground">Buy Tax</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-lg",
+                        selectedResult.securityData.buyTax <= 5 
+                          ? "text-safe" 
+                          : selectedResult.securityData.buyTax <= 10 
+                            ? "text-warning"
+                            : "text-danger"
+                      )}>
+                        {selectedResult.securityData.buyTax.toFixed(1)}%
+                      </p>
+                    </div>
+                    
+                    {/* Sell Tax */}
+                    <div className={cn(
+                      "p-4 rounded-lg border",
+                      selectedResult.securityData.sellTax <= 5 
+                        ? "bg-safe/10 border-safe/30" 
+                        : selectedResult.securityData.sellTax <= 10 
+                          ? "bg-warning/10 border-warning/30"
+                          : "bg-danger/10 border-danger/30"
+                    )}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <TrendingDown className="w-4 h-4" />
+                        <p className="text-xs text-muted-foreground">Sell Tax</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-lg",
+                        selectedResult.securityData.sellTax <= 5 
+                          ? "text-safe" 
+                          : selectedResult.securityData.sellTax <= 10 
+                            ? "text-warning"
+                            : "text-danger"
+                      )}>
+                        {selectedResult.securityData.sellTax.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Additional Security Flags */}
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {selectedResult.securityData.isMintable && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">
+                        Mintable
+                      </span>
+                    )}
+                    {selectedResult.securityData.hasHiddenOwner && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-danger/20 text-danger border border-danger/30">
+                        Hidden Owner
+                      </span>
+                    )}
+                    {!selectedResult.securityData.isHoneypot && !selectedResult.securityData.isMintable && !selectedResult.securityData.hasHiddenOwner && selectedResult.securityData.isVerified && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-safe/20 text-safe border border-safe/30">
+                        ✓ No Critical Issues
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Market Data - Enhanced */}
               {selectedResult.marketData && (
                 <div className="glass-card p-6 md:col-span-2">
