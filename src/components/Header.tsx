@@ -30,8 +30,8 @@ export const Header = () => {
             <a href="#games" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               P2E Checker
             </a>
-            <a href="#upload" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-              Screenshot
+            <a href="#watchlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+              Watchlist
             </a>
           </nav>
 
@@ -56,8 +56,8 @@ export const Header = () => {
             <a href="#games" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
               P2E Checker
             </a>
-            <a href="#upload" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-              Screenshot
+            <a href="#watchlist" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+              Watchlist
             </a>
           </div>
         </nav>
