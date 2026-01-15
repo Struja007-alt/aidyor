@@ -1,7 +1,9 @@
 import { cn } from "@/lib/utils";
 
+type SupportedNetwork = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "TON" | "ARB" | "BASE" | "OP";
+
 interface NetworkBadgeProps {
-  network: "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "TON" | "ARB" | "BASE" | "OP";
+  network: string;
   selected?: boolean;
   onClick?: () => void;
 }
@@ -104,12 +106,19 @@ const networkConfig = {
   OP: { name: "Optimism", color: "hsl(0, 100%, 50%)" },
 };
 
+const isSupportedNetwork = (network: string): network is SupportedNetwork => {
+  return network in networkConfig;
+};
+
 export const NetworkBadge = ({ network, selected, onClick }: NetworkBadgeProps) => {
-  const config = networkConfig[network];
+  const config = isSupportedNetwork(network) 
+    ? networkConfig[network] 
+    : { name: network.toUpperCase(), color: "hsl(240, 10%, 50%)" };
   
   return (
     <button
       onClick={onClick}
+      aria-label={`Select ${config.name} network`}
       className={cn(
         "flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-300",
         "hover:scale-105 active:scale-95",
