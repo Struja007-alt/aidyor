@@ -16,7 +16,7 @@ import {
   type DexPair 
 } from "@/lib/api/dexscreener";
 
-export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP";
+export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
 type ScanMode = "address" | "screenshot";
 
