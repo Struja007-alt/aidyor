@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, Shield, AlertTriangle, Info, Calculator, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Shield, AlertTriangle, Info, Calculator, Eye, EyeOff, Zap, Search, CheckCircle, XCircle } from "lucide-react";
 
 const Transparency = () => {
   return (
@@ -337,6 +337,237 @@ const Transparency = () => {
                   Our Telegram Game Checker uses crowdsourced data about game legitimacy, 
                   which may not always be up-to-date.
                 </p>
+              </div>
+            </div>
+          </section>
+
+          {/* Detection Logic */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className="w-6 h-6 text-primary" />
+              <h2 className="text-2xl font-semibold">Detection Logic Explained</h2>
+            </div>
+            
+            <p className="text-muted-foreground mb-6">
+              Here is exactly how our scanner identifies potential threats and red flags:
+            </p>
+
+            {/* Scanning Process */}
+            <div className="bg-card border border-border rounded-xl p-6 mb-6">
+              <h3 className="text-xl font-semibold mb-4 text-primary flex items-center gap-2">
+                <Search className="w-5 h-5" />
+                Scanning Process Flow
+              </h3>
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-primary font-bold">1</div>
+                  <div>
+                    <strong className="text-foreground">Input Recognition</strong>
+                    <p className="text-sm text-muted-foreground">
+                      Accepts contract addresses (0x... for EVM, base58 for Solana), token names, or screenshots containing addresses.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-primary font-bold">2</div>
+                  <div>
+                    <strong className="text-foreground">Multi-Chain Query</strong>
+                    <p className="text-sm text-muted-foreground">
+                      Simultaneously queries DEXScreener across all supported networks (ETH, BSC, Solana, Polygon, Avalanche, Base, Arbitrum, Optimism).
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-primary font-bold">3</div>
+                  <div>
+                    <strong className="text-foreground">Security API Fetch</strong>
+                    <p className="text-sm text-muted-foreground">
+                      For each found token, fetches security data from GoPlus (EVM chains) or SolanaFM (Solana) to analyze contract safety.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-primary font-bold">4</div>
+                  <div>
+                    <strong className="text-foreground">Score Calculation</strong>
+                    <p className="text-sm text-muted-foreground">
+                      Combines market data (60%) and security analysis (40%) into a weighted risk score from 0-100.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-primary font-bold">5</div>
+                  <div>
+                    <strong className="text-foreground">Result Classification</strong>
+                    <p className="text-sm text-muted-foreground">
+                      Multi-chain results are classified as "original" (highest liquidity), "bridged" (cross-chain version), or "suspicious" (low liquidity/high risk).
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Threat Detection */}
+            <div className="bg-card border border-border rounded-xl p-6 mb-6">
+              <h3 className="text-xl font-semibold mb-4 text-danger flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                Threat Detection Methods
+              </h3>
+              <div className="space-y-6">
+                
+                <div className="border-l-4 border-danger pl-4">
+                  <h4 className="font-semibold text-foreground mb-2">Honeypot Detection</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    GoPlus API simulates buy and sell transactions to detect if selling is blocked:
+                  </p>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-danger shrink-0" />
+                      Sell function reverts or fails
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-danger shrink-0" />
+                      Hidden transfer restrictions in code
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-danger shrink-0" />
+                      Blacklist functions that block sellers
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="border-l-4 border-danger pl-4">
+                  <h4 className="font-semibold text-foreground mb-2">Rug Pull Indicators</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Multiple signals that suggest potential rug pull risk:
+                  </p>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-danger shrink-0" />
+                      Unlocked or low liquidity (&lt;$10K)
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-danger shrink-0" />
+                      Owner can mint unlimited tokens
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-danger shrink-0" />
+                      Hidden owner or reclaim ownership functions
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-danger shrink-0" />
+                      Few holders with concentrated supply
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="border-l-4 border-warning pl-4">
+                  <h4 className="font-semibold text-foreground mb-2">Tax Manipulation</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Detects excessive or modifiable transaction taxes:
+                  </p>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                      Buy/sell tax exceeding 10%
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                      Modifiable tax functions in contract
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                      Asymmetric taxes (high sell, low buy)
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="border-l-4 border-warning pl-4">
+                  <h4 className="font-semibold text-foreground mb-2">Suspicious Activity Patterns</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Market behavior that may indicate manipulation:
+                  </p>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                      Extreme sell pressure (buy/sell ratio &lt;0.3)
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                      Very low transaction count (&lt;20 in 24h)
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                      Severe price drops (&gt;30% in 24h)
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Positive Signals */}
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h3 className="text-xl font-semibold mb-4 text-safe flex items-center gap-2">
+                <CheckCircle className="w-5 h-5" />
+                Positive Signals Detected
+              </h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">Verified Contract</strong>
+                    <p className="text-xs text-muted-foreground">Source code published on block explorer</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">High Liquidity</strong>
+                    <p className="text-xs text-muted-foreground">$100K+ locked in trading pools</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">Active Trading</strong>
+                    <p className="text-xs text-muted-foreground">100+ transactions in 24 hours</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">Healthy Holder Count</strong>
+                    <p className="text-xs text-muted-foreground">1,000+ unique token holders</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">Low Taxes</strong>
+                    <p className="text-xs text-muted-foreground">Buy/sell tax under 5%</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">Social Presence</strong>
+                    <p className="text-xs text-muted-foreground">Verified website and social links</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">Not a Honeypot</strong>
+                    <p className="text-xs text-muted-foreground">Sell transactions confirmed possible</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-safe mt-0.5 shrink-0" />
+                  <div>
+                    <strong className="text-foreground text-sm">Balanced Trading</strong>
+                    <p className="text-xs text-muted-foreground">Healthy buy/sell ratio (0.7-1.5)</p>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
