@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, ArrowRightLeft } from "lucide-react";
+import { Clipboard, Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, ArrowRightLeft, FileText } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { NetworkBadge } from "./NetworkBadge";
 import { RiskGauge } from "./RiskGauge";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
+import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
 import { 
   searchTokens, 
@@ -69,8 +70,76 @@ export const TokenScanner = () => {
   // Screenshot state
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [extractedAddresses, setExtractedAddresses] = useState<string[]>([]);
 
   const { addToken, isInWatchlist } = useWatchlist();
+
+  // Contract address patterns for OCR extraction
+  const ADDRESS_PATTERNS = {
+    ethereum: /0x[a-fA-F0-9]{40}/g,
+    tron: /T[A-Za-z1-9]{33}/g,
+  };
+
+  const extractAddressesFromText = useCallback((text: string): string[] => {
+    const addresses = new Set<string>();
+    
+    // Extract Ethereum-style addresses
+    const ethMatches = text.match(ADDRESS_PATTERNS.ethereum);
+    if (ethMatches) {
+      ethMatches.forEach(addr => addresses.add(addr));
+    }
+    
+    // Extract Solana addresses (Base58, 32-44 chars)
+    const words = text.split(/\s+/);
+    words.forEach(word => {
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(word)) {
+        if (word.length >= 40 && !/^[A-Za-z]+$/.test(word)) {
+          addresses.add(word);
+        }
+      }
+    });
+    
+    // Extract Tron addresses
+    const tronMatches = text.match(ADDRESS_PATTERNS.tron);
+    if (tronMatches) {
+      tronMatches.forEach(addr => addresses.add(addr));
+    }
+    
+    return Array.from(addresses);
+  }, []);
+
+  const performOCR = async (imageData: string): Promise<string[]> => {
+    try {
+      setIsOcrProcessing(true);
+      setOcrProgress(0);
+      
+      const worker = await createWorker('eng', 1, {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            setOcrProgress(Math.round(m.progress * 100));
+          }
+        },
+      });
+      
+      const { data: { text } } = await worker.recognize(imageData);
+      await worker.terminate();
+      
+      console.log("OCR Text:", text);
+      
+      const addresses = extractAddressesFromText(text);
+      setExtractedAddresses(addresses);
+      
+      return addresses;
+    } catch (error) {
+      console.error("OCR Error:", error);
+      toast.error("Failed to process image");
+      return [];
+    } finally {
+      setIsOcrProcessing(false);
+    }
+  };
 
   // Check if input looks like a contract address
   const isContractAddress = useCallback((query: string): boolean => {
@@ -307,13 +376,36 @@ export const TokenScanner = () => {
     }
   };
 
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) return;
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
+      return;
+    }
     
     const reader = new FileReader();
-    reader.onload = (e) => {
-      setUploadedImage(e.target?.result as string);
-      toast.info("Screenshot uploaded - paste the contract address to scan");
+    reader.onload = async (e) => {
+      const imageData = e.target?.result as string;
+      setUploadedImage(imageData);
+      setExtractedAddresses([]);
+      
+      // Auto-run OCR to extract addresses
+      toast.info("Analyzing screenshot for contract addresses...");
+      const addresses = await performOCR(imageData);
+      
+      if (addresses.length > 0) {
+        const firstAddress = addresses[0];
+        setTokenQuery(firstAddress);
+        setDisplayAddress(firstAddress);
+        toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}! Auto-scanning first one...`);
+        
+        // Auto-trigger scan with the first extracted address
+        setTimeout(() => handleScanWithAddress(firstAddress), 300);
+      } else {
+        toast.warning("No contract addresses found. Try pasting manually.");
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read image file");
     };
     reader.readAsDataURL(file);
   };
@@ -324,6 +416,9 @@ export const TokenScanner = () => {
     setSelectedResult(null);
     setTokenInfo(null);
     setDisplayAddress("");
+    setTokenQuery("");
+    setExtractedAddresses([]);
+    setOcrProgress(0);
   };
 
   const formatCurrency = (value: number) => {
@@ -570,7 +665,7 @@ export const TokenScanner = () => {
             </button>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
-            Upload a screenshot, then paste the contract address you see
+            Upload a screenshot and we'll automatically extract contract addresses using OCR
           </p>
 
           {!uploadedImage ? (
@@ -602,6 +697,9 @@ export const TokenScanner = () => {
               <p className="text-sm text-muted-foreground">
                 or click to browse files
               </p>
+              <p className="text-xs text-primary mt-3">
+                📸 OCR enabled - Contract addresses will be extracted and scanned automatically
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -617,27 +715,79 @@ export const TokenScanner = () => {
                 >
                   <X className="w-4 h-4 text-foreground" />
                 </button>
+                
+                {/* OCR Processing Overlay */}
+                {isOcrProcessing && (
+                  <div className="absolute inset-0 bg-background/80 backdrop-blur flex flex-col items-center justify-center">
+                    <div className="scan-line" />
+                    <Loader2 className="w-12 h-12 text-primary animate-spin mb-2" />
+                    <p className="font-display text-primary text-sm">OCR PROCESSING... {ocrProgress}%</p>
+                    <p className="text-xs text-muted-foreground mt-1">Extracting contract addresses</p>
+                  </div>
+                )}
               </div>
               
-              {/* Address input for screenshot mode */}
-              <div className="flex gap-3">
-                <Input
-                  placeholder="Paste the contract address from screenshot..."
-                  value={tokenQuery}
-                  onChange={(e) => {
-                    setTokenQuery(e.target.value);
-                    setDisplayAddress(e.target.value);
-                  }}
-                  className="flex-1 bg-secondary/50 border-border/50 h-12 font-mono text-sm"
-                />
-                <Button 
-                  onClick={handleScan}
-                  disabled={!tokenQuery || isScanning}
-                  className="h-12 px-6 bg-primary hover:bg-primary/90"
-                >
-                  {isScanning ? <Scan className="w-5 h-5 animate-spin" /> : "SCAN"}
-                </Button>
-              </div>
+              {/* Extracted Addresses Section */}
+              {extractedAddresses.length > 0 && !isOcrProcessing && (
+                <div className="p-4 rounded-xl border border-primary/30 bg-primary/5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileText className="w-4 h-4 text-primary" />
+                    <h4 className="font-display text-sm text-primary uppercase">
+                      Extracted Addresses ({extractedAddresses.length})
+                    </h4>
+                  </div>
+                  <div className="space-y-2">
+                    {extractedAddresses.map((address, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setTokenQuery(address);
+                          setDisplayAddress(address);
+                          handleScanWithAddress(address);
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between gap-2 p-2 rounded-lg bg-background/50 border border-border/50 hover:border-primary/50 transition-colors text-left",
+                          tokenQuery === address && "border-primary bg-primary/10"
+                        )}
+                      >
+                        <code className="text-xs text-foreground font-mono truncate flex-1">
+                          {address}
+                        </code>
+                        <span className="text-xs text-primary shrink-0">
+                          {tokenQuery === address ? "Selected" : "Tap to scan"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Manual Address Input (fallback) */}
+              {!isOcrProcessing && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {extractedAddresses.length > 0 ? "Or enter address manually:" : "No addresses found. Enter manually:"}
+                  </p>
+                  <div className="flex gap-3">
+                    <Input
+                      placeholder="Paste contract address..."
+                      value={tokenQuery}
+                      onChange={(e) => {
+                        setTokenQuery(e.target.value);
+                        setDisplayAddress(e.target.value);
+                      }}
+                      className="flex-1 bg-secondary/50 border-border/50 h-12 font-mono text-sm"
+                    />
+                    <Button 
+                      onClick={handleScan}
+                      disabled={!tokenQuery || isScanning}
+                      className="h-12 px-6 bg-primary hover:bg-primary/90"
+                    >
+                      {isScanning ? <Scan className="w-5 h-5 animate-spin" /> : "SCAN"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
