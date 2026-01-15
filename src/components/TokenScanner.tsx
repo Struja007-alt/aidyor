@@ -353,8 +353,8 @@ export const TokenScanner = () => {
                 : "bg-secondary/30 text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
             )}
           >
-            <Clipboard className="w-5 h-5" />
-            Paste Token Address
+            <Search className="w-5 h-5" />
+            Search Token
           </button>
           <button
             onClick={() => { setScanMode("screenshot"); resetScan(); }}
@@ -374,118 +374,118 @@ export const TokenScanner = () => {
       {/* Paste Token Address Mode */}
       {scanMode === "address" && (
         <div className="glass-card p-6 animate-fade-in">
-          <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
-            <Globe className="w-5 h-5 text-primary" />
-            Multi-Chain Token Search
-          </h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Paste a contract address or search by token name
-          </p>
-          
           <div className="space-y-4">
-            {/* Search Input */}
-            <div className="flex gap-3">
-              <div className="flex-1 relative">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      placeholder="Paste contract address or search token name..."
-                      value={tokenQuery}
-                      onChange={(e) => {
-                        setTokenQuery(e.target.value);
-                        setScanResults([]);
-                        setSelectedResult(null);
-                      }}
-                      onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
-                        e.preventDefault();
-                        const pastedText = e.clipboardData.getData('text').trim();
-                        setTokenQuery(pastedText);
-                        setDisplayAddress(pastedText);
-                      }}
-                      onFocus={() => tokenQuery.length >= 2 && !isContractAddress(tokenQuery) && setShowSuggestions(suggestions.length > 0)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                      className="flex-1 bg-secondary/50 border-border/50 focus:border-primary/50 h-12 text-foreground placeholder:text-muted-foreground font-mono text-sm"
-                    />
-                    {isSearching && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={async () => {
-                      try {
-                        const text = await navigator.clipboard.readText();
-                        setTokenQuery(text.trim());
-                        setDisplayAddress(text.trim());
-                      } catch (err) {
-                        console.error('Failed to read clipboard');
-                      }
-                    }}
-                    className="h-12 px-3 border-border/50 hover:bg-secondary/50"
-                    title="Paste from clipboard"
-                  >
-                    <Clipboard className="w-5 h-5" />
-                  </Button>
-                </div>
-                
-                {/* Real-time Suggestions Dropdown */}
-                {showSuggestions && (
-                  <div className="absolute z-50 w-full mt-1 bg-card border border-border/50 rounded-lg shadow-xl overflow-hidden max-h-80 overflow-y-auto">
-                    {suggestions.map((pair, index) => (
-                      <button
-                        key={`${pair.chainId}-${pair.pairAddress}-${index}`}
-                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
-                        onMouseDown={() => handleSelectSuggestion(pair)}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          {pair.info?.imageUrl && (
-                            <img 
-                              src={pair.info.imageUrl} 
-                              alt={pair.baseToken.symbol}
-                              className="w-8 h-8 rounded-full bg-secondary"
-                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-foreground truncate">{pair.baseToken.name}</span>
-                              <span className="text-muted-foreground">({pair.baseToken.symbol})</span>
-                            </div>
-                            <p className="text-xs text-muted-foreground font-mono truncate">
-                              {truncateAddress(pair.baseToken.address)}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-2">
-                          <span className="text-xs px-2 py-1 rounded bg-secondary/50 text-muted-foreground">
-                            {chainIdToNetwork[pair.chainId] || pair.chainId}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+            {/* Unified Smart Search Input */}
+            <div className="relative">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Input
+                  placeholder="Paste contract address or type token name..."
+                  value={tokenQuery}
+                  onChange={(e) => {
+                    setTokenQuery(e.target.value);
+                    setScanResults([]);
+                    setSelectedResult(null);
+                  }}
+                  onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
+                    e.preventDefault();
+                    const pastedText = e.clipboardData.getData('text').trim();
+                    setTokenQuery(pastedText);
+                    setDisplayAddress(pastedText);
+                    // Auto-scan if it's a contract address
+                    if (isContractAddress(pastedText)) {
+                      setTimeout(() => handleScanWithAddress(pastedText), 100);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && tokenQuery) {
+                      handleScan();
+                    }
+                  }}
+                  onFocus={() => tokenQuery.length >= 2 && !isContractAddress(tokenQuery) && setShowSuggestions(suggestions.length > 0)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  className="w-full bg-secondary/50 border-border/50 focus:border-primary/50 h-14 pl-12 pr-24 text-foreground placeholder:text-muted-foreground text-base"
+                />
+                {isSearching && (
+                  <Loader2 className="absolute right-20 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground animate-spin" />
                 )}
+                <Button 
+                  onClick={handleScan}
+                  disabled={!tokenQuery || isScanning}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-10 px-4 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
+                >
+                  {isScanning ? (
+                    <Scan className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <Scan className="w-4 h-4 mr-2" />
+                      SCAN
+                    </>
+                  )}
+                </Button>
               </div>
-              <Button 
-                onClick={handleScan}
-                disabled={!tokenQuery || isScanning}
-                className="h-12 px-6 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
-              >
-                {isScanning ? (
-                  <Scan className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Scan className="w-5 h-5 mr-2" />
-                    SCAN
-                  </>
-                )}
-              </Button>
+              
+              {/* Input Type Indicator */}
+              {tokenQuery && (
+                <div className="absolute -bottom-5 left-0">
+                  <span className="text-xs text-muted-foreground">
+                    {isContractAddress(tokenQuery) ? (
+                      <span className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        Contract address detected
+                      </span>
+                    ) : tokenQuery.length >= 2 ? (
+                      <span className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                        Searching tokens...
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              )}
+              
+              {/* Real-time Suggestions Dropdown */}
+              {showSuggestions && (
+                <div className="absolute z-50 w-full mt-1 bg-card border border-border/50 rounded-lg shadow-xl overflow-hidden max-h-80 overflow-y-auto">
+                  {suggestions.map((pair, index) => (
+                    <button
+                      key={`${pair.chainId}-${pair.pairAddress}-${index}`}
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
+                      onMouseDown={() => handleSelectSuggestion(pair)}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {pair.info?.imageUrl && (
+                          <img 
+                            src={pair.info.imageUrl} 
+                            alt={pair.baseToken.symbol}
+                            className="w-8 h-8 rounded-full bg-secondary"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground truncate">{pair.baseToken.name}</span>
+                            <span className="text-muted-foreground">({pair.baseToken.symbol})</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground font-mono truncate">
+                            {truncateAddress(pair.baseToken.address)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-xs px-2 py-1 rounded bg-secondary/50 text-muted-foreground">
+                          {chainIdToNetwork[pair.chainId] || pair.chainId}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Display Contract Address Prominently */}
-            {displayAddress && isContractAddress(displayAddress) && (
-              <div className="p-4 rounded-lg bg-secondary/30 border border-border/50">
+            {displayAddress && isContractAddress(displayAddress) && !isScanning && scanResults.length === 0 && (
+              <div className="p-4 rounded-lg bg-secondary/30 border border-border/50 mt-8">
                 <p className="text-xs text-muted-foreground mb-1">Contract Address</p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 font-mono text-sm text-foreground break-all">
