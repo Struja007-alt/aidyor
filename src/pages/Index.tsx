@@ -95,12 +95,20 @@ const Index = () => {
               <p className="text-sm text-muted-foreground text-center">
                 Always DYOR. This tool provides analysis but not financial advice.
               </p>
-              <a 
-                href="/privacy-policy" 
-                className="text-sm text-primary hover:underline"
-              >
-                Privacy Policy
-              </a>
+              <div className="flex items-center gap-4">
+                <a 
+                  href="/privacy-policy" 
+                  className="text-sm text-primary hover:underline"
+                >
+                  Privacy Policy
+                </a>
+                <a 
+                  href="/terms-of-service" 
+                  className="text-sm text-primary hover:underline"
+                >
+                  Terms of Service
+                </a>
+              </div>
             </div>
           </div>
         </footer>
