@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent } from "react";
-import { Clipboard, Loader2, Star } from "lucide-react";
+import { Clipboard, Loader2, Star, Upload, Image, X } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX";
+
+type ScanMode = "address" | "screenshot";
 
 interface RiskFactor {
   name: string;
@@ -71,6 +73,7 @@ const mockTokenDatabase: TokenSuggestion[] = [
 const ALL_NETWORKS: Network[] = ["ETH", "BSC", "SOL", "POLYGON", "AVAX"];
 
 export const TokenScanner = () => {
+  const [scanMode, setScanMode] = useState<ScanMode>("address");
   const [tokenQuery, setTokenQuery] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [scanResults, setScanResults] = useState<NetworkResult[]>([]);
@@ -80,6 +83,10 @@ export const TokenScanner = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedResult, setSelectedResult] = useState<NetworkResult | null>(null);
+  
+  // Screenshot state
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Debounced search for real-time suggestions
   const searchTokens = useCallback((query: string) => {
@@ -93,14 +100,12 @@ export const TokenScanner = () => {
     
     setTimeout(() => {
       const lowerQuery = query.toLowerCase();
-      // Get unique tokens by name (not by address)
       const filtered = mockTokenDatabase.filter(
         token =>
           token.name.toLowerCase().includes(lowerQuery) ||
           token.symbol.toLowerCase().includes(lowerQuery)
       );
       
-      // Deduplicate by name/symbol for cleaner suggestions
       const uniqueTokens = filtered.reduce((acc, token) => {
         const key = `${token.name}-${token.symbol}`;
         if (!acc.find(t => `${t.name}-${t.symbol}` === key)) {
@@ -137,7 +142,6 @@ export const TokenScanner = () => {
     setScanResults([]);
     setSelectedResult(null);
     
-    // Find all matching tokens across networks
     const lowerQuery = tokenQuery.toLowerCase();
     const matchingTokens = mockTokenDatabase.filter(
       token =>
@@ -146,15 +150,12 @@ export const TokenScanner = () => {
         token.address.toLowerCase() === lowerQuery
     );
 
-    // Simulate scanning delay
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Generate results for networks where token is found
     const results: NetworkResult[] = ALL_NETWORKS.map(network => {
       const tokenOnNetwork = matchingTokens.find(t => t.network === network);
       
       if (tokenOnNetwork) {
-        // Token found on this network
         const riskScore = Math.floor(Math.random() * 60) + 30;
         return {
           network,
@@ -177,7 +178,6 @@ export const TokenScanner = () => {
       return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "" };
     });
 
-    // Set token name from first found result
     if (matchingTokens.length > 0) {
       setTokenName(matchingTokens[0].name);
       setTokenSymbol(matchingTokens[0].symbol);
@@ -188,7 +188,6 @@ export const TokenScanner = () => {
 
     setScanResults(results);
     
-    // Auto-select the best (safest) result
     const foundResults = results.filter(r => r.found);
     if (foundResults.length > 0) {
       const safest = foundResults.reduce((a, b) => a.riskScore > b.riskScore ? a : b);
@@ -196,6 +195,106 @@ export const TokenScanner = () => {
     }
     
     setIsScanning(false);
+  };
+
+  // Screenshot handlers
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDragIn = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragOut = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+  }, []);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+  };
+
+  const handleFile = (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadedImage(e.target?.result as string);
+      analyzeScreenshot();
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const analyzeScreenshot = () => {
+    setIsScanning(true);
+    setScanResults([]);
+    setSelectedResult(null);
+    
+    setTimeout(() => {
+      // Randomly select a token for demo purposes
+      const randomToken = mockTokenDatabase[Math.floor(Math.random() * mockTokenDatabase.length)];
+      const riskScore = Math.floor(Math.random() * 60) + 30;
+      
+      setTokenName(randomToken.name);
+      setTokenSymbol(randomToken.symbol);
+      
+      const results: NetworkResult[] = ALL_NETWORKS.map(network => {
+        if (network === randomToken.network) {
+          return {
+            network,
+            found: true,
+            riskScore,
+            address: randomToken.address,
+            marketData: {
+              price: Math.random() * 100,
+              change24h: (Math.random() - 0.5) * 40,
+              marketCap: Math.random() * 10000000000,
+              volume24h: Math.random() * 500000000,
+            },
+            riskFactors: mockRiskFactors.map(f => ({
+              ...f,
+              status: Math.random() > 0.7 ? "warning" : Math.random() > 0.5 ? "safe" : f.status,
+            })) as RiskFactor[],
+          };
+        }
+        return { network, found: false, riskScore: 0, marketData: null, riskFactors: [], address: "" };
+      });
+
+      setScanResults(results);
+      const foundResult = results.find(r => r.found);
+      if (foundResult) {
+        setSelectedResult(foundResult);
+      }
+      
+      setIsScanning(false);
+    }, 2500);
+  };
+
+  const clearUpload = () => {
+    setUploadedImage(null);
+    setScanResults([]);
+    setSelectedResult(null);
+    setTokenName("");
+    setTokenSymbol("");
   };
 
   const formatCurrency = (value: number) => {
@@ -231,99 +330,200 @@ export const TokenScanner = () => {
     toast.success(`${tokenName} added to watchlist!`);
   };
 
+  const resetScan = () => {
+    setScanResults([]);
+    setSelectedResult(null);
+    setTokenName("");
+    setTokenSymbol("");
+    setTokenQuery("");
+    setUploadedImage(null);
+  };
+
   return (
     <div className="space-y-6">
-
-      {/* Token Search Input */}
-      <div className="glass-card p-6">
-        <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
-          <Globe className="w-5 h-5 text-primary" />
-          Multi-Chain Token Search
-        </h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Enter a token name and we'll scan all networks automatically
-        </p>
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  placeholder="Search token name (e.g., Pepe, Shiba, Floki)..."
-                  value={tokenQuery}
-                  onChange={(e) => {
-                    setTokenQuery(e.target.value);
-                    setScanResults([]);
-                    setSelectedResult(null);
-                  }}
-                  onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
-                    e.preventDefault();
-                    const pastedText = e.clipboardData.getData('text').trim();
-                    setTokenQuery(pastedText);
-                  }}
-                  onFocus={() => tokenQuery.length >= 2 && setShowSuggestions(suggestions.length > 0)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  className="flex-1 bg-secondary/50 border-border/50 focus:border-primary/50 h-12 text-foreground placeholder:text-muted-foreground pr-10"
-                />
-                {isSearching && (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    const text = await navigator.clipboard.readText();
-                    setTokenQuery(text.trim());
-                  } catch (err) {
-                    console.error('Failed to read clipboard');
-                  }
-                }}
-                className="h-12 px-3 border-border/50 hover:bg-secondary/50"
-                title="Paste from clipboard"
-              >
-                <Clipboard className="w-5 h-5" />
-              </Button>
-            </div>
-            
-            {/* Real-time Suggestions Dropdown */}
-            {showSuggestions && (
-              <div className="absolute z-50 w-full mt-1 bg-card border border-border/50 rounded-lg shadow-xl overflow-hidden">
-                {suggestions.map((suggestion, index) => (
-                  <button
-                    key={index}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
-                    onMouseDown={() => handleSelectSuggestion(suggestion)}
-                  >
-                    <div>
-                      <span className="font-medium text-foreground">{suggestion.name}</span>
-                      <span className="text-muted-foreground ml-2">({suggestion.symbol})</span>
-                    </div>
-                    <Search className="w-4 h-4 text-muted-foreground" />
-                  </button>
-                ))}
-              </div>
+      {/* Scan Mode Selector */}
+      <div className="glass-card p-2">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => { setScanMode("address"); resetScan(); }}
+            className={cn(
+              "flex items-center justify-center gap-3 p-4 rounded-lg font-display text-sm transition-all",
+              scanMode === "address"
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary/30 text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
             )}
-            <p className="text-xs text-muted-foreground mt-2">
-              Type at least 2 characters to search • Scans ETH, BSC, SOL, POLYGON, AVAX
-            </p>
-          </div>
-          <Button 
-            onClick={handleScan}
-            disabled={!tokenQuery || isScanning}
-            className="h-12 px-6 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
           >
-            {isScanning ? (
-              <Scan className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                <Scan className="w-5 h-5 mr-2" />
-                SCAN ALL
-              </>
+            <Clipboard className="w-5 h-5" />
+            Paste Token Address
+          </button>
+          <button
+            onClick={() => { setScanMode("screenshot"); resetScan(); }}
+            className={cn(
+              "flex items-center justify-center gap-3 p-4 rounded-lg font-display text-sm transition-all",
+              scanMode === "screenshot"
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary/30 text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
             )}
-          </Button>
+          >
+            <Upload className="w-5 h-5" />
+            Upload Screenshot
+          </button>
         </div>
       </div>
+
+      {/* Paste Token Address Mode */}
+      {scanMode === "address" && (
+        <div className="glass-card p-6 animate-fade-in">
+          <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+            <Globe className="w-5 h-5 text-primary" />
+            Multi-Chain Token Search
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Paste a token address or name to scan all networks automatically
+          </p>
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    placeholder="Paste token address or name..."
+                    value={tokenQuery}
+                    onChange={(e) => {
+                      setTokenQuery(e.target.value);
+                      setScanResults([]);
+                      setSelectedResult(null);
+                    }}
+                    onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
+                      e.preventDefault();
+                      const pastedText = e.clipboardData.getData('text').trim();
+                      setTokenQuery(pastedText);
+                    }}
+                    onFocus={() => tokenQuery.length >= 2 && setShowSuggestions(suggestions.length > 0)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    className="flex-1 bg-secondary/50 border-border/50 focus:border-primary/50 h-12 text-foreground placeholder:text-muted-foreground pr-10"
+                  />
+                  {isSearching && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      setTokenQuery(text.trim());
+                    } catch (err) {
+                      console.error('Failed to read clipboard');
+                    }
+                  }}
+                  className="h-12 px-3 border-border/50 hover:bg-secondary/50"
+                  title="Paste from clipboard"
+                >
+                  <Clipboard className="w-5 h-5" />
+                </Button>
+              </div>
+              
+              {/* Real-time Suggestions Dropdown */}
+              {showSuggestions && (
+                <div className="absolute z-50 w-full mt-1 bg-card border border-border/50 rounded-lg shadow-xl overflow-hidden">
+                  {suggestions.map((suggestion, index) => (
+                    <button
+                      key={index}
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/30 last:border-b-0"
+                      onMouseDown={() => handleSelectSuggestion(suggestion)}
+                    >
+                      <div>
+                        <span className="font-medium text-foreground">{suggestion.name}</span>
+                        <span className="text-muted-foreground ml-2">({suggestion.symbol})</span>
+                      </div>
+                      <Search className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Scans ETH, BSC, SOL, POLYGON, AVAX networks automatically
+              </p>
+            </div>
+            <Button 
+              onClick={handleScan}
+              disabled={!tokenQuery || isScanning}
+              className="h-12 px-6 bg-primary hover:bg-primary/90 text-primary-foreground font-display"
+            >
+              {isScanning ? (
+                <Scan className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <Scan className="w-5 h-5 mr-2" />
+                  SCAN
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Screenshot Mode */}
+      {scanMode === "screenshot" && (
+        <div className="glass-card p-6 animate-fade-in">
+          <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+            <Image className="w-5 h-5 text-primary" />
+            Screenshot Analyzer
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Upload a token transfer screenshot for automatic analysis
+          </p>
+
+          {!uploadedImage ? (
+            <div
+              onDragEnter={handleDragIn}
+              onDragLeave={handleDragOut}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              className={cn(
+                "relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300",
+                isDragging 
+                  ? "border-primary bg-primary/5" 
+                  : "border-border/50 hover:border-border"
+              )}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileInput}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <Upload className={cn(
+                "w-12 h-12 mx-auto mb-4 transition-colors",
+                isDragging ? "text-primary" : "text-muted-foreground"
+              )} />
+              <p className="font-medium text-foreground mb-1">
+                {isDragging ? "Drop your screenshot here" : "Drag & drop screenshot"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                or click to browse files
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="relative rounded-xl overflow-hidden border border-border/50">
+                <img 
+                  src={uploadedImage} 
+                  alt="Uploaded screenshot" 
+                  className="w-full h-48 object-cover"
+                />
+                <button
+                  onClick={clearUpload}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-background/80 backdrop-blur flex items-center justify-center hover:bg-background transition-colors"
+                >
+                  <X className="w-4 h-4 text-foreground" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Scanning Animation */}
       {isScanning && (
@@ -331,7 +531,9 @@ export const TokenScanner = () => {
           <div className="scan-line" />
           <div className="flex flex-col items-center justify-center">
             <Scan className="w-16 h-16 text-primary animate-scan mb-4" />
-            <p className="font-display text-primary animate-pulse">SCANNING ALL NETWORKS...</p>
+            <p className="font-display text-primary animate-pulse">
+              {scanMode === "screenshot" ? "ANALYZING IMAGE..." : "SCANNING ALL NETWORKS..."}
+            </p>
             <div className="flex gap-2 mt-4">
               {ALL_NETWORKS.map((network) => (
                 <NetworkBadge key={network} network={network} selected={false} />
@@ -433,41 +635,43 @@ export const TokenScanner = () => {
                   ))}
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Market Data */}
-          {selectedResult?.marketData && (
-            <div className="glass-card p-6 animate-fade-in" style={{ animationDelay: '200ms' }}>
-              <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
-                <svg className="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                </svg>
-                Market Data ({selectedResult.network})
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Price</p>
-                  <p className="font-display text-xl text-foreground">{formatCurrency(selectedResult.marketData.price)}</p>
+              {/* Market Data */}
+              {selectedResult.marketData && (
+                <div className="glass-card p-6 md:col-span-2">
+                  <h3 className="font-display text-lg text-foreground mb-4">Market Data</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">Price</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatCurrency(selectedResult.marketData.price)}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">24h Change</p>
+                      <p className={cn(
+                        "font-display text-lg",
+                        selectedResult.marketData.change24h >= 0 ? "text-safe" : "text-danger"
+                      )}>
+                        {selectedResult.marketData.change24h >= 0 ? "+" : ""}
+                        {selectedResult.marketData.change24h.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">Market Cap</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatCurrency(selectedResult.marketData.marketCap)}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">24h Volume</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatCurrency(selectedResult.marketData.volume24h)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">24h Change</p>
-                  <p className={cn(
-                    "font-display text-xl",
-                    selectedResult.marketData.change24h >= 0 ? "text-safe" : "text-danger"
-                  )}>
-                    {selectedResult.marketData.change24h >= 0 ? '+' : ''}{selectedResult.marketData.change24h.toFixed(2)}%
-                  </p>
-                </div>
-                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Market Cap</p>
-                  <p className="font-display text-xl text-foreground">{formatCurrency(selectedResult.marketData.marketCap)}</p>
-                </div>
-                <div className="bg-secondary/30 border border-border/30 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Volume 24h</p>
-                  <p className="font-display text-xl text-foreground">{formatCurrency(selectedResult.marketData.volume24h)}</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
