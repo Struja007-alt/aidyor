@@ -365,7 +365,7 @@ export const TokenScanner = () => {
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
-                    placeholder="Paste contract address or type token name..."
+                    placeholder="Address or token name..."
                     value={tokenQuery}
                     onChange={(e) => {
                       setTokenQuery(e.target.value);
