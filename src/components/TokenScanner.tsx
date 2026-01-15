@@ -28,7 +28,12 @@ import {
   analyzeLockSecurity,
   type LockInfo,
 } from "@/lib/api/unicrypt";
+import {
+  analyzePumpDump,
+  type PumpDumpAnalysis,
+} from "@/lib/api/pumpDump";
 import { LockStatusBadge } from "./LockStatusBadge";
+import { PumpDumpBadge } from "./PumpDumpBadge";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -71,6 +76,7 @@ interface NetworkResult {
   tokenStatus: "original" | "bridged" | "suspicious";
   securityData?: SecurityData;
   lockInfo?: LockInfo;
+  pumpDumpAnalysis?: PumpDumpAnalysis;
 }
 
 interface TokenInfo {
@@ -527,6 +533,7 @@ export const TokenScanner = () => {
             riskFactors: allFactors,
             securityData,
             lockInfo: tokenLockInfo,
+            pumpDumpAnalysis: analyzePumpDump(chainPairs),
             // Temp values for status calculation
             _liquidity: liquidity,
             _volume: volume24h,
@@ -1378,9 +1385,13 @@ export const TokenScanner = () => {
                               )}
                             </>
                           )}
+                          {/* Pump/Dump Badge */}
+                          <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
                         </div>
                       </div>
-                      {result.found && getTokenStatusBadge(result.tokenStatus)}
+                      <div className="flex items-center gap-2">
+                        {result.found && getTokenStatusBadge(result.tokenStatus)}
+                      </div>
                     </div>
                     {result.found && (
                       <div className="flex items-center justify-between">
@@ -1478,6 +1489,17 @@ export const TokenScanner = () => {
                   </Button>
                 </div>
               </div>
+
+              {/* Pump/Dump Analysis */}
+              {selectedResult.pumpDumpAnalysis && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-primary" />
+                    Pump/Dump Detection
+                  </h3>
+                  <PumpDumpBadge analysis={selectedResult.pumpDumpAnalysis} showDetails />
+                </div>
+              )}
 
               {/* Risk Factors */}
               <div className="glass-card p-6">
