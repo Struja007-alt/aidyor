@@ -108,6 +108,12 @@ const Index = () => {
                 >
                   Terms of Service
                 </a>
+                <a 
+                  href="/cookie-policy" 
+                  className="text-sm text-primary hover:underline"
+                >
+                  Cookie Policy
+                </a>
               </div>
             </div>
           </div>
