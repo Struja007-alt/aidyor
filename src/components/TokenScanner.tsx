@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, ClipboardEvent, useRef } from "react";
-import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Twitter } from "lucide-react";
+import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Twitter, Info } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RiskGauge } from "./RiskGauge";
+import { RiskFactorTooltip } from "./RiskFactorTooltip";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
 import { createWorker } from "tesseract.js";
@@ -740,28 +741,33 @@ export const TokenScanner = () => {
     setOcrProgress(0);
   };
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = useCallback((value: number) => {
     if (value >= 1000000000) return `$${(value / 1000000000).toFixed(2)}B`;
     if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
     if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`;
     if (value >= 1) return `$${value.toFixed(2)}`;
     if (value >= 0.0001) return `$${value.toFixed(4)}`;
     return `$${value.toFixed(8)}`;
-  };
+  }, []);
 
-  const formatPrice = (value: number) => {
+  const formatPrice = useCallback((value: number) => {
     if (value >= 1) return `$${value.toFixed(2)}`;
     if (value >= 0.0001) return `$${value.toFixed(6)}`;
     return `$${value.toFixed(10)}`;
-  };
+  }, []);
 
-  const getStatusIcon = (status: RiskFactor["status"]) => {
+  // Memoized status icon to prevent re-renders
+  const StatusIcon = memo(function StatusIcon({ status }: { status: RiskFactor["status"] }) {
     switch (status) {
-      case "safe": return <CheckCircle className="w-5 h-5 text-safe" />;
-      case "warning": return <AlertTriangle className="w-5 h-5 text-warning" />;
-      case "danger": return <XCircle className="w-5 h-5 text-danger" />;
+      case "safe": return <CheckCircle className="w-4 sm:w-5 h-4 sm:h-5 text-safe" />;
+      case "warning": return <AlertTriangle className="w-4 sm:w-5 h-4 sm:h-5 text-warning" />;
+      case "danger": return <XCircle className="w-4 sm:w-5 h-4 sm:h-5 text-danger" />;
     }
-  };
+  });
+
+  const getStatusIcon = useCallback((status: RiskFactor["status"]) => {
+    return <StatusIcon status={status} />;
+  }, []);
 
   const getTokenStatusBadge = (status: "original" | "bridged" | "suspicious", isHighlighted = false) => {
     switch (status) {
@@ -1185,11 +1191,12 @@ export const TokenScanner = () => {
                       <div className="flex items-center gap-2 mb-2">
                         <AlertTriangle className="w-4 h-4 text-danger" />
                         <h5 className="text-sm font-medium text-danger">Risk Warnings</h5>
+                        <span className="text-[10px] text-muted-foreground ml-auto">Tap for details</span>
                       </div>
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         {selectedResult.riskFactors
                           .filter(f => f.status === "danger" || f.status === "warning")
-                          .slice(0, 3)
+                          .slice(0, 5)
                           .map((factor, i) => (
                             <div key={i} className="flex items-start gap-2 text-xs">
                               {factor.status === "danger" ? (
@@ -1197,9 +1204,11 @@ export const TokenScanner = () => {
                               ) : (
                                 <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
                               )}
-                              <span className={factor.status === "danger" ? "text-danger" : "text-warning"}>
-                                {factor.name}: {factor.description}
-                              </span>
+                              <RiskFactorTooltip
+                                factorName={factor.name}
+                                status={factor.status}
+                                description={factor.description}
+                              />
                             </div>
                           ))}
                       </div>
@@ -1216,11 +1225,11 @@ export const TokenScanner = () => {
                       <div className="space-y-1.5">
                         {selectedResult.riskFactors
                           .filter(f => f.status === "safe")
-                          .slice(0, 3)
+                          .slice(0, 4)
                           .map((factor, i) => (
                             <div key={i} className="flex items-start gap-2 text-xs">
                               <CheckCircle className="w-3.5 h-3.5 text-safe shrink-0 mt-0.5" />
-                              <span className="text-safe">{factor.name}</span>
+                              <span className="text-safe">{factor.name}: {factor.description}</span>
                             </div>
                           ))}
                       </div>
@@ -1589,22 +1598,29 @@ export const TokenScanner = () => {
               )}
 
               {/* Risk Factors */}
-              <div className="glass-card p-6">
-                <h3 className="font-display text-lg text-foreground mb-4">Risk Analysis</h3>
-                <div className="space-y-3">
+              <div className="glass-card p-4 sm:p-6">
+                <h3 className="font-display text-base sm:text-lg text-foreground mb-3 sm:mb-4 flex items-center gap-2">
+                  Risk Analysis
+                  <Info className="w-4 h-4 text-muted-foreground" />
+                </h3>
+                <div className="space-y-2 sm:space-y-3 max-h-[400px] overflow-y-auto pr-1">
                   {selectedResult.riskFactors.map((factor, index) => (
                     <div 
                       key={factor.name}
                       className={cn(
-                        "flex items-start gap-3 p-3 rounded-lg bg-secondary/30 border border-border/30",
+                        "flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-secondary/30 border border-border/30",
                         "animate-fade-in"
                       )}
-                      style={{ animationDelay: `${index * 100}ms` }}
+                      style={{ animationDelay: `${index * 50}ms` }}
                     >
                       {getStatusIcon(factor.status)}
-                      <div className="flex-1">
-                        <p className="font-medium text-foreground">{factor.name}</p>
-                        <p className="text-sm text-muted-foreground">{factor.description}</p>
+                      <div className="flex-1 min-w-0">
+                        <RiskFactorTooltip
+                          factorName={factor.name}
+                          status={factor.status}
+                          description={factor.description}
+                          className="text-sm"
+                        />
                       </div>
                     </div>
                   ))}
@@ -1613,37 +1629,37 @@ export const TokenScanner = () => {
 
               {/* Security Summary - GoPlus Data */}
               {selectedResult.securityData && (
-                <div className="glass-card p-6 md:col-span-2">
-                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-primary" />
-                    Contract Security (GoPlus)
+                <div className="glass-card p-4 sm:p-6 md:col-span-2">
+                  <h3 className="font-display text-base sm:text-lg text-foreground mb-3 sm:mb-4 flex items-center gap-2">
+                    <ShieldCheck className="w-4 sm:w-5 h-4 sm:h-5 text-primary" />
+                    Contract Security
                   </h3>
                   
                   {/* Honeypot Warning Banner */}
                   {selectedResult.securityData.isHoneypot && (
-                    <div className="mb-4 p-4 rounded-lg bg-danger/20 border border-danger/50 flex items-center gap-3">
-                      <ShieldAlert className="w-8 h-8 text-danger flex-shrink-0" />
+                    <div className="mb-3 sm:mb-4 p-3 sm:p-4 rounded-lg bg-danger/20 border border-danger/50 flex items-start sm:items-center gap-2 sm:gap-3">
+                      <ShieldAlert className="w-6 sm:w-8 h-6 sm:h-8 text-danger flex-shrink-0" />
                       <div>
-                        <p className="font-display text-lg text-danger">⚠️ HONEYPOT DETECTED</p>
-                        <p className="text-sm text-danger/80">This token cannot be sold! Do not buy.</p>
+                        <p className="font-display text-sm sm:text-lg text-danger">⚠️ HONEYPOT DETECTED</p>
+                        <p className="text-xs sm:text-sm text-danger/80">This token cannot be sold! Do not buy.</p>
                       </div>
                     </div>
                   )}
                   
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
                     {/* Contract Verification */}
                     <div className={cn(
-                      "p-4 rounded-lg border",
+                      "p-2 sm:p-4 rounded-lg border",
                       selectedResult.securityData.isVerified 
                         ? "bg-safe/10 border-safe/30" 
                         : "bg-warning/10 border-warning/30"
                     )}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <FileText className="w-4 h-4" />
-                        <p className="text-xs text-muted-foreground">Contract</p>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <FileText className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Contract</p>
                       </div>
                       <p className={cn(
-                        "font-display text-lg",
+                        "font-display text-sm sm:text-lg",
                         selectedResult.securityData.isVerified ? "text-safe" : "text-warning"
                       )}>
                         {selectedResult.securityData.isVerified ? "Verified ✓" : "Unverified"}
@@ -1652,19 +1668,19 @@ export const TokenScanner = () => {
                     
                     {/* Holder Count */}
                     <div className={cn(
-                      "p-4 rounded-lg border",
+                      "p-2 sm:p-4 rounded-lg border",
                       selectedResult.securityData.holderCount >= 1000 
                         ? "bg-safe/10 border-safe/30" 
                         : selectedResult.securityData.holderCount >= 100 
                           ? "bg-warning/10 border-warning/30"
                           : "bg-danger/10 border-danger/30"
                     )}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Users className="w-4 h-4" />
-                        <p className="text-xs text-muted-foreground">Holders</p>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <Users className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Holders</p>
                       </div>
                       <p className={cn(
-                        "font-display text-lg",
+                        "font-display text-sm sm:text-lg",
                         selectedResult.securityData.holderCount >= 1000 
                           ? "text-safe" 
                           : selectedResult.securityData.holderCount >= 100 
@@ -1677,19 +1693,19 @@ export const TokenScanner = () => {
                     
                     {/* Buy Tax */}
                     <div className={cn(
-                      "p-4 rounded-lg border",
+                      "p-2 sm:p-4 rounded-lg border",
                       selectedResult.securityData.buyTax <= 5 
                         ? "bg-safe/10 border-safe/30" 
                         : selectedResult.securityData.buyTax <= 10 
                           ? "bg-warning/10 border-warning/30"
                           : "bg-danger/10 border-danger/30"
                     )}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <TrendingUp className="w-4 h-4" />
-                        <p className="text-xs text-muted-foreground">Buy Tax</p>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <TrendingUp className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Buy Tax</p>
                       </div>
                       <p className={cn(
-                        "font-display text-lg",
+                        "font-display text-sm sm:text-lg",
                         selectedResult.securityData.buyTax <= 5 
                           ? "text-safe" 
                           : selectedResult.securityData.buyTax <= 10 
@@ -1702,19 +1718,19 @@ export const TokenScanner = () => {
                     
                     {/* Sell Tax */}
                     <div className={cn(
-                      "p-4 rounded-lg border",
+                      "p-2 sm:p-4 rounded-lg border",
                       selectedResult.securityData.sellTax <= 5 
                         ? "bg-safe/10 border-safe/30" 
                         : selectedResult.securityData.sellTax <= 10 
                           ? "bg-warning/10 border-warning/30"
                           : "bg-danger/10 border-danger/30"
                     )}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <TrendingDown className="w-4 h-4" />
-                        <p className="text-xs text-muted-foreground">Sell Tax</p>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <TrendingDown className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Sell Tax</p>
                       </div>
                       <p className={cn(
-                        "font-display text-lg",
+                        "font-display text-sm sm:text-lg",
                         selectedResult.securityData.sellTax <= 5 
                           ? "text-safe" 
                           : selectedResult.securityData.sellTax <= 10 
