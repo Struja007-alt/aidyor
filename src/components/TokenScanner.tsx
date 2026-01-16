@@ -41,6 +41,7 @@ import {
 } from "@/lib/api/pumpDump";
 import { LockStatusBadge } from "./LockStatusBadge";
 import { PumpDumpBadge } from "./PumpDumpBadge";
+import { ApiSourcesBadge, ApiSourcesCount, type ApiSource } from "./ApiSourcesBadge";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -63,6 +64,7 @@ interface SecurityData {
   hasFreezeAuthority?: boolean; // Solana-specific
 }
 
+
 interface NetworkResult {
   network: string;
   chainId: string;
@@ -84,6 +86,7 @@ interface NetworkResult {
   securityData?: SecurityData;
   lockInfo?: LockInfo;
   pumpDumpAnalysis?: PumpDumpAnalysis;
+  apiSources: ApiSource[];
 }
 
 interface TokenInfo {
@@ -492,12 +495,14 @@ export const TokenScanner = () => {
           let securityFactors: RiskFactor[] = [];
           let securityScore = 0;
           let tokenLockInfo: LockInfo | undefined;
+          const apiSources: ApiSource[] = ["dexscreener"]; // Always used for market data
           
           try {
             if (network === 'SOL') {
               // Use SolanaFM for Solana tokens
               const solanaData = await getSolanaTokenSecurity(mainPair.baseToken.address);
               if (solanaData) {
+                apiSources.push("solanafm");
                 const { score: sScore, factors: sFactors } = analyzeSolanaSecurity(solanaData);
                 securityScore = sScore;
                 securityFactors = sFactors;
@@ -518,6 +523,7 @@ export const TokenScanner = () => {
                 const { getGoPlusSolanaSecurity, analyzeGoPlusSolanaSecurity } = await import('@/lib/api/goplus');
                 const goPlusSolData = await getGoPlusSolanaSecurity(mainPair.baseToken.address);
                 if (goPlusSolData) {
+                  apiSources.push("goplus-sol");
                   const { score: gpScore, factors: gpFactors } = analyzeGoPlusSolanaSecurity(goPlusSolData);
                   // Merge GoPlus Solana with SolanaFM (average scores)
                   securityScore = Math.round((securityScore + gpScore) / 2);
@@ -542,6 +548,7 @@ export const TokenScanner = () => {
               try {
                 const rugCheckData = await getRugCheckSecurity(mainPair.baseToken.address);
                 if (rugCheckData) {
+                  apiSources.push("rugcheck");
                   const { score: rcScore, factors: rcFactors } = analyzeRugCheckSecurity(rugCheckData);
                   // Merge RugCheck with existing (average scores)
                   securityScore = Math.round((securityScore + rcScore) / 2);
@@ -562,6 +569,7 @@ export const TokenScanner = () => {
               // Use GoPlus for EVM chains
               const goplusData = await getTokenSecurity(mainPair.baseToken.address, network);
               if (goplusData) {
+                apiSources.push("goplus");
                 const { score: gScore, factors: gFactors } = analyzeGoPlusSecurity(goplusData);
                 securityScore = gScore;
                 securityFactors = gFactors;
@@ -581,6 +589,7 @@ export const TokenScanner = () => {
                 try {
                   const bscTraceData = await getBSCTraceSecurity(mainPair.baseToken.address);
                   if (bscTraceData) {
+                    apiSources.push("bsctrace");
                     const { score: bscScore, factors: bscFactors } = analyzeBSCTraceSecurity(bscTraceData);
                     // Merge BSCTrace data with GoPlus (BSCTrace provides more accurate honeypot detection)
                     securityScore = Math.round((securityScore + bscScore) / 2);
@@ -604,6 +613,7 @@ export const TokenScanner = () => {
               try {
                 const lockInfo = await getLiquidityLockInfo(mainPair.baseToken.address, network);
                 if (lockInfo) {
+                  apiSources.push("unicrypt");
                   tokenLockInfo = lockInfo;
                   const { score: lockScore, factors: lockFactors } = analyzeLockSecurity(lockInfo);
                   securityScore += lockScore;
@@ -645,6 +655,7 @@ export const TokenScanner = () => {
             securityData,
             lockInfo: tokenLockInfo,
             pumpDumpAnalysis: analyzePumpDump(chainPairs),
+            apiSources,
             // Temp values for status calculation
             _liquidity: liquidity,
             _volume: volume24h,
@@ -1589,6 +1600,12 @@ export const TokenScanner = () => {
                           )}
                         </div>
                       )}
+                      {/* API Sources indicator */}
+                      {result.found && result.apiSources && result.apiSources.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border/20">
+                          <ApiSourcesBadge sources={result.apiSources} compact />
+                        </div>
+                      )}
                     </button>
                     
                     {result.found && tokenInfo && (
@@ -1636,9 +1653,14 @@ export const TokenScanner = () => {
                   <h3 className="font-display text-xl text-foreground">{tokenInfo?.name}</h3>
                   {getTokenStatusBadge(selectedResult.tokenStatus)}
                 </div>
-                <p className="text-sm text-primary mb-4">
-                  {selectedResult.network} Network
-                </p>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm text-primary">
+                    {selectedResult.network} Network
+                  </p>
+                  {selectedResult.apiSources && selectedResult.apiSources.length > 0 && (
+                    <ApiSourcesCount sources={selectedResult.apiSources} />
+                  )}
+                </div>
                 <RiskGauge score={selectedResult.riskScore} />
                 
                 <div className="flex gap-2 mt-4">
@@ -1704,6 +1726,25 @@ export const TokenScanner = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Data Sources */}
+              {selectedResult.apiSources && selectedResult.apiSources.length > 1 && (
+                <div className="glass-card p-4 sm:p-6">
+                  <h3 className="font-display text-base sm:text-lg text-foreground mb-3 sm:mb-4 flex items-center gap-2">
+                    <Layers className="w-4 sm:w-5 h-4 sm:h-5 text-primary" />
+                    Data Sources
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({selectedResult.apiSources.length} APIs)
+                    </span>
+                  </h3>
+                  <div className="space-y-2">
+                    <ApiSourcesBadge sources={selectedResult.apiSources} />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Security analysis powered by multiple independent sources for enhanced accuracy.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Security Summary - GoPlus Data */}
               {selectedResult.securityData && (
