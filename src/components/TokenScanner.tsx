@@ -47,6 +47,7 @@ import {
   sanitizeSearchQuery, 
   containsDangerousPatterns 
 } from "@/lib/security/inputSanitizer";
+import { useCommunityMappings } from "@/hooks/useCommunityMappings";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -123,8 +124,8 @@ export const TokenScanner = () => {
 
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
-
   const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
+  const { approvedMappings: communityMappings } = useCommunityMappings();
 
   // Contract address patterns for OCR extraction
   const ADDRESS_PATTERNS = {
@@ -697,6 +698,9 @@ export const TokenScanner = () => {
         'TON': ['ton'],
       };
       
+      // Merge with community-approved mappings (community overrides hardcoded)
+      const mergedKnownNetworks = { ...knownOriginalNetworks, ...communityMappings };
+      
       // Sort by: 1) Known original network match, 2) Liquidity
       const sorted = unique.sort((a, b) => {
         const symbolA = a.baseToken.symbol.toUpperCase();
@@ -705,8 +709,8 @@ export const TokenScanner = () => {
         const chainB = b.chainId.toLowerCase();
         
         // Check if either is a known token on its original network
-        const aIsOriginal = knownOriginalNetworks[symbolA]?.includes(chainA) || false;
-        const bIsOriginal = knownOriginalNetworks[symbolB]?.includes(chainB) || false;
+        const aIsOriginal = mergedKnownNetworks[symbolA]?.includes(chainA) || false;
+        const bIsOriginal = mergedKnownNetworks[symbolB]?.includes(chainB) || false;
         
         // Prioritize known original network tokens
         if (aIsOriginal && !bIsOriginal) return -1;
@@ -732,7 +736,7 @@ export const TokenScanner = () => {
         setIsSearching(false);
       }
     }
-  }, []);
+  }, [communityMappings]);
 
   useEffect(() => {
     // Clear stale suggestions immediately when query changes
@@ -1093,11 +1097,14 @@ export const TokenScanner = () => {
         'TRX': ['tron'], 'TON': ['ton'],
       };
       
+      // Merge with community-approved mappings
+      const mergedKnownNetworks = { ...knownOriginalNetworks, ...communityMappings };
+      
       const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
       
       // First pass: identify if any result is on a known original network
       const tokenSymbol = resultsWithData[0]?.pairs[0]?.baseToken.symbol.toUpperCase() || '';
-      const knownNetworks = knownOriginalNetworks[tokenSymbol] || [];
+      const knownNetworks = mergedKnownNetworks[tokenSymbol] || [];
       
       const results: NetworkResult[] = resultsWithData.map(r => {
         let tokenStatus: "original" | "bridged" | "suspicious";
