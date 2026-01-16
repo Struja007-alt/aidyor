@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+// CoinGecko prefetch is called at module level for immediate loading
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
