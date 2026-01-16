@@ -2,9 +2,8 @@ import { Header } from "@/components/Header";
 import { TokenScanner } from "@/components/TokenScanner";
 import { TelegramGameChecker } from "@/components/TelegramGameChecker";
 import { Watchlist } from "@/components/Watchlist";
-import { CommunityMappings } from "@/components/CommunityMappings";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info, Users } from "lucide-react";
+import { Shield, Zap, Eye, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -101,14 +100,6 @@ const Index = () => {
           <Watchlist />
         </section>
 
-        {/* Community Mappings Section */}
-        <section id="community" className="scroll-mt-20">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-1 h-8 bg-primary/70 rounded-full" />
-            <h2 className="font-display text-2xl font-bold text-foreground">Community</h2>
-          </div>
-          <CommunityMappings />
-        </section>
 
         {/* Footer */}
         <footer className="border-t border-border/50 pt-8 pb-4">

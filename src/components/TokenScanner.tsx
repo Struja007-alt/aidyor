@@ -47,8 +47,8 @@ import {
   sanitizeSearchQuery, 
   containsDangerousPatterns 
 } from "@/lib/security/inputSanitizer";
-import { useCommunityMappings } from "@/hooks/useCommunityMappings";
-import { getMergedKnownNetworks, isOnOriginalNetwork } from "@/lib/constants/knownTokenNetworks";
+import { knownOriginalNetworks } from "@/lib/constants/knownTokenNetworks";
+import { getTokenOriginalNetworks } from "@/lib/api/coingecko";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -126,7 +126,6 @@ export const TokenScanner = () => {
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
   const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
-  const { approvedMappings: communityMappings, getCoinGeckoMapping } = useCommunityMappings();
 
   // Contract address patterns for OCR extraction
   const ADDRESS_PATTERNS = {
@@ -621,8 +620,8 @@ export const TokenScanner = () => {
         return true;
       });
       
-      // Get merged known networks with community mappings
-      const mergedKnownNetworks = getMergedKnownNetworks(communityMappings);
+      // Use known original networks (hardcoded list)
+      const mergedKnownNetworks = knownOriginalNetworks;
       
       // Sort by: 1) Known original network match, 2) Liquidity
       const sorted = unique.sort((a, b) => {
@@ -659,7 +658,7 @@ export const TokenScanner = () => {
         setIsSearching(false);
       }
     }
-  }, [communityMappings]);
+  }, []);
 
   useEffect(() => {
     // Clear stale suggestions immediately when query changes
@@ -965,8 +964,8 @@ export const TokenScanner = () => {
       // Suspicious = low liquidity, no socials, poor score, or honeypot
       
       
-      // Get merged known networks with community mappings
-      const mergedKnownNetworks = getMergedKnownNetworks(communityMappings);
+      // Use known original networks (hardcoded list)
+      const mergedKnownNetworks = knownOriginalNetworks;
       
       const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
       
@@ -974,10 +973,10 @@ export const TokenScanner = () => {
       const tokenSymbol = resultsWithData[0]?.pairs[0]?.baseToken.symbol.toUpperCase() || '';
       let knownNetworks = mergedKnownNetworks[tokenSymbol] || [];
       
-      // If not in hardcoded or community mappings, check CoinGecko
+      // If not in hardcoded mappings, check CoinGecko
       if (knownNetworks.length === 0 && tokenSymbol) {
         try {
-          const coinGeckoNetworks = await getCoinGeckoMapping(tokenSymbol);
+          const coinGeckoNetworks = await getTokenOriginalNetworks(tokenSymbol);
           if (coinGeckoNetworks.length > 0) {
             knownNetworks = coinGeckoNetworks;
             // Also add CoinGecko as a source for all results
