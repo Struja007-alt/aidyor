@@ -235,7 +235,7 @@ export const TokenScanner = () => {
     return Array.from(addresses);
   }, [normalizeOcrText]);
 
-  // Image preprocessing for better OCR accuracy
+  // Advanced image preprocessing for better OCR accuracy
   const preprocessImage = async (imageData: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = document.createElement('img');
@@ -247,58 +247,165 @@ export const TokenScanner = () => {
           return;
         }
 
-        // Set canvas size
-        canvas.width = img.width;
-        canvas.height = img.height;
+        // Upscale image for better OCR (2x if small)
+        const scale = Math.max(1, Math.min(2, 1500 / Math.max(img.width, img.height)));
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
 
-        // Draw original image
-        ctx.drawImage(img, 0, 0);
+        // Use high-quality scaling
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
         // Get image data for processing
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imgData.data;
 
-        // Convert to grayscale and enhance contrast
+        // Pass 1: Convert to grayscale with luminance preservation
         for (let i = 0; i < data.length; i += 4) {
-          // Grayscale conversion using luminance formula
           const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          
-          // Contrast enhancement (increase by 40%)
-          const contrast = 1.4;
-          const factor = (259 * (contrast * 128 + 255)) / (255 * (259 - contrast * 128));
-          let enhanced = factor * (gray - 128) + 128;
-          
-          // Clamp values
-          enhanced = Math.max(0, Math.min(255, enhanced));
-          
-          // Apply threshold to sharpen text (binarization for text)
-          const threshold = 140;
-          const final = enhanced < threshold ? 0 : 255;
-          
-          data[i] = final;     // R
-          data[i + 1] = final; // G
-          data[i + 2] = final; // B
-          // Keep alpha unchanged
+          data[i] = gray;
+          data[i + 1] = gray;
+          data[i + 2] = gray;
         }
-
         ctx.putImageData(imgData, 0, 0);
 
-        // Apply slight sharpening using unsharp mask technique
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        if (tempCtx) {
-          tempCanvas.width = canvas.width;
-          tempCanvas.height = canvas.height;
+        // Pass 2: Adaptive contrast enhancement
+        // Calculate histogram for adaptive thresholding
+        const histogram = new Array(256).fill(0);
+        for (let i = 0; i < data.length; i += 4) {
+          histogram[Math.round(data[i])]++;
+        }
+        
+        // Find optimal threshold using Otsu's method
+        const totalPixels = data.length / 4;
+        let sum = 0;
+        for (let i = 0; i < 256; i++) sum += i * histogram[i];
+        
+        let sumB = 0, wB = 0, wF = 0;
+        let maxVariance = 0, optimalThreshold = 128;
+        
+        for (let t = 0; t < 256; t++) {
+          wB += histogram[t];
+          if (wB === 0) continue;
+          wF = totalPixels - wB;
+          if (wF === 0) break;
           
-          // Slight blur
-          tempCtx.filter = 'blur(1px)';
-          tempCtx.drawImage(canvas, 0, 0);
+          sumB += t * histogram[t];
+          const mB = sumB / wB;
+          const mF = (sum - sumB) / wF;
+          const variance = wB * wF * (mB - mF) * (mB - mF);
           
-          // Composite for sharpening effect
+          if (variance > maxVariance) {
+            maxVariance = variance;
+            optimalThreshold = t;
+          }
+        }
+
+        // Apply adaptive contrast and noise reduction
+        const newImgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const newData = newImgData.data;
+        
+        for (let i = 0; i < newData.length; i += 4) {
+          let gray = newData[i];
+          
+          // Contrast stretch based on histogram analysis
+          const contrast = 1.6;
+          const mid = optimalThreshold;
+          gray = mid + (gray - mid) * contrast;
+          gray = Math.max(0, Math.min(255, gray));
+          
+          // Apply adaptive binarization with hysteresis
+          const highThresh = optimalThreshold + 30;
+          const lowThresh = optimalThreshold - 30;
+          
+          let final;
+          if (gray > highThresh) {
+            final = 255;
+          } else if (gray < lowThresh) {
+            final = 0;
+          } else {
+            // Use local context for edge pixels
+            final = gray > optimalThreshold ? 255 : 0;
+          }
+          
+          newData[i] = final;
+          newData[i + 1] = final;
+          newData[i + 2] = final;
+        }
+        
+        ctx.putImageData(newImgData, 0, 0);
+
+        // Pass 3: Morphological operations - Dilation to connect broken characters
+        const dilatedData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const dData = dilatedData.data;
+        const width = canvas.width;
+        
+        // Simple 3x3 dilation for black pixels (text)
+        for (let y = 1; y < canvas.height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+            if (newData[idx] === 0) { // If black pixel
+              // Check 8-connected neighbors and dilate
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  const nIdx = ((y + dy) * width + (x + dx)) * 4;
+                  // Slight dilation - only fill very bright neighbors
+                  if (newData[nIdx] === 255) {
+                    dData[nIdx] = 200; // Mark for potential fill
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // Apply dilation markers
+        for (let i = 0; i < dData.length; i += 4) {
+          if (dData[i] === 200) {
+            dData[i] = 0;
+            dData[i + 1] = 0;
+            dData[i + 2] = 0;
+          }
+        }
+        
+        ctx.putImageData(dilatedData, 0, 0);
+
+        // Pass 4: Sharpen edges for cleaner character boundaries
+        const sharpCanvas = document.createElement('canvas');
+        const sharpCtx = sharpCanvas.getContext('2d');
+        if (sharpCtx) {
+          sharpCanvas.width = canvas.width;
+          sharpCanvas.height = canvas.height;
+          
+          // Apply subtle blur
+          sharpCtx.filter = 'blur(0.5px)';
+          sharpCtx.drawImage(canvas, 0, 0);
+          
+          // Blend for sharpening effect
+          ctx.globalCompositeOperation = 'difference';
+          ctx.globalAlpha = 0.15;
+          ctx.drawImage(sharpCanvas, 0, 0);
           ctx.globalCompositeOperation = 'source-over';
-          ctx.globalAlpha = 0.3;
-          ctx.drawImage(tempCanvas, 0, 0);
           ctx.globalAlpha = 1.0;
+        }
+
+        // Pass 5: Invert if needed (detect if text is light on dark)
+        const finalData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let blackCount = 0, whiteCount = 0;
+        for (let i = 0; i < finalData.data.length; i += 4) {
+          if (finalData.data[i] < 128) blackCount++;
+          else whiteCount++;
+        }
+        
+        // If more black than white, invert (text should be dark on light for OCR)
+        if (blackCount > whiteCount * 1.5) {
+          for (let i = 0; i < finalData.data.length; i += 4) {
+            finalData.data[i] = 255 - finalData.data[i];
+            finalData.data[i + 1] = 255 - finalData.data[i + 1];
+            finalData.data[i + 2] = 255 - finalData.data[i + 2];
+          }
+          ctx.putImageData(finalData, 0, 0);
         }
 
         resolve(canvas.toDataURL('image/png'));
