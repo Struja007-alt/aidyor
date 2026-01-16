@@ -351,17 +351,24 @@ export const TokenScanner = () => {
     
     try {
       const results = await searchTokens(query);
-      // Filter to unique tokens by address and take top 10
+      // Filter to unique tokens by address
       const seen = new Set<string>();
       const unique = results.filter(pair => {
         const key = `${pair.chainId}-${pair.baseToken.address}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
+      });
+      
+      // Sort by liquidity (highest first) to show original/most legitimate token first
+      const sorted = unique.sort((a, b) => {
+        const liqA = a.liquidity?.usd || 0;
+        const liqB = b.liquidity?.usd || 0;
+        return liqB - liqA;
       }).slice(0, 10);
       
-      setSuggestions(unique);
-      setShowSuggestions(unique.length > 0);
+      setSuggestions(sorted);
+      setShowSuggestions(sorted.length > 0);
     } catch (error) {
       console.error('Search error:', error);
       setSuggestions([]);
@@ -893,36 +900,69 @@ export const TokenScanner = () => {
               {/* Suggestions Dropdown */}
               {showSuggestions && (
                 <div className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto">
-                  {suggestions.map((pair, index) => (
-                    <button
-                      key={`${pair.chainId}-${pair.pairAddress}-${index}`}
-                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors text-left border-b border-border/20 last:border-b-0"
-                      onMouseDown={() => handleSelectSuggestion(pair)}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {pair.info?.imageUrl && (
-                          <img 
-                            src={pair.info.imageUrl} 
-                            alt={pair.baseToken.symbol}
-                            className="w-9 h-9 rounded-full bg-secondary ring-2 ring-border/30"
-                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                          />
+                  {suggestions.map((pair, index) => {
+                    const isOriginal = index === 0;
+                    return (
+                      <button
+                        key={`${pair.chainId}-${pair.pairAddress}-${index}`}
+                        className={cn(
+                          "w-full px-4 py-3 flex items-center justify-between transition-colors text-left border-b border-border/20 last:border-b-0",
+                          isOriginal 
+                            ? "bg-emerald-500/10 hover:bg-emerald-500/20 ring-1 ring-inset ring-emerald-500/30" 
+                            : "hover:bg-primary/10"
                         )}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground truncate">{pair.baseToken.name}</span>
-                            <span className="text-muted-foreground text-sm">({pair.baseToken.symbol})</span>
+                        onMouseDown={() => handleSelectSuggestion(pair)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative">
+                            {pair.info?.imageUrl && (
+                              <img 
+                                src={pair.info.imageUrl} 
+                                alt={pair.baseToken.symbol}
+                                className={cn(
+                                  "w-9 h-9 rounded-full bg-secondary",
+                                  isOriginal ? "ring-2 ring-emerald-500" : "ring-2 ring-border/30"
+                                )}
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                              />
+                            )}
+                            {isOriginal && (
+                              <div className="absolute -top-1 -right-1 bg-emerald-500 rounded-full p-0.5">
+                                <BadgeCheck className="w-3 h-3 text-white" />
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs text-muted-foreground font-mono truncate">
-                            {truncateAddress(pair.baseToken.address)}
-                          </p>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                "font-medium truncate",
+                                isOriginal ? "text-emerald-400" : "text-foreground"
+                              )}>
+                                {pair.baseToken.name}
+                              </span>
+                              <span className="text-muted-foreground text-sm">({pair.baseToken.symbol})</span>
+                              {isOriginal && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold uppercase tracking-wide">
+                                  Original
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground font-mono truncate">
+                              {truncateAddress(pair.baseToken.address)}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium shrink-0 ml-2">
-                        {chainIdToNetwork[pair.chainId] || pair.chainId}
-                      </span>
-                    </button>
-                  ))}
+                        <span className={cn(
+                          "text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ml-2",
+                          isOriginal 
+                            ? "bg-emerald-500/20 text-emerald-400" 
+                            : "bg-primary/10 text-primary"
+                        )}>
+                          {chainIdToNetwork[pair.chainId] || pair.chainId}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
