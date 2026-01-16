@@ -563,8 +563,63 @@ export const TokenScanner = () => {
         return true;
       });
       
-      // Sort by liquidity (highest first) to show original/most legitimate token first
+      // Known tokens with their original/home networks (verified contracts)
+      // These tokens originated on specific chains and copies elsewhere are bridged/wrapped
+      const knownOriginalNetworks: Record<string, string[]> = {
+        // Major meme coins - originated on Ethereum
+        'PEPE': ['ethereum'],
+        'SHIB': ['ethereum'],
+        'DOGE': ['ethereum'], // Wrapped DOGE on DEXs
+        'FLOKI': ['ethereum', 'bsc'],
+        'WOJAK': ['ethereum'],
+        'MEME': ['ethereum'],
+        // Major stablecoins - multi-chain native but ETH is primary
+        'USDT': ['ethereum', 'tron'],
+        'USDC': ['ethereum'],
+        'DAI': ['ethereum'],
+        'BUSD': ['bsc'],
+        // Major DeFi tokens
+        'UNI': ['ethereum'],
+        'AAVE': ['ethereum'],
+        'LINK': ['ethereum'],
+        'WBTC': ['ethereum'],
+        'WETH': ['ethereum'],
+        // Solana native tokens
+        'SOL': ['solana'],
+        'BONK': ['solana'],
+        'WIF': ['solana'],
+        'JUP': ['solana'],
+        'PYTH': ['solana'],
+        'RAY': ['solana'],
+        'ORCA': ['solana'],
+        // BSC native tokens
+        'CAKE': ['bsc'],
+        'BNB': ['bsc'],
+        // Polygon native
+        'MATIC': ['polygon', 'ethereum'],
+        // Arbitrum native
+        'ARB': ['arbitrum'],
+        // Base native
+        'BRETT': ['base'],
+        'DEGEN': ['base'],
+      };
+      
+      // Sort by: 1) Known original network match, 2) Liquidity
       const sorted = unique.sort((a, b) => {
+        const symbolA = a.baseToken.symbol.toUpperCase();
+        const symbolB = b.baseToken.symbol.toUpperCase();
+        const chainA = a.chainId.toLowerCase();
+        const chainB = b.chainId.toLowerCase();
+        
+        // Check if either is a known token on its original network
+        const aIsOriginal = knownOriginalNetworks[symbolA]?.includes(chainA) || false;
+        const bIsOriginal = knownOriginalNetworks[symbolB]?.includes(chainB) || false;
+        
+        // Prioritize known original network tokens
+        if (aIsOriginal && !bIsOriginal) return -1;
+        if (bIsOriginal && !aIsOriginal) return 1;
+        
+        // Then sort by liquidity
         const liqA = a.liquidity?.usd || 0;
         const liqB = b.liquidity?.usd || 0;
         return liqB - liqA;
@@ -885,10 +940,29 @@ export const TokenScanner = () => {
       );
 
       // Determine original vs bridged/suspicious
-      // Original = highest liquidity + volume + has socials + good score
+      // Original = known original network OR (highest liquidity + volume + has socials + good score)
       // Bridged = similar token on different chain
       // Suspicious = low liquidity, no socials, poor score, or honeypot
+      
+      // Known tokens with their original/home networks
+      const knownOriginalNetworks: Record<string, string[]> = {
+        'PEPE': ['ethereum'], 'SHIB': ['ethereum'], 'FLOKI': ['ethereum', 'bsc'],
+        'WOJAK': ['ethereum'], 'MEME': ['ethereum'],
+        'USDT': ['ethereum', 'tron'], 'USDC': ['ethereum'], 'DAI': ['ethereum'], 'BUSD': ['bsc'],
+        'UNI': ['ethereum'], 'AAVE': ['ethereum'], 'LINK': ['ethereum'],
+        'WBTC': ['ethereum'], 'WETH': ['ethereum'],
+        'SOL': ['solana'], 'BONK': ['solana'], 'WIF': ['solana'], 'JUP': ['solana'],
+        'PYTH': ['solana'], 'RAY': ['solana'], 'ORCA': ['solana'],
+        'CAKE': ['bsc'], 'BNB': ['bsc'],
+        'MATIC': ['polygon', 'ethereum'], 'ARB': ['arbitrum'],
+        'BRETT': ['base'], 'DEGEN': ['base'],
+      };
+      
       const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
+      
+      // First pass: identify if any result is on a known original network
+      const tokenSymbol = resultsWithData[0]?.pairs[0]?.baseToken.symbol.toUpperCase() || '';
+      const knownNetworks = knownOriginalNetworks[tokenSymbol] || [];
       
       const results: NetworkResult[] = resultsWithData.map(r => {
         let tokenStatus: "original" | "bridged" | "suspicious";
@@ -897,18 +971,25 @@ export const TokenScanner = () => {
         const isHighestLiquidity = r._liquidity === maxLiquidity && maxLiquidity > 0;
         const hasGoodLiquidity = r._liquidity >= 10000;
         const hasGoodVolume = r._volume >= 1000;
+        const chainId = r.chainId.toLowerCase();
+        
+        // Check if this is on a known original network for this token
+        const isKnownOriginal = knownNetworks.includes(chainId);
         
         if (r._isHoneypot || r._score < 30) {
           // Honeypot or very low score = suspicious
           tokenStatus = "suspicious";
-        } else if (isHighestLiquidity && hasGoodLiquidity && hasGoodVolume) {
-          // Best metrics = original
+        } else if (isKnownOriginal && hasGoodLiquidity) {
+          // Known original network with good liquidity = original
+          tokenStatus = "original";
+        } else if (isHighestLiquidity && hasGoodLiquidity && hasGoodVolume && knownNetworks.length === 0) {
+          // Best metrics and no known original network = original (for unknown tokens)
           tokenStatus = "original";
         } else if (r._liquidity < 1000 || r._score < 40) {
           // Low liquidity or poor score = suspicious
           tokenStatus = "suspicious";
         } else {
-          // Decent metrics but not the best = bridged
+          // Decent metrics but not original = bridged
           tokenStatus = "bridged";
         }
         
