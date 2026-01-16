@@ -56,6 +56,59 @@ let tokenListCache: CoinGeckoToken[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
+// Pre-fetch status tracking
+let prefetchPromise: Promise<CoinGeckoToken[]> | null = null;
+let isPrefetching = false;
+
+/**
+ * Pre-fetch the CoinGecko token list on app load
+ * Call this early in app initialization for faster lookups
+ */
+export function prefetchCoinGeckoTokens(): Promise<CoinGeckoToken[]> {
+  // Already have fresh cached data
+  if (tokenListCache && Date.now() - cacheTimestamp < CACHE_DURATION) {
+    console.log('CoinGecko: Using cached data, skipping prefetch');
+    return Promise.resolve(tokenListCache);
+  }
+
+  // Already prefetching, return existing promise
+  if (isPrefetching && prefetchPromise) {
+    console.log('CoinGecko: Prefetch already in progress');
+    return prefetchPromise;
+  }
+
+  isPrefetching = true;
+  console.log('CoinGecko: Starting prefetch of token list...');
+
+  prefetchPromise = getCoinGeckoTokenList()
+    .then(tokens => {
+      console.log(`CoinGecko: Prefetch complete - ${tokens.length} tokens loaded`);
+      isPrefetching = false;
+      return tokens;
+    })
+    .catch(error => {
+      console.error('CoinGecko: Prefetch failed:', error);
+      isPrefetching = false;
+      return [];
+    });
+
+  return prefetchPromise;
+}
+
+/**
+ * Check if CoinGecko data is ready (prefetched or cached)
+ */
+export function isCoinGeckoReady(): boolean {
+  return tokenListCache !== null && Date.now() - cacheTimestamp < CACHE_DURATION;
+}
+
+/**
+ * Get the number of cached tokens (for UI display)
+ */
+export function getCachedTokenCount(): number {
+  return tokenListCache?.length || 0;
+}
+
 /**
  * Fetch the CoinGecko token list with platform addresses
  * This gives us the official list of tokens and their original platforms
