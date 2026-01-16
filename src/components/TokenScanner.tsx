@@ -1480,12 +1480,21 @@ export const TokenScanner = () => {
               {/* Extracted Addresses Section */}
               {extractedAddresses.length > 0 && !isOcrProcessing && !selectedResult && (
                 <div className="p-4 rounded-xl border border-primary/30 bg-primary/5">
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 text-primary" />
                     <h4 className="font-display text-sm text-primary uppercase">
                       Extracted Addresses ({extractedAddresses.length})
                     </h4>
                   </div>
+                  
+                  {/* OCR Warning */}
+                  <div className="flex items-start gap-2 mb-3 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                    <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-yellow-500/90">
+                      OCR may have errors (e.g., 0↔6, O↔0). Please verify the address before scanning.
+                    </p>
+                  </div>
+                  
                   <div className="space-y-2">
                     {extractedAddresses.map((address, i) => (
                       <button
