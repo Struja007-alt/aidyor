@@ -468,21 +468,56 @@ export const TokenScanner = () => {
     return null;
   };
 
+  // VLM-based OCR fallback using Gemini Vision
+  const performVLMOcr = useCallback(async (imageData: string): Promise<string[]> => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-extract`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ imageBase64: imageData }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 429) {
+          toast.error("AI rate limit reached. Try again later.");
+        } else if (response.status === 402) {
+          toast.error("AI credits exhausted.");
+        }
+        console.error("VLM OCR error:", response.status, errorData);
+        return [];
+      }
+
+      const data = await response.json();
+      return data.addresses || [];
+    } catch (error) {
+      console.error("VLM OCR fallback error:", error);
+      return [];
+    }
+  }, []);
+
   const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
       
-      // Preprocess image for better OCR accuracy
+      // Step 1: Preprocess image for better OCR accuracy
       setOcrProgress(5);
       const processedImage = await preprocessImage(imageData);
       setOcrProgress(15);
       
+      // Step 2: Primary extraction with Tesseract
       const worker = await createWorker('eng', 1, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
-            // Scale progress from 15-95%
-            setOcrProgress(15 + Math.round(m.progress * 80));
+            // Scale progress from 15-70%
+            setOcrProgress(15 + Math.round(m.progress * 55));
           }
         },
       });
@@ -492,13 +527,14 @@ export const TokenScanner = () => {
       
       // Apply OCR error corrections
       const correctedText = fixOcrMisreads(text);
-      console.log("OCR Text (corrected):", correctedText);
+      console.log("Tesseract OCR Text (corrected):", correctedText);
       
-      // Also try with original image if preprocessed yields no results
+      // Extract addresses from Tesseract results
       let addresses = extractAddressesFromText(correctedText);
       
+      // Step 3: If Tesseract found nothing, try with original image
       if (addresses.length === 0) {
-        // Fallback: try original image without preprocessing
+        setOcrProgress(72);
         const fallbackWorker = await createWorker('eng', 1);
         const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
         await fallbackWorker.terminate();
@@ -507,8 +543,28 @@ export const TokenScanner = () => {
         addresses = extractAddressesFromText(correctedFallback);
       }
       
+      // Step 4: If Tesseract still found nothing, fallback to VLM (Gemini Vision)
+      if (addresses.length === 0) {
+        setOcrProgress(80);
+        console.log("Tesseract found no addresses, trying VLM fallback...");
+        toast.info("Using AI vision for better accuracy...", { duration: 2000 });
+        
+        const vlmAddresses = await performVLMOcr(imageData);
+        
+        if (vlmAddresses.length > 0) {
+          console.log("VLM extracted addresses:", vlmAddresses);
+          addresses = vlmAddresses;
+        }
+      }
+      
       setExtractedAddresses(addresses);
       setOcrProgress(100);
+      
+      if (addresses.length === 0) {
+        toast.warning("No contract addresses found in image");
+      } else {
+        toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}`);
+      }
       
       return addresses;
     } catch (error) {
@@ -518,7 +574,7 @@ export const TokenScanner = () => {
     } finally {
       setIsOcrProcessing(false);
     }
-  }, [extractAddressesFromText]);
+  }, [extractAddressesFromText, performVLMOcr]);
 
   // Check if input looks like a contract address
   const isContractAddress = useCallback((query: string): boolean => {
