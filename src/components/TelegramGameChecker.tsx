@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef } from "react";
 import { Gamepad2, ExternalLink, CheckCircle, XCircle, AlertTriangle, Search, Link, Link2Off } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,7 @@ const knownGames: Record<string, GameResult> = {
   "pixelverse": { name: "PixelVerse", status: "scam", players: "10M+", earnings: "Failed launch", rewardType: "off-chain", warning: "Token launch failed, team silent" },
 };
 
-export const TelegramGameChecker = () => {
+export const TelegramGameChecker = forwardRef<HTMLDivElement>((_, ref) => {
   const [gameLink, setGameLink] = useState("");
   const [isChecking, setIsChecking] = useState(false);
   const [result, setResult] = useState<GameResult | null>(null);
@@ -237,4 +237,6 @@ export const TelegramGameChecker = () => {
       </div>
     </div>
   );
-};
+});
+
+TelegramGameChecker.displayName = "TelegramGameChecker";

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, ClipboardEvent } from "react";
+import { useState, useEffect, useCallback, ClipboardEvent, useRef } from "react";
 import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Twitter } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -103,6 +103,9 @@ export const TokenScanner = () => {
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [extractedAddresses, setExtractedAddresses] = useState<string[]>([]);
+
+  // Ref to track current search request ID to prevent race conditions
+  const searchIdRef = useRef(0);
 
   const { addToken, isInWatchlist } = useWatchlist();
 
@@ -273,7 +276,7 @@ export const TokenScanner = () => {
       // Fix partial matches where O appears at start
       .replace(/\bOx([a-fA-F0-9])/g, '0x$1')
       // Fix common letter/number confusions in hex
-      .replace(/0x([a-fA-F0-9]*[oO][a-fA-F0-9]*)/g, (match, group) => 
+      .replace(/0x([a-fA-F0-9]*[oO][a-fA-F0-9]*)/g, (_, group) => 
         '0x' + group.replace(/[oO]/g, '0')
       );
   };
@@ -340,7 +343,7 @@ export const TokenScanner = () => {
   }, []);
 
   // Debounced search for real-time suggestions
-  const searchTokensDebounced = useCallback(async (query: string) => {
+  const searchTokensDebounced = useCallback(async (query: string, currentSearchId: number) => {
     if (query.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
@@ -351,6 +354,12 @@ export const TokenScanner = () => {
     
     try {
       const results = await searchTokens(query);
+      
+      // Check if this search is still the current one (prevent race conditions)
+      if (currentSearchId !== searchIdRef.current) {
+        return; // A newer search has been triggered, discard these results
+      }
+      
       // Filter to unique tokens by address
       const seen = new Set<string>();
       const unique = results.filter(pair => {
@@ -371,13 +380,27 @@ export const TokenScanner = () => {
       setShowSuggestions(sorted.length > 0);
     } catch (error) {
       console.error('Search error:', error);
-      setSuggestions([]);
+      // Only clear suggestions if this is still the current search
+      if (currentSearchId === searchIdRef.current) {
+        setSuggestions([]);
+      }
     } finally {
-      setIsSearching(false);
+      // Only set isSearching false if this is still the current search
+      if (currentSearchId === searchIdRef.current) {
+        setIsSearching(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    // Clear stale suggestions immediately when query changes
+    if (tokenQuery.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setIsSearching(false);
+      return;
+    }
+    
     // Don't search if it looks like an address - user should click scan
     if (isContractAddress(tokenQuery)) {
       setDisplayAddress(tokenQuery);
@@ -386,8 +409,12 @@ export const TokenScanner = () => {
       return;
     }
 
+    // Increment search ID to invalidate previous searches
+    searchIdRef.current += 1;
+    const currentSearchId = searchIdRef.current;
+
     const timer = setTimeout(() => {
-      searchTokensDebounced(tokenQuery);
+      searchTokensDebounced(tokenQuery, currentSearchId);
     }, 300);
     return () => clearTimeout(timer);
   }, [tokenQuery, searchTokensDebounced, isContractAddress]);
@@ -554,7 +581,6 @@ export const TokenScanner = () => {
       // Bridged = similar token on different chain
       // Suspicious = low liquidity, no socials, poor score, or honeypot
       const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
-      const maxVolume = Math.max(...resultsWithData.map(r => r._volume));
       
       const results: NetworkResult[] = resultsWithData.map(r => {
         let tokenStatus: "original" | "bridged" | "suspicious";
@@ -632,11 +658,6 @@ export const TokenScanner = () => {
   };
 
   // Screenshot handlers
-  // Memoize handleScanWithAddress
-  const handleScanWithAddressMemo = useCallback(async (address: string) => {
-    await handleScanWithAddress(address);
-  }, []);
-
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();

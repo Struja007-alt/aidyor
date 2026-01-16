@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, forwardRef } from "react";
 import { Star, Trash2, ExternalLink, RefreshCw, Loader2, Rocket, TrendingDown, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWatchlist, WatchlistToken } from "@/hooks/useWatchlist";
@@ -58,7 +58,7 @@ const rescanToken = async (token: WatchlistToken): Promise<{ token: WatchlistTok
   }
 };
 
-export const Watchlist = () => {
+export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
   const { watchlist, removeToken, updateToken } = useWatchlist();
   const [rescanning, setRescanning] = useState<string | null>(null);
   const [scanningAll, setScanningAll] = useState(false);
@@ -413,4 +413,6 @@ export const Watchlist = () => {
       </div>
     </div>
   );
-};
+});
+
+Watchlist.displayName = "Watchlist";
