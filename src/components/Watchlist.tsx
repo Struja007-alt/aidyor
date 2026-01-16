@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { Star, Trash2, ExternalLink, RefreshCw, Loader2, Rocket, TrendingDown, AlertTriangle } from "lucide-react";
+import { Star, Trash2, ExternalLink, RefreshCw, Loader2, Rocket, TrendingDown, AlertTriangle, LogIn, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useWatchlist, WatchlistToken } from "@/hooks/useWatchlist";
+import { useCloudWatchlist, WatchlistToken } from "@/hooks/useCloudWatchlist";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getTokenByAddress, analyzeTokenRisk } from "@/lib/api/dexscreener";
 import { analyzePumpDump, PumpDumpAnalysis, getPumpDumpColor, getPumpDumpBg, getPumpDumpLabel } from "@/lib/api/pumpDump";
+import { useNavigate } from "react-router-dom";
 
 const getRiskColor = (score: number) => {
   if (score >= 70) return "text-safe";
@@ -59,7 +61,9 @@ const rescanToken = async (token: WatchlistToken): Promise<{ token: WatchlistTok
 };
 
 export const Watchlist = () => {
-  const { watchlist, removeToken, updateToken } = useWatchlist();
+  const { watchlist, removeToken, updateToken, loading, isAuthenticated } = useCloudWatchlist();
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [rescanning, setRescanning] = useState<string | null>(null);
   const [scanningAll, setScanningAll] = useState(false);
   const [analyses, setAnalyses] = useState<Record<string, PumpDumpAnalysis>>({});
@@ -82,7 +86,7 @@ export const Watchlist = () => {
     try {
       const result = await rescanToken(token);
       if (result) {
-        updateToken(token.address, { riskScore: result.token.riskScore });
+        await updateToken(token.address, { riskScore: result.token.riskScore });
         setAnalyses(prev => ({ ...prev, [token.address]: result.analysis }));
         setLastScanTime(prev => ({ ...prev, [token.address]: Date.now() }));
         
@@ -166,12 +170,63 @@ export const Watchlist = () => {
     a => a.status === 'pump' || a.status === 'dump' || a.status === 'pump_warning' || a.status === 'dump_warning'
   ).length;
 
-  if (watchlist.length === 0) {
+  // Show login prompt if not authenticated
+  if (!isAuthenticated) {
     return (
       <div className="glass-card p-6">
         <div className="flex items-center gap-2 mb-4">
           <Star className="w-5 h-5 text-warning" />
           <h3 className="font-display text-lg text-foreground">Watchlist</h3>
+        </div>
+        <div className="text-center py-8">
+          <Cloud className="w-12 h-12 text-primary/50 mx-auto mb-3" />
+          <p className="text-foreground font-medium mb-2">
+            Cloud Sync Enabled
+          </p>
+          <p className="text-muted-foreground text-sm mb-4">
+            Sign in to save your watchlist and access it from any device
+          </p>
+          <Button onClick={() => navigate("/auth")} className="gap-2">
+            <LogIn className="w-4 h-4" />
+            Sign In to Continue
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="glass-card p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Star className="w-5 h-5 text-warning" />
+          <h3 className="font-display text-lg text-foreground">Watchlist</h3>
+        </div>
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  if (watchlist.length === 0) {
+    return (
+      <div className="glass-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Star className="w-5 h-5 text-warning" />
+            <h3 className="font-display text-lg text-foreground">Watchlist</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Cloud className="w-3 h-3" />
+              {user?.email}
+            </span>
+            <Button variant="ghost" size="sm" onClick={signOut} className="h-7 text-xs">
+              Sign Out
+            </Button>
+          </div>
         </div>
         <div className="text-center py-8">
           <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
@@ -201,6 +256,10 @@ export const Watchlist = () => {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <span className="hidden sm:flex text-xs text-muted-foreground items-center gap-1">
+            <Cloud className="w-3 h-3" />
+            Synced
+          </span>
           <Button
             variant="ghost"
             size="sm"
@@ -227,6 +286,9 @@ export const Watchlist = () => {
               <Rocket className="w-3 h-3" />
             )}
             Scan All
+          </Button>
+          <Button variant="ghost" size="sm" onClick={signOut} className="h-8 text-xs">
+            Sign Out
           </Button>
         </div>
       </div>

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
-import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Twitter, Info } from "lucide-react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Twitter, Info, LogIn } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RiskGauge } from "./RiskGauge";
 import { RiskFactorTooltip } from "./RiskFactorTooltip";
-import { useWatchlist } from "@/hooks/useWatchlist";
+import { useCloudWatchlist } from "@/hooks/useCloudWatchlist";
 import { cn } from "@/lib/utils";
 import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
@@ -119,7 +119,7 @@ export const TokenScanner = () => {
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
 
-  const { addToken, isInWatchlist } = useWatchlist();
+  const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
 
   // Contract address patterns for OCR extraction
   const ADDRESS_PATTERNS = {
@@ -899,17 +899,31 @@ export const TokenScanner = () => {
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
   };
 
-  const handleAddToWatchlist = () => {
+  const handleAddToWatchlist = async () => {
     if (!selectedResult || !tokenInfo) return;
     
-    addToken({
+    if (!isAuthenticated) {
+      toast.info("Sign in to save tokens to your watchlist", {
+        action: {
+          label: "Sign In",
+          onClick: () => window.location.href = "/auth"
+        }
+      });
+      return;
+    }
+    
+    const added = await addToken({
       address: selectedResult.address,
       name: tokenInfo.name,
       network: selectedResult.network as Network,
       riskScore: selectedResult.riskScore,
     });
     
-    toast.success(`${tokenInfo.name} added to watchlist!`);
+    if (added) {
+      toast.success(`${tokenInfo.name} added to watchlist!`);
+    } else {
+      toast.info("Already in watchlist");
+    }
   };
 
   const resetScan = () => {
@@ -1613,9 +1627,15 @@ export const TokenScanner = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            const added = addToken({
+                            if (!isAuthenticated) {
+                              toast.info("Sign in to save tokens to your watchlist", {
+                                action: { label: "Sign In", onClick: () => window.location.href = "/auth" }
+                              });
+                              return;
+                            }
+                            const added = await addToken({
                               address: result.address,
                               name: tokenInfo.name,
                               network: result.network as Network,
