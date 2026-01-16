@@ -42,6 +42,11 @@ import {
 import { LockStatusBadge } from "./LockStatusBadge";
 import { PumpDumpBadge } from "./PumpDumpBadge";
 import { ApiSourcesBadge, ApiSourcesCount, type ApiSource } from "./ApiSourcesBadge";
+import { 
+  sanitizeContractAddress, 
+  sanitizeSearchQuery, 
+  containsDangerousPatterns 
+} from "@/lib/security/inputSanitizer";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -354,9 +359,18 @@ export const TokenScanner = () => {
     return false;
   }, []);
 
-  // Debounced search for real-time suggestions
+  // Debounced search for real-time suggestions with security validation
   const searchTokensDebounced = useCallback(async (query: string, currentSearchId: number) => {
     if (query.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // Security: Validate and sanitize search input
+    const searchValidation = sanitizeSearchQuery(query);
+    if (!searchValidation.isValid) {
+      console.warn("Search blocked:", searchValidation.error);
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -365,7 +379,7 @@ export const TokenScanner = () => {
     setIsSearching(true);
     
     try {
-      const results = await searchTokens(query);
+      const results = await searchTokens(searchValidation.sanitized);
       
       // Check if this search is still the current one (prevent race conditions)
       if (currentSearchId !== searchIdRef.current) {
@@ -447,16 +461,26 @@ export const TokenScanner = () => {
     handleScanWithAddress(pair.baseToken.address);
   };
 
-  // Scan for token data
+  // Scan for token data with security validation
   const handleScanWithAddress = async (address: string) => {
     if (!address) return;
+    
+    // Security: Validate and sanitize contract address input
+    const addressValidation = sanitizeContractAddress(address);
+    if (containsDangerousPatterns(address)) {
+      toast.error("Invalid input detected. Please enter a valid contract address.");
+      return;
+    }
+    
+    // Use the sanitized address for API calls
+    const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : address.trim();
     
     setIsScanning(true);
     setScanResults([]);
     setSelectedResult(null);
     
     try {
-      const pairs = await getTokenByAddress(address);
+      const pairs = await getTokenByAddress(sanitizedAddress);
       
       if (pairs.length === 0) {
         setScanResults([]);
