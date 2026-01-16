@@ -727,10 +727,24 @@ export const TokenScanner = () => {
           // Merge risk factors (security factors first, then DEX factors)
           const allFactors = [...securityFactors, ...dexFactors];
           
+          // Check for critical danger factors that should cap the score
+          const hasCriticalDanger = securityFactors.some(f => 
+            f.status === 'danger' && (
+              f.name.toLowerCase().includes('rugcheck') ||
+              f.name.toLowerCase().includes('honeypot') ||
+              f.description.toLowerCase().includes('critical')
+            )
+          );
+          
           // Combined score: weighted average of DEX (55%) and security (45%) if available
-          const combinedScore = securityFactors.length > 0
+          let combinedScore = securityFactors.length > 0
             ? Math.max(0, Math.min(100, Math.round(dexScore * 0.55 + (50 + securityScore) * 0.45)))
             : dexScore;
+          
+          // Cap score at 39 (DANGER threshold) if critical dangers exist
+          if (hasCriticalDanger) {
+            combinedScore = Math.min(combinedScore, 39);
+          }
           
           return {
             network,
