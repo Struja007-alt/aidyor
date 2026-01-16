@@ -553,58 +553,62 @@ export const TokenScanner = () => {
     }
   }, []);
 
-  const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
+const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
       
-      // Step 1: Preprocess image for better OCR accuracy
-      setOcrProgress(5);
-      const processedImage = await preprocessImage(imageData);
-      setOcrProgress(15);
+      // PRIMARY: Use AI Vision (VLM) for accurate address extraction
+      // VLM is much more reliable for crypto addresses than traditional OCR
+      setOcrProgress(10);
+      toast.info("Using AI vision for accuracy...", { duration: 2000 });
       
-      // Step 2: Primary extraction with Tesseract
-      const worker = await createWorker('eng', 1, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            // Scale progress from 15-70%
-            setOcrProgress(15 + Math.round(m.progress * 55));
-          }
-        },
-      });
+      let addresses: string[] = [];
       
-      const { data: { text } } = await worker.recognize(processedImage);
-      await worker.terminate();
-      
-      // Apply OCR error corrections
-      const correctedText = fixOcrMisreads(text);
-      console.log("Tesseract OCR Text (corrected):", correctedText);
-      
-      // Extract addresses from Tesseract results
-      let addresses = extractAddressesFromText(correctedText);
-      
-      // Step 3: If Tesseract found nothing, try with original image
-      if (addresses.length === 0) {
-        setOcrProgress(72);
-        const fallbackWorker = await createWorker('eng', 1);
-        const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
-        await fallbackWorker.terminate();
-        
-        const correctedFallback = fixOcrMisreads(fallbackText);
-        addresses = extractAddressesFromText(correctedFallback);
-      }
-      
-      // Step 4: If Tesseract still found nothing, fallback to VLM (Gemini Vision)
-      if (addresses.length === 0) {
-        setOcrProgress(80);
-        console.log("Tesseract found no addresses, trying VLM fallback...");
-        toast.info("Using AI vision for better accuracy...", { duration: 2000 });
-        
+      try {
+        setOcrProgress(30);
         const vlmAddresses = await performVLMOcr(imageData);
+        setOcrProgress(70);
         
         if (vlmAddresses.length > 0) {
           console.log("VLM extracted addresses:", vlmAddresses);
           addresses = vlmAddresses;
+        }
+      } catch (vlmError) {
+        console.error("VLM OCR failed, falling back to Tesseract:", vlmError);
+      }
+      
+      // FALLBACK: Use Tesseract if VLM failed or found nothing
+      if (addresses.length === 0) {
+        setOcrProgress(75);
+        console.log("VLM found no addresses, trying Tesseract fallback...");
+        
+        const processedImage = await preprocessImage(imageData);
+        
+        const worker = await createWorker('eng', 1, {
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              setOcrProgress(75 + Math.round(m.progress * 20));
+            }
+          },
+        });
+        
+        const { data: { text } } = await worker.recognize(processedImage);
+        await worker.terminate();
+        
+        const correctedText = fixOcrMisreads(text);
+        console.log("Tesseract OCR Text (corrected):", correctedText);
+        
+        addresses = extractAddressesFromText(correctedText);
+        
+        // Try original image if processed didn't work
+        if (addresses.length === 0) {
+          const fallbackWorker = await createWorker('eng', 1);
+          const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
+          await fallbackWorker.terminate();
+          
+          const correctedFallback = fixOcrMisreads(fallbackText);
+          addresses = extractAddressesFromText(correctedFallback);
         }
       }
       
