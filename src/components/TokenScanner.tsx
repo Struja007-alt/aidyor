@@ -589,12 +589,24 @@ export const TokenScanner = () => {
         setDisplayAddress(bestPair.baseToken.address);
       }
 
-      setScanResults(results);
+      // Sort results: original first, then by liquidity descending
+      const sortedResults = [...results].sort((a, b) => {
+        // Original tokens first
+        if (a.tokenStatus === "original" && b.tokenStatus !== "original") return -1;
+        if (b.tokenStatus === "original" && a.tokenStatus !== "original") return 1;
+        // Then suspicious last
+        if (a.tokenStatus === "suspicious" && b.tokenStatus !== "suspicious") return 1;
+        if (b.tokenStatus === "suspicious" && a.tokenStatus !== "suspicious") return -1;
+        // Then by liquidity
+        return (b.marketData?.liquidity || 0) - (a.marketData?.liquidity || 0);
+      });
+
+      setScanResults(sortedResults);
       
       // Auto-select original or highest liquidity result
-      if (results.length > 0) {
-        const original = results.find(r => r.tokenStatus === "original");
-        const best = original || results.reduce((a, b) => 
+      if (sortedResults.length > 0) {
+        const original = sortedResults.find(r => r.tokenStatus === "original");
+        const best = original || sortedResults.reduce((a, b) => 
           (a.marketData?.liquidity || 0) > (b.marketData?.liquidity || 0) ? a : b
         );
         setSelectedResult(best);
@@ -723,13 +735,18 @@ export const TokenScanner = () => {
     }
   };
 
-  const getTokenStatusBadge = (status: "original" | "bridged" | "suspicious") => {
+  const getTokenStatusBadge = (status: "original" | "bridged" | "suspicious", isHighlighted = false) => {
     switch (status) {
       case "original":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-safe/20 text-safe text-xs font-medium border border-safe/30">
-            <ShieldCheck className="w-3 h-3" />
-            Original
+          <span className={cn(
+            "inline-flex items-center gap-1.5 rounded-full font-medium border",
+            isHighlighted 
+              ? "px-3 py-1 bg-safe/30 text-safe text-sm border-safe/50 shadow-lg shadow-safe/20 animate-pulse"
+              : "px-2 py-0.5 bg-safe/20 text-safe text-xs border-safe/30"
+          )}>
+            <BadgeCheck className={isHighlighted ? "w-4 h-4" : "w-3 h-3"} />
+            {isHighlighted ? "✓ ORIGINAL" : "Original"}
           </span>
         );
       case "bridged":
@@ -1326,128 +1343,139 @@ export const TokenScanner = () => {
             </p>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {scanResults.map((result) => (
-                <div
-                  key={result.chainId}
-                  className={cn(
-                    "p-4 rounded-lg border transition-all relative",
-                    result.found 
-                      ? selectedResult?.chainId === result.chainId
-                        ? "border-primary bg-primary/20"
-                        : "border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50"
-                      : "border-border/30 bg-secondary/10 opacity-50"
-                  )}
-                >
-                  {/* Clickable area for selection */}
-                  <button
-                    onClick={() => result.found && setSelectedResult(result)}
-                    disabled={!result.found}
-                    className="w-full text-left"
+              {scanResults.map((result, index) => {
+                const isOriginal = result.tokenStatus === "original";
+                const isFirstOriginal = isOriginal && index === 0;
+                
+                return (
+                  <div
+                    key={result.chainId}
+                    className={cn(
+                      "p-4 rounded-lg border transition-all relative",
+                      isFirstOriginal && "ring-2 ring-safe/50 shadow-lg shadow-safe/10",
+                      result.found 
+                        ? selectedResult?.chainId === result.chainId
+                          ? "border-primary bg-primary/20"
+                          : isOriginal
+                            ? "border-safe/50 bg-safe/10 hover:bg-safe/20 hover:border-safe"
+                            : "border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50"
+                        : "border-border/30 bg-secondary/10 opacity-50"
+                    )}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">{result.network}</span>
-                        {/* Quick Security Badges */}
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {/* Lock Status Badge */}
-                          {result.network !== 'SOL' && (
-                            <LockStatusBadge lockInfo={result.lockInfo} compact />
-                          )}
-                          {result.securityData && (
-                            <>
-                              {result.securityData.isHoneypot && (
-                                <span className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5" title="Honeypot Detected!">
-                                  <ShieldAlert className="w-2.5 h-2.5" />
-                                  HP
-                                </span>
-                              )}
-                              {!result.securityData.isHoneypot && result.securityData.isVerified && (
-                                <span className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5" title="Verified Contract">
-                                  <BadgeCheck className="w-2.5 h-2.5" />
-                                </span>
-                              )}
-                              {result.securityData.holderCount > 0 && (
-                                <span className={cn(
-                                  "px-1.5 py-0.5 text-[10px] rounded flex items-center gap-0.5",
-                                  result.securityData.holderCount >= 1000 
-                                    ? "bg-safe/20 text-safe border border-safe/40" 
-                                    : result.securityData.holderCount >= 100 
-                                      ? "bg-warning/20 text-warning border border-warning/40"
-                                      : "bg-danger/20 text-danger border border-danger/40"
-                                )} title={`${result.securityData.holderCount.toLocaleString()} holders`}>
-                                  <Users className="w-2.5 h-2.5" />
-                                  {result.securityData.holderCount >= 1000 
-                                    ? `${(result.securityData.holderCount / 1000).toFixed(0)}K`
-                                    : result.securityData.holderCount}
-                                </span>
-                              )}
-                            </>
-                          )}
-                          {/* Pump/Dump Badge */}
-                          <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {result.found && getTokenStatusBadge(result.tokenStatus)}
-                      </div>
-                    </div>
-                    {result.found && (
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className={cn(
-                            "font-display text-lg",
-                            result.riskScore >= 70 ? "text-safe" : 
-                            result.riskScore >= 40 ? "text-warning" : "text-danger"
-                          )}>
-                            {result.riskScore}
-                          </span>
-                          <span className="text-muted-foreground text-xs ml-1">/ 100</span>
-                        </div>
-                        {result.marketData && (
-                          <div className="text-right">
-                            <div className="text-xs text-muted-foreground">Liquidity</div>
-                            <div className="text-sm font-medium text-foreground">
-                              {formatCurrency(result.marketData.liquidity)}
-                            </div>
-                          </div>
-                        )}
+                    {isFirstOriginal && (
+                      <div className="absolute -top-2 -right-2 z-10">
+                        <span className="flex items-center gap-1 px-2 py-1 bg-safe text-safe-foreground text-[10px] font-bold rounded-full shadow-lg uppercase tracking-wider">
+                          <BadgeCheck className="w-3 h-3" />
+                          Verified
+                        </span>
                       </div>
                     )}
-                  </button>
-                  
-                  {/* Watchlist button */}
-                  {result.found && tokenInfo && (
-                    <div className="mt-3 pt-3 border-t border-border/30">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const added = addToken({
-                            address: result.address,
-                            name: tokenInfo.name,
-                            network: result.network as Network,
-                            riskScore: result.riskScore,
-                          });
-                          if (added) {
-                            toast.success(`${tokenInfo.name} (${result.network}) added to watchlist!`);
-                          } else {
-                            toast.info("Already in watchlist");
-                          }
-                        }}
-                        disabled={isInWatchlist(result.address)}
-                        className="w-full gap-2 h-8 text-xs"
-                      >
-                        <Star className={cn(
-                          "w-3.5 h-3.5",
-                          isInWatchlist(result.address) && "fill-warning text-warning"
-                        )} />
-                        {isInWatchlist(result.address) ? "In Watchlist" : "Add to Watchlist"}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    <button
+                      onClick={() => result.found && setSelectedResult(result)}
+                      disabled={!result.found}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">{result.network}</span>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {result.network !== 'SOL' && (
+                              <LockStatusBadge lockInfo={result.lockInfo} compact />
+                            )}
+                            {result.securityData && (
+                              <>
+                                {result.securityData.isHoneypot && (
+                                  <span className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5" title="Honeypot Detected!">
+                                    <ShieldAlert className="w-2.5 h-2.5" />
+                                    HP
+                                  </span>
+                                )}
+                                {!result.securityData.isHoneypot && result.securityData.isVerified && (
+                                  <span className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5" title="Verified Contract">
+                                    <BadgeCheck className="w-2.5 h-2.5" />
+                                  </span>
+                                )}
+                                {result.securityData.holderCount > 0 && (
+                                  <span className={cn(
+                                    "px-1.5 py-0.5 text-[10px] rounded flex items-center gap-0.5",
+                                    result.securityData.holderCount >= 1000 
+                                      ? "bg-safe/20 text-safe border border-safe/40" 
+                                      : result.securityData.holderCount >= 100 
+                                        ? "bg-warning/20 text-warning border border-warning/40"
+                                        : "bg-danger/20 text-danger border border-danger/40"
+                                  )} title={`${result.securityData.holderCount.toLocaleString()} holders`}>
+                                    <Users className="w-2.5 h-2.5" />
+                                    {result.securityData.holderCount >= 1000 
+                                      ? `${(result.securityData.holderCount / 1000).toFixed(0)}K`
+                                      : result.securityData.holderCount}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                            <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {result.found && getTokenStatusBadge(result.tokenStatus, isFirstOriginal)}
+                        </div>
+                      </div>
+                      {result.found && (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className={cn(
+                              "font-display text-lg",
+                              result.riskScore >= 70 ? "text-safe" : 
+                              result.riskScore >= 40 ? "text-warning" : "text-danger"
+                            )}>
+                              {result.riskScore}
+                            </span>
+                            <span className="text-muted-foreground text-xs ml-1">/ 100</span>
+                          </div>
+                          {result.marketData && (
+                            <div className="text-right">
+                              <div className="text-xs text-muted-foreground">Liquidity</div>
+                              <div className="text-sm font-medium text-foreground">
+                                {formatCurrency(result.marketData.liquidity)}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                    
+                    {result.found && tokenInfo && (
+                      <div className="mt-3 pt-3 border-t border-border/30">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const added = addToken({
+                              address: result.address,
+                              name: tokenInfo.name,
+                              network: result.network as Network,
+                              riskScore: result.riskScore,
+                            });
+                            if (added) {
+                              toast.success(`${tokenInfo.name} (${result.network}) added to watchlist!`);
+                            } else {
+                              toast.info("Already in watchlist");
+                            }
+                          }}
+                          disabled={isInWatchlist(result.address)}
+                          className="w-full gap-2 h-8 text-xs"
+                        >
+                          <Star className={cn(
+                            "w-3.5 h-3.5",
+                            isInWatchlist(result.address) && "fill-warning text-warning"
+                          )} />
+                          {isInWatchlist(result.address) ? "In Watchlist" : "Add to Watchlist"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
