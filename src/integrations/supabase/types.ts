@@ -14,7 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      watchlist_tokens: {
+        Row: {
+          added_at: string
+          address: string
+          id: string
+          name: string
+          network: string
+          risk_score: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          address: string
+          id?: string
+          name: string
+          network: string
+          risk_score?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          address?: string
+          id?: string
+          name?: string
+          network?: string
+          risk_score?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
