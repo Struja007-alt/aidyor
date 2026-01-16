@@ -31,11 +31,16 @@ const networkToUnicryptChain: Record<string, string> = {
   'AVAX': 'Avalanche',
 };
 
-// Main function: Check all lock platforms in parallel
+// Main function: Check all lock platforms in parallel with validation
 export async function getLiquidityLockInfo(
   tokenAddress: string, 
   network: string
 ): Promise<LockInfo | null> {
+  // Input validation
+  if (!tokenAddress || typeof tokenAddress !== 'string') return null;
+  const sanitized = tokenAddress.trim().toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/i.test(sanitized)) return null;
+  
   const chainId = networkToChainId[network];
   if (!chainId) return null;
 

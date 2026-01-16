@@ -33,13 +33,23 @@ export interface RugCheckRisk {
   level: 'info' | 'warn' | 'danger';
 }
 
-// Fetch Solana token security from RugCheck
+// Fetch Solana token security from RugCheck with timeout and validation
 export async function getRugCheckSecurity(mintAddress: string): Promise<RugCheckResult | null> {
+  // Input validation
+  if (!mintAddress || typeof mintAddress !== 'string') return null;
+  const sanitized = mintAddress.trim();
+  if (sanitized.length < 32 || sanitized.length > 44) return null;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  
   try {
     const response = await fetch(
-      `https://api.rugcheck.xyz/v1/tokens/${mintAddress}/report`
+      `https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(sanitized)}/report`,
+      { signal: controller.signal }
     );
     
+    clearTimeout(timeoutId);
     if (!response.ok) return null;
     
     const data = await response.json();
@@ -91,6 +101,11 @@ export async function getRugCheckSecurity(mintAddress: string): Promise<RugCheck
       markets
     };
   } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === 'AbortError') {
+      console.warn('RugCheck API timed out');
+      return null;
+    }
     console.error('RugCheck API error:', error);
     return null;
   }

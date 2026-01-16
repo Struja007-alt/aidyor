@@ -81,28 +81,63 @@ export const networkToChainId: Record<string, string> = {
   'TON': 'ton',
 };
 
-// Search tokens by name, symbol, or address
+// Search tokens by name, symbol, or address with timeout and validation
 export async function searchTokens(query: string): Promise<DexPair[]> {
+  // Input validation
+  if (!query || typeof query !== 'string') return [];
+  const sanitized = query.trim().slice(0, 100); // Max 100 chars
+  if (sanitized.length < 2) return [];
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  
   try {
-    const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(query)}`);
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(sanitized)}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeoutId);
     if (!response.ok) throw new Error('Search failed');
     const data: DexSearchResult = await response.json();
     return data.pairs || [];
   } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === 'AbortError') {
+      console.warn('DEXScreener search timed out');
+      return [];
+    }
     console.error('DEXScreener search error:', error);
     return [];
   }
 }
 
-// Get token by contract address
+// Get token by contract address with timeout and validation
 export async function getTokenByAddress(address: string): Promise<DexPair[]> {
+  // Input validation - addresses are typically 32-66 chars
+  if (!address || typeof address !== 'string') return [];
+  const sanitized = address.trim();
+  if (sanitized.length < 32 || sanitized.length > 66) return [];
+  // Basic format check - must be alphanumeric with possible 0x prefix
+  if (!/^(0x)?[a-zA-Z0-9]+$/.test(sanitized)) return [];
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout for full scan
+  
   try {
-    // DEXScreener accepts addresses directly
-    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(sanitized)}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeoutId);
     if (!response.ok) throw new Error('Token lookup failed');
     const data: TokenSearchResult = await response.json();
     return data.pairs || [];
   } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === 'AbortError') {
+      console.warn('DEXScreener token lookup timed out');
+      return [];
+    }
     console.error('DEXScreener token lookup error:', error);
     return [];
   }
