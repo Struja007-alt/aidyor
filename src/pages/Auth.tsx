@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, Mail, Lock, Loader2, ArrowLeft } from "lucide-react";
+import { Shield, Mail, Lock, Loader2, ArrowLeft, Fingerprint } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
+import { usePasskey } from "@/hooks/usePasskey";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Separator } from "@/components/ui/separator";
 
 const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
@@ -19,6 +21,7 @@ const Auth = () => {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   
   const { user, signIn, signUp } = useAuth();
+  const { loading: passkeyLoading, isPasskeySupported, authenticateWithPasskey } = usePasskey();
   const navigate = useNavigate();
 
   // Redirect if already logged in
@@ -27,6 +30,16 @@ const Auth = () => {
       navigate("/");
     }
   }, [user, navigate]);
+
+  const validateEmail = () => {
+    const result = emailSchema.safeParse(email);
+    if (!result.success) {
+      setErrors(prev => ({ ...prev, email: result.error.errors[0].message }));
+      return false;
+    }
+    setErrors(prev => ({ ...prev, email: undefined }));
+    return true;
+  };
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -85,6 +98,18 @@ const Auth = () => {
     }
   };
 
+  const handlePasskeyLogin = async () => {
+    if (!validateEmail()) return;
+    
+    const success = await authenticateWithPasskey(email);
+    if (success) {
+      navigate("/");
+    }
+  };
+
+  const isLoading = loading || passkeyLoading;
+  const showPasskeyOption = isLogin && isPasskeySupported();
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -116,26 +141,80 @@ const Auth = () => {
               : "Create an account to save your watchlist"}
           </p>
 
+          {/* Passkey Login Option */}
+          {showPasskeyOption && (
+            <>
+              <div className="space-y-4 mb-6">
+                <div className="space-y-2">
+                  <Label htmlFor="passkey-email">Email for Passkey</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="passkey-email"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10"
+                      disabled={isLoading}
+                    />
+                  </div>
+                  {errors.email && (
+                    <p className="text-xs text-danger">{errors.email}</p>
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2 border-primary/50 hover:bg-primary/10"
+                  onClick={handlePasskeyLogin}
+                  disabled={isLoading}
+                >
+                  {passkeyLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Fingerprint className="w-5 h-5" />
+                  )}
+                  Sign in with Passkey
+                </Button>
+              </div>
+
+              <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator className="w-full" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">
+                    Or continue with password
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  disabled={loading}
-                />
+            {!showPasskeyOption && (
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-10"
+                    disabled={isLoading}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="text-xs text-danger">{errors.email}</p>
+                )}
               </div>
-              {errors.email && (
-                <p className="text-xs text-danger">{errors.email}</p>
-              )}
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
@@ -148,7 +227,7 @@ const Auth = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10"
-                  disabled={loading}
+                  disabled={isLoading}
                 />
               </div>
               {errors.password && (
@@ -159,7 +238,7 @@ const Auth = () => {
             <Button 
               type="submit" 
               className="w-full"
-              disabled={loading}
+              disabled={isLoading}
             >
               {loading ? (
                 <>
@@ -167,7 +246,7 @@ const Auth = () => {
                   {isLogin ? "Signing in..." : "Creating account..."}
                 </>
               ) : (
-                isLogin ? "Sign In" : "Create Account"
+                isLogin ? "Sign In with Password" : "Create Account"
               )}
             </Button>
           </form>
@@ -183,7 +262,7 @@ const Auth = () => {
                   setErrors({});
                 }}
                 className="ml-1 text-primary hover:underline font-medium"
-                disabled={loading}
+                disabled={isLoading}
               >
                 {isLogin ? "Sign Up" : "Sign In"}
               </button>
@@ -193,7 +272,11 @@ const Auth = () => {
           {/* Info */}
           <div className="mt-6 p-3 rounded-lg bg-primary/10 border border-primary/20">
             <p className="text-xs text-muted-foreground text-center">
-              🔐 Your watchlist will be securely synced across all your devices
+              {isLogin ? (
+                <>🔐 Use passkey (biometrics) for faster, more secure sign-in</>
+              ) : (
+                <>🔐 After signing up, you can add a passkey in settings</>
+              )}
             </p>
           </div>
         </div>
