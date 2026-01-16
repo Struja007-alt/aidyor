@@ -188,3 +188,50 @@
     opacity: 0;
   }
 }
+
+/* Performance optimizations */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out forwards;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* Reduce motion for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in,
+    .animate-pulse,
+    .animate-pulse-glow,
+    .animate-scan,
+    .scan-line {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+  
+  /* GPU acceleration for animations */
+  .glass-card,
+  .animate-fade-in {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+  }
+  
+  /* Touch-friendly tap targets for mobile */
+  @media (pointer: coarse) {
+    button, 
+    [role="button"],
+    a {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+}
