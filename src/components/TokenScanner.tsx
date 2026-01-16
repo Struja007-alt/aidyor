@@ -1208,6 +1208,118 @@ export const TokenScanner = () => {
 
   const foundNetworks = scanResults.filter(r => r.found);
 
+  // Generate one-sentence risk summary explaining the score
+  const generateRiskSummary = useCallback((result: NetworkResult): string => {
+    const { riskScore, riskFactors, securityData, lockInfo, marketData } = result;
+    
+    // Determine risk level
+    const riskLevel = riskScore >= 70 ? "Low risk" : riskScore >= 40 ? "Medium risk" : "High risk";
+    
+    // Collect key positive and negative factors
+    const positives: string[] = [];
+    const negatives: string[] = [];
+    
+    // Check for critical issues first
+    if (securityData?.isHoneypot) {
+      return "⚠️ CRITICAL: Honeypot detected - tokens cannot be sold!";
+    }
+    
+    // Check for dangerous factors
+    const dangerFactors = riskFactors.filter(f => f.status === "danger");
+    const warningFactors = riskFactors.filter(f => f.status === "warning");
+    const safeFactors = riskFactors.filter(f => f.status === "safe");
+    
+    // Collect specific insights
+    if (lockInfo?.isLocked) {
+      positives.push(`liquidity locked (${lockInfo.lockPercentage}%)`);
+    }
+    
+    if (securityData?.isVerified) {
+      positives.push("verified contract");
+    }
+    
+    if (marketData && marketData.liquidity >= 100000) {
+      positives.push("strong liquidity");
+    } else if (marketData && marketData.liquidity >= 10000) {
+      positives.push("decent liquidity");
+    } else if (marketData && marketData.liquidity < 5000) {
+      negatives.push("low liquidity");
+    }
+    
+    if (securityData?.holderCount && securityData.holderCount >= 1000) {
+      positives.push("many holders");
+    } else if (securityData?.holderCount && securityData.holderCount < 50) {
+      negatives.push("few holders");
+    }
+    
+    // Check for specific risk factors
+    for (const factor of dangerFactors) {
+      const lowerName = factor.name.toLowerCase();
+      if (lowerName.includes("tax") && (lowerName.includes("buy") || lowerName.includes("sell"))) {
+        negatives.push("high taxes");
+      } else if (lowerName.includes("mint")) {
+        negatives.push("mintable supply");
+      } else if (lowerName.includes("owner") || lowerName.includes("hidden")) {
+        negatives.push("ownership risks");
+      } else if (lowerName.includes("holder") || lowerName.includes("concentration")) {
+        const match = factor.description.match(/(\d+(?:\.\d+)?%)/);
+        if (match) {
+          negatives.push(`dev/top holder owns ${match[1]}`);
+        } else {
+          negatives.push("high holder concentration");
+        }
+      } else if (lowerName.includes("freeze")) {
+        negatives.push("freeze authority enabled");
+      }
+    }
+    
+    for (const factor of warningFactors) {
+      const lowerName = factor.name.toLowerCase();
+      if (lowerName.includes("holder") || lowerName.includes("concentration")) {
+        const match = factor.description.match(/(\d+(?:\.\d+)?%)/);
+        if (match && negatives.length < 2) {
+          negatives.push(`top holder owns ${match[1]}`);
+        }
+      }
+    }
+    
+    // Build the summary sentence
+    if (dangerFactors.length > 0 && negatives.length > 0) {
+      const topNegatives = negatives.slice(0, 2).join(" and ");
+      if (positives.length > 0) {
+        const topPositives = positives.slice(0, 1)[0];
+        return `${riskLevel} — ${topPositives} but ${topNegatives}.`;
+      }
+      return `${riskLevel} — ${topNegatives}.`;
+    }
+    
+    if (positives.length > 0 && negatives.length > 0) {
+      const topPositives = positives.slice(0, 1)[0];
+      const topNegatives = negatives.slice(0, 1)[0];
+      return `${riskLevel} — ${topPositives} but ${topNegatives}.`;
+    }
+    
+    if (positives.length >= 2) {
+      return `${riskLevel} — ${positives.slice(0, 2).join(" and ")}.`;
+    }
+    
+    if (positives.length === 1) {
+      return `${riskLevel} — ${positives[0]}.`;
+    }
+    
+    if (negatives.length > 0) {
+      return `${riskLevel} — ${negatives.slice(0, 2).join(" and ")}.`;
+    }
+    
+    // Default fallbacks based on score
+    if (riskScore >= 70) {
+      return "Low risk — no major issues detected.";
+    } else if (riskScore >= 40) {
+      return "Medium risk — proceed with caution.";
+    }
+    return "High risk — multiple warning signs detected.";
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Unified Token Search & Scan */}
@@ -1962,6 +2074,18 @@ export const TokenScanner = () => {
                   )}
                 </div>
                 <RiskGauge score={selectedResult.riskScore} />
+                
+                {/* One-sentence risk summary */}
+                <p className={cn(
+                  "text-sm text-center mt-3 px-4 py-2 rounded-lg max-w-sm",
+                  selectedResult.riskScore >= 70 
+                    ? "bg-safe/10 text-safe border border-safe/20" 
+                    : selectedResult.riskScore >= 40 
+                      ? "bg-warning/10 text-warning border border-warning/20"
+                      : "bg-danger/10 text-danger border border-danger/20"
+                )}>
+                  {generateRiskSummary(selectedResult)}
+                </p>
                 
                 <div className="flex gap-2 mt-4">
                   <Button
