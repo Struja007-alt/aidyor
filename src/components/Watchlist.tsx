@@ -21,6 +21,43 @@ const getRiskLabel = (score: number) => {
   return "Danger";
 };
 
+// Generate a one-sentence risk summary for watchlist tokens
+const generateWatchlistSummary = (token: WatchlistToken, analysis?: PumpDumpAnalysis): string => {
+  const { riskScore } = token;
+  const riskLevel = riskScore >= 70 ? "Low risk" : riskScore >= 40 ? "Medium risk" : "High risk";
+  
+  // If we have pump/dump analysis, use that info
+  if (analysis) {
+    if (analysis.status === 'pump') {
+      return `⚡ PUMP DETECTED — ${analysis.priceChange1h.toFixed(0)}% in 1h with high volume.`;
+    }
+    if (analysis.status === 'dump') {
+      return `📉 DUMP DETECTED — ${Math.abs(analysis.priceChange1h).toFixed(0)}% drop in 1h.`;
+    }
+    if (analysis.status === 'pump_warning') {
+      return `${riskLevel} — unusual upward momentum detected.`;
+    }
+    if (analysis.status === 'dump_warning') {
+      return `${riskLevel} — unusual selling pressure detected.`;
+    }
+    
+    // Use price data for context
+    if (analysis.priceChange24h > 50) {
+      return `${riskLevel} — up ${analysis.priceChange24h.toFixed(0)}% in 24h.`;
+    }
+    if (analysis.priceChange24h < -30) {
+      return `${riskLevel} — down ${Math.abs(analysis.priceChange24h).toFixed(0)}% in 24h.`;
+    }
+  }
+  
+  // Default based on score
+  if (riskScore >= 80) return "Low risk — strong fundamentals detected.";
+  if (riskScore >= 70) return "Low risk — no major issues detected.";
+  if (riskScore >= 50) return "Medium risk — some concerns, proceed with caution.";
+  if (riskScore >= 40) return "Medium risk — multiple warning signs.";
+  return "High risk — significant red flags detected.";
+};
+
 const getNetworkExplorer = (network: string, address: string) => {
   const explorers: Record<string, string> = {
     ETH: `https://etherscan.io/token/${address}`,
@@ -343,6 +380,14 @@ export const Watchlist = () => {
                       </span>
                     )}
                   </div>
+                  {/* Risk Summary */}
+                  <p className={cn(
+                    "text-[11px] mt-1.5 leading-tight",
+                    token.riskScore >= 70 ? "text-safe/70" : 
+                    token.riskScore >= 40 ? "text-warning/70" : "text-danger/70"
+                  )}>
+                    {generateWatchlistSummary(token, analysis)}
+                  </p>
                   <div className="flex items-center gap-2 mt-1">
                     <p className="text-xs text-muted-foreground font-mono truncate">
                       {token.address.slice(0, 8)}...{token.address.slice(-6)}
