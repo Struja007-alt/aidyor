@@ -141,6 +141,103 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     detailedExplanation: 'Only a portion of liquidity is locked. The unlocked portion can still be removed at any time.',
     impact: 'medium',
     whatToDo: 'Higher lock percentage = safer. 80%+ is preferred.'
+  },
+
+  // BSCTrace-specific risks
+  'Self-Destruct': {
+    title: 'Self-Destruct Capability',
+    shortDesc: 'Contract can be destroyed',
+    detailedExplanation: 'The contract contains a self-destruct function. The owner can permanently destroy the contract, making all tokens worthless and untradeable.',
+    impact: 'critical',
+    whatToDo: 'DO NOT invest. Self-destruct is a major scam indicator.'
+  },
+
+  'External Calls': {
+    title: 'External Contract Calls',
+    shortDesc: 'Contract calls unknown code',
+    detailedExplanation: 'The contract makes calls to external addresses. This can hide malicious logic in other contracts that can be changed at any time.',
+    impact: 'medium',
+    whatToDo: 'Verify what external contracts are called and if they are upgradeable.'
+  },
+
+  'Ownership Risk': {
+    title: 'Reclaimable Ownership',
+    shortDesc: 'Owner can reclaim control',
+    detailedExplanation: 'Even after renouncing, the contract has backdoors allowing the owner to regain control. This enables rug pulls after building false trust.',
+    impact: 'critical',
+    whatToDo: 'Avoid tokens where ownership can be reclaimed after renouncement.'
+  },
+
+  'Proxy': {
+    title: 'Proxy Contract',
+    shortDesc: 'Logic can be changed',
+    detailedExplanation: 'This is an upgradeable proxy contract. The underlying logic can be changed by the owner at any time, potentially adding malicious code post-launch.',
+    impact: 'medium',
+    whatToDo: 'Check if upgrades require timelock or multi-sig governance.'
+  },
+
+  'Blacklist': {
+    title: 'Blacklist Function',
+    shortDesc: 'Wallets can be blocked',
+    detailedExplanation: 'The contract can blacklist addresses, preventing them from trading or transferring tokens. Your wallet could be targeted.',
+    impact: 'medium',
+    whatToDo: 'Understand why blacklist exists. Some use it for anti-bot, others for control.'
+  },
+
+  'Anti-Whale': {
+    title: 'Anti-Whale Protection',
+    shortDesc: 'Transaction limits active',
+    detailedExplanation: 'Maximum transaction and wallet limits prevent large holders from dumping. This is generally protective for smaller investors.',
+    impact: 'low',
+    whatToDo: 'This is usually a positive feature. Check the limit amounts are reasonable.'
+  },
+
+  'Fixed Supply': {
+    title: 'Fixed Token Supply',
+    shortDesc: 'No new tokens can be minted',
+    detailedExplanation: 'The token supply is fixed and cannot be increased. This protects against inflation and supply manipulation.',
+    impact: 'low',
+    whatToDo: 'This is a positive indicator. Your tokens cannot be diluted.'
+  },
+
+  'Low Tax': {
+    title: 'Low Transaction Tax',
+    shortDesc: 'Minimal fees on trades',
+    detailedExplanation: 'Buy and sell taxes are low (typically under 5%), meaning you keep most of your value when trading.',
+    impact: 'low',
+    whatToDo: 'This is favorable. Monitor for tax increases over time.'
+  },
+
+  'Moderate Tax': {
+    title: 'Moderate Transaction Tax',
+    shortDesc: 'Notable fees on trades',
+    detailedExplanation: 'Transaction taxes are moderate (5-15%). While not extreme, they reduce your profits on each trade.',
+    impact: 'medium',
+    whatToDo: 'Factor tax into your profit calculations. Check if taxes can change.'
+  },
+
+  'High Tax': {
+    title: 'High Transaction Tax',
+    shortDesc: 'Excessive fees on trades',
+    detailedExplanation: 'Very high taxes (15%+) significantly eat into your investment. Some scams use high taxes to extract value from traders.',
+    impact: 'high',
+    whatToDo: 'Carefully consider if potential gains outweigh the tax burden.'
+  },
+
+  'Verified': {
+    title: 'Contract Verified',
+    shortDesc: 'Source code is public',
+    detailedExplanation: 'The contract source code is verified on the blockchain explorer, allowing anyone to audit and review the code for security issues.',
+    impact: 'low',
+    whatToDo: 'This is positive. Consider if the code has been professionally audited too.'
+  },
+
+  'Unverified': {
+    title: 'Unverified Contract',
+    shortDesc: 'Source code hidden',
+    detailedExplanation: 'The contract code is not verified, hiding the actual logic. This makes it impossible to detect malicious functions.',
+    impact: 'medium',
+    whatToDo: 'Prefer verified contracts. Unverified code carries unknown risks.'
   }
 };
 

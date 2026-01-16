@@ -28,6 +28,10 @@ import {
   type LockInfo,
 } from "@/lib/api/unicrypt";
 import {
+  getBSCTraceSecurity,
+  analyzeBSCTraceSecurity,
+} from "@/lib/api/bsctrace";
+import {
   analyzePumpDump,
   type PumpDumpAnalysis,
 } from "@/lib/api/pumpDump";
@@ -520,6 +524,30 @@ export const TokenScanner = () => {
                   isMintable: goplusData.isMintable,
                   hasHiddenOwner: goplusData.hiddenOwner,
                 };
+              }
+              
+              // For BSC tokens, also fetch BSCTrace data for enhanced analysis
+              if (network === 'BSC') {
+                try {
+                  const bscTraceData = await getBSCTraceSecurity(mainPair.baseToken.address);
+                  if (bscTraceData) {
+                    const { score: bscScore, factors: bscFactors } = analyzeBSCTraceSecurity(bscTraceData);
+                    // Merge BSCTrace data with GoPlus (BSCTrace provides more accurate honeypot detection)
+                    securityScore = Math.round((securityScore + bscScore) / 2);
+                    // Add unique factors from BSCTrace that aren't already present
+                    const existingFactorNames = new Set(securityFactors.map(f => f.name));
+                    const uniqueBscFactors = bscFactors.filter(f => !existingFactorNames.has(f.name));
+                    securityFactors = [...securityFactors, ...uniqueBscFactors];
+                    // Update security data with more accurate BSCTrace honeypot detection
+                    if (securityData) {
+                      securityData.isHoneypot = securityData.isHoneypot || bscTraceData.isHoneypot;
+                      securityData.buyTax = Math.max(securityData.buyTax, bscTraceData.buyTax * 100);
+                      securityData.sellTax = Math.max(securityData.sellTax, bscTraceData.sellTax * 100);
+                    }
+                  }
+                } catch (bscTraceError) {
+                  console.error('BSCTrace API error:', bscTraceError);
+                }
               }
               
               // Fetch Unicrypt/Team Finance/PinkSale/DXSale liquidity lock data for EVM chains

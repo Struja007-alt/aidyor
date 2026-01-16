@@ -1,0 +1,219 @@
+// BSCTrace API - Free security analysis for BSC tokens
+// Provides contract analysis, honeypot detection, and risk assessment
+
+export interface BSCTraceResult {
+  isHoneypot: boolean;
+  honeypotReason: string | null;
+  buyTax: number;
+  sellTax: number;
+  transferTax: number;
+  isBlacklisted: boolean;
+  isWhitelisted: boolean;
+  isProxy: boolean;
+  isContractVerified: boolean;
+  isMintable: boolean;
+  canTakeBackOwnership: boolean;
+  ownerAddress: string;
+  creatorAddress: string;
+  holderCount: number;
+  lpHolderCount: number;
+  isAntiWhale: boolean;
+  maxTxAmount: string | null;
+  maxWalletAmount: string | null;
+  tradingEnabled: boolean;
+  selfDestruct: boolean;
+  externalCall: boolean;
+  hiddenOwner: boolean;
+}
+
+// Fetch BSC token security data from BSCTrace
+export async function getBSCTraceSecurity(address: string): Promise<BSCTraceResult | null> {
+  try {
+    // BSCTrace honeypot check endpoint
+    const response = await fetch(
+      `https://api.honeypot.is/v2/IsHoneypot?address=${address}&chainId=56`,
+      {
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error('BSCTrace API error:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Parse honeypot.is response format
+    const simulationResult = data.simulationResult || {};
+    const contractCode = data.contractCode || {};
+    const holderAnalysis = data.holderAnalysis || {};
+    const pair = data.pair || {};
+    const token = data.token || {};
+    
+    return {
+      isHoneypot: data.honeypotResult?.isHoneypot || false,
+      honeypotReason: data.honeypotResult?.honeypotReason || null,
+      buyTax: simulationResult.buyTax || 0,
+      sellTax: simulationResult.sellTax || 0,
+      transferTax: simulationResult.transferTax || 0,
+      isBlacklisted: token.isBlacklisted || false,
+      isWhitelisted: token.isWhitelisted || false,
+      isProxy: contractCode.isProxy || false,
+      isContractVerified: contractCode.isVerified || false,
+      isMintable: contractCode.isMintable || false,
+      canTakeBackOwnership: contractCode.canTakeBackOwnership || false,
+      ownerAddress: contractCode.ownerAddress || '',
+      creatorAddress: contractCode.creatorAddress || '',
+      holderCount: holderAnalysis.holders || 0,
+      lpHolderCount: pair.liquidity?.holders || 0,
+      isAntiWhale: token.isAntiWhale || false,
+      maxTxAmount: token.maxTxAmount || null,
+      maxWalletAmount: token.maxWallet || null,
+      tradingEnabled: !data.honeypotResult?.isHoneypot,
+      selfDestruct: contractCode.hasSelfDestruct || false,
+      externalCall: contractCode.hasExternalCall || false,
+      hiddenOwner: contractCode.hasHiddenOwner || false,
+    };
+  } catch (error) {
+    console.error('BSCTrace API error:', error);
+    return null;
+  }
+}
+
+// Analyze BSCTrace security data and return risk factors
+export function analyzeBSCTraceSecurity(security: BSCTraceResult): {
+  score: number;
+  factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[];
+} {
+  const factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[] = [];
+  let score = 0;
+
+  // Honeypot check - most critical
+  if (security.isHoneypot) {
+    factors.push({ 
+      name: 'Honeypot', 
+      status: 'danger', 
+      description: security.honeypotReason || 'Cannot sell tokens' 
+    });
+    score -= 50;
+  } else {
+    factors.push({ name: 'Honeypot', status: 'safe', description: 'Not a honeypot' });
+    score += 15;
+  }
+
+  // Contract verification
+  if (security.isContractVerified) {
+    factors.push({ name: 'Verified', status: 'safe', description: 'Contract source verified' });
+    score += 10;
+  } else {
+    factors.push({ name: 'Unverified', status: 'warning', description: 'Contract source not verified' });
+    score -= 10;
+  }
+
+  // Buy/Sell tax analysis
+  const buyTax = security.buyTax * 100;
+  const sellTax = security.sellTax * 100;
+  
+  if (buyTax > 25 || sellTax > 25) {
+    factors.push({ 
+      name: 'High Tax', 
+      status: 'danger', 
+      description: `Buy: ${buyTax.toFixed(1)}% / Sell: ${sellTax.toFixed(1)}%` 
+    });
+    score -= 25;
+  } else if (buyTax > 10 || sellTax > 10) {
+    factors.push({ 
+      name: 'Moderate Tax', 
+      status: 'warning', 
+      description: `Buy: ${buyTax.toFixed(1)}% / Sell: ${sellTax.toFixed(1)}%` 
+    });
+    score -= 10;
+  } else if (buyTax <= 5 && sellTax <= 5) {
+    factors.push({ 
+      name: 'Low Tax', 
+      status: 'safe', 
+      description: `Buy: ${buyTax.toFixed(1)}% / Sell: ${sellTax.toFixed(1)}%` 
+    });
+    score += 10;
+  }
+
+  // Mintable check
+  if (security.isMintable) {
+    factors.push({ name: 'Mintable', status: 'warning', description: 'Owner can mint new tokens' });
+    score -= 10;
+  } else {
+    factors.push({ name: 'Fixed Supply', status: 'safe', description: 'No minting capability' });
+    score += 5;
+  }
+
+  // Hidden owner
+  if (security.hiddenOwner) {
+    factors.push({ name: 'Hidden Owner', status: 'danger', description: 'Contract has hidden ownership' });
+    score -= 20;
+  }
+
+  // Self-destruct capability
+  if (security.selfDestruct) {
+    factors.push({ name: 'Self-Destruct', status: 'danger', description: 'Contract can be destroyed' });
+    score -= 25;
+  }
+
+  // External calls
+  if (security.externalCall) {
+    factors.push({ name: 'External Calls', status: 'warning', description: 'Contract makes external calls' });
+    score -= 5;
+  }
+
+  // Proxy contract
+  if (security.isProxy) {
+    factors.push({ name: 'Proxy', status: 'warning', description: 'Upgradeable proxy contract' });
+    score -= 5;
+  }
+
+  // Can take back ownership
+  if (security.canTakeBackOwnership) {
+    factors.push({ name: 'Ownership Risk', status: 'danger', description: 'Owner can reclaim control' });
+    score -= 15;
+  }
+
+  // Blacklist capability
+  if (security.isBlacklisted) {
+    factors.push({ name: 'Blacklist', status: 'warning', description: 'Address blacklisting enabled' });
+    score -= 5;
+  }
+
+  // Holder count analysis
+  if (security.holderCount >= 5000) {
+    factors.push({ 
+      name: 'Holders', 
+      status: 'safe', 
+      description: `${security.holderCount.toLocaleString()} holders` 
+    });
+    score += 10;
+  } else if (security.holderCount >= 500) {
+    factors.push({ 
+      name: 'Holders', 
+      status: 'safe', 
+      description: `${security.holderCount.toLocaleString()} holders` 
+    });
+    score += 5;
+  } else if (security.holderCount > 0) {
+    factors.push({ 
+      name: 'Low Holders', 
+      status: 'warning', 
+      description: `Only ${security.holderCount} holders` 
+    });
+    score -= 5;
+  }
+
+  // Anti-whale protection
+  if (security.isAntiWhale) {
+    factors.push({ name: 'Anti-Whale', status: 'safe', description: 'Transaction limits enabled' });
+    score += 3;
+  }
+
+  return { score, factors };
+}
