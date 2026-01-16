@@ -573,9 +573,21 @@ export const TokenScanner = () => {
                 const rugCheckData = await getRugCheckSecurity(mainPair.baseToken.address);
                 if (rugCheckData) {
                   apiSources.push("rugcheck");
-                  const { score: rcScore, factors: rcFactors } = analyzeRugCheckSecurity(rugCheckData);
-                  // Merge RugCheck with existing (average scores)
-                  securityScore = Math.round((securityScore + rcScore) / 2);
+                  const { score: rcScore, factors: rcFactors, rawScore: rcRawScore } = analyzeRugCheckSecurity(rugCheckData);
+                  
+                  // If RugCheck raw score is very low (critical risk), give it more weight
+                  // This prevents high-risk tokens from showing as safe due to other APIs
+                  if (rcRawScore < 20) {
+                    // Critical risk: RugCheck takes 70% weight
+                    securityScore = Math.round(securityScore * 0.3 + rcScore * 0.7);
+                  } else if (rcRawScore < 50) {
+                    // High risk: RugCheck takes 60% weight
+                    securityScore = Math.round(securityScore * 0.4 + rcScore * 0.6);
+                  } else {
+                    // Normal: average the scores
+                    securityScore = Math.round((securityScore + rcScore) / 2);
+                  }
+                  
                   // Add unique factors from RugCheck that aren't already present
                   const existingFactorNames = new Set(securityFactors.map(f => f.name));
                   const uniqueRcFactors = rcFactors.filter(f => !existingFactorNames.has(f.name));
