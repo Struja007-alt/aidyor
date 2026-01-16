@@ -112,23 +112,30 @@ export async function getRugCheckSecurity(mintAddress: string): Promise<RugCheck
 }
 
 // Analyze RugCheck data for risk factors
+// Returns a normalized score that can be merged with other security APIs
 export function analyzeRugCheckSecurity(data: RugCheckResult): {
   score: number;
   factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[];
+  rawScore: number; // Raw RugCheck score 0-100 for proper weighting
 } {
   const factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[] = [];
   let score = 0;
 
   // RugCheck score analysis (0-100, higher = safer)
+  // Apply stronger penalties for very low scores
   if (data.score >= 80) {
     factors.push({ name: 'RugCheck Score', status: 'safe', description: `Score: ${data.score}/100 - Low risk` });
-    score += 20;
+    score += 25;
   } else if (data.score >= 50) {
     factors.push({ name: 'RugCheck Score', status: 'warning', description: `Score: ${data.score}/100 - Moderate risk` });
     score += 5;
-  } else if (data.score > 0) {
+  } else if (data.score >= 20) {
     factors.push({ name: 'RugCheck Score', status: 'danger', description: `Score: ${data.score}/100 - High risk` });
-    score -= 15;
+    score -= 25;
+  } else if (data.score > 0) {
+    // Very low scores (under 20) get severe penalties
+    factors.push({ name: 'RugCheck Score', status: 'danger', description: `Score: ${data.score}/100 - Critical risk` });
+    score -= 40;
   }
 
   // Mint Authority check
@@ -210,5 +217,5 @@ export function analyzeRugCheckSecurity(data: RugCheckResult): {
     }
   }
 
-  return { score, factors };
+  return { score, factors, rawScore: data.score };
 }
