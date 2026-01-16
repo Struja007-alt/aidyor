@@ -170,13 +170,38 @@ export const TokenScanner = () => {
     // Extract Ethereum-style addresses from normalized text
     const ethMatches = normalizedText.match(ADDRESS_PATTERNS.ethereum);
     if (ethMatches) {
-      ethMatches.forEach(addr => addresses.add(addr));
+      ethMatches.forEach(addr => addresses.add(addr.toLowerCase()));
     }
     
     // Also check original text (in case normalization broke something)
     const ethMatchesOriginal = text.replace(/\n/g, '').match(ADDRESS_PATTERNS.ethereum);
     if (ethMatchesOriginal) {
-      ethMatchesOriginal.forEach(addr => addresses.add(addr));
+      ethMatchesOriginal.forEach(addr => addresses.add(addr.toLowerCase()));
+    }
+    
+    // Fallback: Try to extract and fix corrupted ETH addresses
+    // This handles OCR errors like "0xdAC17F958D2ee523a2266266994597C13D83lec?"
+    if (addresses.size === 0) {
+      const textVariantsForEth = [normalizedText, text.replace(/\n/g, '')];
+      for (const variant of textVariantsForEth) {
+        // Look for 0x followed by hex-like chars (including common misreads)
+        const potentialMatches = variant.match(/0x[a-fA-F0-9lIoO?]{30,50}/gi);
+        if (potentialMatches) {
+          for (const match of potentialMatches) {
+            let cleaned = match.replace(/0x/i, '');
+            cleaned = cleaned
+              .replace(/[lI]/g, '1')
+              .replace(/[oO]/g, '0')
+              .replace(/\?/g, '7')
+              .replace(/[^a-fA-F0-9]/g, '');
+            
+            // Take exactly 40 chars if we have enough
+            if (cleaned.length >= 40) {
+              addresses.add('0x' + cleaned.substring(0, 40).toLowerCase());
+            }
+          }
+        }
+      }
     }
     
     // Extract Solana addresses (Base58, 32-44 chars)
@@ -286,7 +311,7 @@ export const TokenScanner = () => {
   // Fix common OCR misreads in addresses
   const fixOcrMisreads = (text: string): string => {
     // Common OCR errors: O<->0, l<->1, I<->1, S<->5, B<->8
-    return text
+    let fixed = text
       // Fix Ethereum addresses: Ox -> 0x (capital O to zero)
       .replace(/Ox([a-fA-F0-9]{40})/g, '0x$1')
       .replace(/0X([a-fA-F0-9]{40})/g, '0x$1')
@@ -296,6 +321,42 @@ export const TokenScanner = () => {
       .replace(/0x([a-fA-F0-9]*[oO][a-fA-F0-9]*)/g, (_, group) => 
         '0x' + group.replace(/[oO]/g, '0')
       );
+    
+    // Enhanced: Look for 0x followed by hex-like characters and clean them
+    // Fix l -> 1, I -> 1, O -> 0, ? -> 7 in hex contexts
+    fixed = fixed.replace(/0x([a-fA-F0-9lIoO?]{35,50})/g, (match, group) => {
+      const cleaned = group
+        .replace(/[lI]/g, '1')
+        .replace(/[oO]/g, '0')
+        .replace(/\?/g, '7')
+        .replace(/[^a-fA-F0-9]/g, ''); // Remove any non-hex chars
+      return '0x' + cleaned;
+    });
+    
+    return fixed;
+  };
+
+  // Extract the best valid address from corrupted OCR text
+  const extractBestEthAddress = (text: string): string | null => {
+    // Look for anything starting with 0x followed by hex-like chars
+    const potentialMatches = text.match(/0x[a-fA-F0-9lIoO?]{30,50}/gi);
+    if (!potentialMatches) return null;
+    
+    for (const match of potentialMatches) {
+      // Clean and fix the address
+      let cleaned = match.replace(/0x/i, '');
+      cleaned = cleaned
+        .replace(/[lI]/g, '1')
+        .replace(/[oO]/g, '0')
+        .replace(/\?/g, '7')
+        .replace(/[^a-fA-F0-9]/g, '');
+      
+      // Take exactly 40 chars if we have enough
+      if (cleaned.length >= 40) {
+        return '0x' + cleaned.substring(0, 40);
+      }
+    }
+    return null;
   };
 
   const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
