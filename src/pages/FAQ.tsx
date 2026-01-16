@@ -47,7 +47,7 @@ const FAQ = () => {
         },
         {
           q: "How can I verify if a project team is legitimate?",
-          a: "Research team members on LinkedIn, Twitter, and GitHub. Check if they have verifiable work history in crypto or tech. Be wary of stock photos or AI-generated profile pictures. Look for video AMAs or interviews. Remember that even doxxed teams can still rug, so this is just one factor to consider."
+          a: "Research team members on LinkedIn, X, and GitHub. Check if they have verifiable work history in crypto or tech. Be wary of stock photos or AI-generated profile pictures. Look for video AMAs or interviews. Remember that even doxxed teams can still rug, so this is just one factor to consider."
         },
         {
           q: "What should I check before buying any token?",

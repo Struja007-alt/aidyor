@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
-import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Twitter, Info, LogIn } from "lucide-react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2625,11 +2625,11 @@ export const TokenScanner = () => {
                         className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
                       >
                         <div className="flex items-center gap-2">
-                          {social.type === "twitter" && <Twitter className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+{social.type === "twitter" && <span className="w-4 h-4 text-muted-foreground group-hover:text-primary font-bold text-xs flex items-center justify-center">𝕏</span>}
                           {social.type === "telegram" && <MessageCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
                           {social.type === "discord" && <Users className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
                           {!["twitter", "telegram", "discord"].includes(social.type) && <LinkIcon className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
-                          <span className="text-sm text-foreground capitalize">{social.type}</span>
+                          <span className="text-sm text-foreground capitalize">{social.type === "twitter" ? "X" : social.type}</span>
                         </div>
                         <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
                       </a>
