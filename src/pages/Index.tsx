@@ -3,7 +3,13 @@ import { TokenScanner } from "@/components/TokenScanner";
 import { TelegramGameChecker } from "@/components/TelegramGameChecker";
 import { Watchlist } from "@/components/Watchlist";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye } from "lucide-react";
+import { Shield, Zap, Eye, Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const Index = () => {
   return (
@@ -18,8 +24,18 @@ const Index = () => {
             <Zap className="w-4 h-4" />
             Real-time Token Analysis
           </div>
-          <h1 className="font-display text-4xl md:text-6xl font-bold text-foreground mb-4 tracking-tight">
+          <h1 className="font-display text-4xl md:text-6xl font-bold text-foreground mb-4 tracking-tight inline-flex items-center justify-center gap-2 flex-wrap">
             Protect Your <span className="text-gradient-safe">Crypto</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="w-5 h-5 md:w-6 md:h-6 text-muted-foreground hover:text-primary cursor-help transition-colors" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-center">
+                  <p>Analysis is informational only. No financial advice or guarantees.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
             Advanced token scanner with risk analysis, P2E game verification, and screenshot-based token detection.
