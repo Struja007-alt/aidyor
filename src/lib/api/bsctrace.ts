@@ -26,19 +26,29 @@ export interface BSCTraceResult {
   hiddenOwner: boolean;
 }
 
-// Fetch BSC token security data from BSCTrace
+// Fetch BSC token security data from BSCTrace with timeout and validation
 export async function getBSCTraceSecurity(address: string): Promise<BSCTraceResult | null> {
+  // Input validation
+  if (!address || typeof address !== 'string') return null;
+  const sanitized = address.trim().toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/i.test(sanitized)) return null;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+  
   try {
     // BSCTrace honeypot check endpoint
     const response = await fetch(
-      `https://api.honeypot.is/v2/IsHoneypot?address=${address}&chainId=56`,
+      `https://api.honeypot.is/v2/IsHoneypot?address=${encodeURIComponent(sanitized)}&chainId=56`,
       {
         headers: {
           'Accept': 'application/json',
         },
+        signal: controller.signal
       }
     );
 
+    clearTimeout(timeoutId);
     if (!response.ok) {
       console.error('BSCTrace API error:', response.status);
       return null;
@@ -78,6 +88,11 @@ export async function getBSCTraceSecurity(address: string): Promise<BSCTraceResu
       hiddenOwner: contractCode.hasHiddenOwner || false,
     };
   } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === 'AbortError') {
+      console.warn('BSCTrace API timed out');
+      return null;
+    }
     console.error('BSCTrace API error:', error);
     return null;
   }

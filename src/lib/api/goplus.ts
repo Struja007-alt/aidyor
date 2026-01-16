@@ -66,12 +66,21 @@ const networkToGoPlusChain: Record<string, string> = {
   'OP': '10',
 };
 
-// Fetch Solana token holder count from SolanaFM
+// Fetch Solana token holder count from SolanaFM with timeout
 export async function getSolanaTokenSecurity(mintAddress: string): Promise<SolanaSecurityResult | null> {
+  // Input validation
+  if (!mintAddress || typeof mintAddress !== 'string') return null;
+  const sanitized = mintAddress.trim();
+  if (sanitized.length < 32 || sanitized.length > 44) return null;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+  
   try {
     // Get holder count from SolanaFM
     const holdersResponse = await fetch(
-      `https://api.solana.fm/v1/tokens/${mintAddress}/holders?pageSize=1`
+      `https://api.solana.fm/v1/tokens/${encodeURIComponent(sanitized)}/holders?pageSize=1`,
+      { signal: controller.signal }
     );
     
     let holderCount = 0;
@@ -82,7 +91,8 @@ export async function getSolanaTokenSecurity(mintAddress: string): Promise<Solan
 
     // Get token metadata for mint/freeze authority
     const metaResponse = await fetch(
-      `https://api.solana.fm/v1/tokens/${mintAddress}`
+      `https://api.solana.fm/v1/tokens/${encodeURIComponent(sanitized)}`,
+      { signal: controller.signal }
     );
     
     let isFreezeAuthority = false;
@@ -94,28 +104,44 @@ export async function getSolanaTokenSecurity(mintAddress: string): Promise<Solan
       isMintAuthority = !!metaData.mintAuthority;
     }
 
+    clearTimeout(timeoutId);
     return {
       holderCount,
       isFreezeAuthority,
       isMintAuthority,
     };
   } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === 'AbortError') {
+      console.warn('SolanaFM API timed out');
+      return null;
+    }
     console.error('SolanaFM API error:', error);
     return null;
   }
 }
 
-// Fetch Solana token security from GoPlus Solana API
+// Fetch Solana token security from GoPlus Solana API with timeout
 export async function getGoPlusSolanaSecurity(mintAddress: string): Promise<GoPlusSolanaSecurityResult | null> {
+  // Input validation
+  if (!mintAddress || typeof mintAddress !== 'string') return null;
+  const sanitized = mintAddress.trim();
+  if (sanitized.length < 32 || sanitized.length > 44) return null;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+  
   try {
     const response = await fetch(
-      `https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${mintAddress}`
+      `https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${encodeURIComponent(sanitized)}`,
+      { signal: controller.signal }
     );
     
+    clearTimeout(timeoutId);
     if (!response.ok) return null;
     
     const data = await response.json();
-    const tokenData = data.result?.[mintAddress];
+    const tokenData = data.result?.[sanitized];
     
     if (!tokenData) return null;
 
@@ -138,6 +164,11 @@ export async function getGoPlusSolanaSecurity(mintAddress: string): Promise<GoPl
       trustList: tokenData.trust_list || null,
     };
   } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === 'AbortError') {
+      console.warn('GoPlus Solana API timed out');
+      return null;
+    }
     console.error('GoPlus Solana API error:', error);
     return null;
   }
@@ -299,15 +330,25 @@ export async function getTokenSecurity(address: string, network: string): Promis
   const chainId = networkToGoPlusChain[network];
   if (!chainId) return null; // Not supported for this chain (SOL uses separate function)
 
+  // Input validation
+  if (!address || typeof address !== 'string') return null;
+  const sanitized = address.trim().toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/i.test(sanitized)) return null;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
   try {
     const response = await fetch(
-      `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${address.toLowerCase()}`
+      `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${encodeURIComponent(sanitized)}`,
+      { signal: controller.signal }
     );
     
+    clearTimeout(timeoutId);
     if (!response.ok) return null;
     
     const data = await response.json();
-    const tokenData = data.result?.[address.toLowerCase()];
+    const tokenData = data.result?.[sanitized];
     
     if (!tokenData) return null;
 
@@ -335,6 +376,11 @@ export async function getTokenSecurity(address: string, network: string): Promis
       transferPausable: tokenData.transfer_pausable === '1',
     };
   } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === 'AbortError') {
+      console.warn('GoPlus API timed out');
+      return null;
+    }
     console.error('GoPlus API error:', error);
     return null;
   }
