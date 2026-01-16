@@ -125,7 +125,7 @@ export const TokenScanner = () => {
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
   const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
-  const { approvedMappings: communityMappings } = useCommunityMappings();
+  const { approvedMappings: communityMappings, getCoinGeckoMapping } = useCommunityMappings();
 
   // Contract address patterns for OCR extraction
   const ADDRESS_PATTERNS = {
@@ -1098,13 +1098,31 @@ export const TokenScanner = () => {
       };
       
       // Merge with community-approved mappings
-      const mergedKnownNetworks = { ...knownOriginalNetworks, ...communityMappings };
+      let mergedKnownNetworks = { ...knownOriginalNetworks, ...communityMappings };
       
       const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
       
       // First pass: identify if any result is on a known original network
       const tokenSymbol = resultsWithData[0]?.pairs[0]?.baseToken.symbol.toUpperCase() || '';
-      const knownNetworks = mergedKnownNetworks[tokenSymbol] || [];
+      let knownNetworks = mergedKnownNetworks[tokenSymbol] || [];
+      
+      // If not in hardcoded or community mappings, check CoinGecko
+      if (knownNetworks.length === 0 && tokenSymbol) {
+        try {
+          const coinGeckoNetworks = await getCoinGeckoMapping(tokenSymbol);
+          if (coinGeckoNetworks.length > 0) {
+            knownNetworks = coinGeckoNetworks;
+            // Also add CoinGecko as a source for all results
+            resultsWithData.forEach(r => {
+              if (!r.apiSources.includes('coingecko')) {
+                r.apiSources.push('coingecko');
+              }
+            });
+          }
+        } catch (error) {
+          console.warn('CoinGecko lookup failed:', error);
+        }
+      }
       
       const results: NetworkResult[] = resultsWithData.map(r => {
         let tokenStatus: "original" | "bridged" | "suspicious";
