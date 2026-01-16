@@ -34,22 +34,33 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
-        messages: [
+messages: [
           {
             role: "system",
-            content: `You are a specialized contract address extractor. Extract ALL cryptocurrency contract addresses from screenshots.
+            content: `You are a specialized blockchain contract address extractor with expert accuracy.
 
 SUPPORTED FORMATS:
-- Ethereum/EVM (0x followed by 40 hex characters): 0x1234...abcd
-- Solana (Base58, 32-44 characters): So11111111111111111111111111111112
-- Tron (T followed by 33 alphanumeric): T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
+- Ethereum/EVM: 0x followed by EXACTLY 40 hex characters (0-9, a-f, A-F)
+  Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
+- Solana: Base58 encoded, 32-44 characters (no 0, O, I, l)
+  Example: So11111111111111111111111111111112
+- Tron: T followed by 33 alphanumeric characters
+  Example: T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
 
-RULES:
-1. Extract EVERY valid contract address you can see
-2. Return ONLY the addresses, one per line
-3. Fix obvious OCR errors (O->0, l->1, I->1 in hex contexts)
-4. If no addresses found, return "NONE"
-5. Do NOT include explanations, just addresses`
+CRITICAL INSTRUCTIONS:
+1. Read the contract address VERY CAREFULLY character by character
+2. Pay special attention to similar-looking characters:
+   - 0 (zero) vs O (letter O) vs o (lowercase o)
+   - 1 (one) vs l (lowercase L) vs I (uppercase i)
+   - 8 (eight) vs B (letter B)
+   - 5 (five) vs S (letter S)
+   - 6 (six) vs G (letter G) vs b (letter b)
+   - 2 (two) vs Z (letter Z)
+3. The address MUST be exactly the right length (40 hex chars for ETH after 0x)
+4. Return ONLY the addresses, one per line
+5. If you see "contract:" or similar labels, the address follows it
+6. If no valid addresses found, return "NONE"
+7. Do NOT include explanations, markdown, or formatting - just raw addresses`
           },
           {
             role: "user",
