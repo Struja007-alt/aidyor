@@ -2,15 +2,15 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
-import { SplashScreen } from "@capacitor/splash-screen";
 
-// Hide splash screen once app is mounted
+// Hide splash screen once app is mounted (dynamic import to avoid React init issues)
 const hideSplash = async () => {
   try {
+    const { SplashScreen } = await import("@capacitor/splash-screen");
     await SplashScreen.hide();
   } catch (error) {
     // SplashScreen not available (running in browser)
-    console.log("SplashScreen not available:", error);
+    console.log("SplashScreen not available");
   }
 };
 
