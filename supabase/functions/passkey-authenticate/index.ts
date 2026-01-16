@@ -102,10 +102,18 @@ serve(async (req) => {
         .select('*')
         .eq('credential_id', credential.id)
         .eq('user_id', credential.userId)
-        .single();
+        .maybeSingle();
 
-      if (credError || !storedCred) {
-        console.error('Credential not found:', credError);
+      if (credError) {
+        console.error('Credential lookup error:', credError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to verify passkey' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!storedCred) {
+        console.error('Credential not found for user:', credential.userId);
         return new Response(
           JSON.stringify({ error: 'Invalid passkey' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
