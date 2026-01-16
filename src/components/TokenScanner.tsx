@@ -2006,6 +2006,16 @@ export const TokenScanner = () => {
                           )}
                         </div>
                       )}
+                      {/* Compact risk summary for grid cards */}
+                      {result.found && (
+                        <p className={cn(
+                          "text-[10px] leading-tight mt-2 line-clamp-2",
+                          result.riskScore >= 70 ? "text-safe/80" : 
+                          result.riskScore >= 40 ? "text-warning/80" : "text-danger/80"
+                        )}>
+                          {generateRiskSummary(result)}
+                        </p>
+                      )}
                       {/* API Sources indicator */}
                       {result.found && result.apiSources && result.apiSources.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-border/20">
