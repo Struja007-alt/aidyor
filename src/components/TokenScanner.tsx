@@ -180,20 +180,42 @@ export const TokenScanner = () => {
       ethMatchesOriginal.forEach(addr => addresses.add(addr.toLowerCase()));
     }
     
-    // Fallback: Try to extract and fix corrupted ETH addresses
+// Fallback: Try to extract and fix corrupted ETH addresses
     // This handles OCR errors like "0xdAC17F958D2ee523a2266266994597C13D83lec?"
     if (addresses.size === 0) {
       const textVariantsForEth = [normalizedText, text.replace(/\n/g, '')];
       for (const variant of textVariantsForEth) {
+        // CRITICAL: First check for standalone 'x' that should be '0x' (OCR missed the leading 0)
+        const standaloneX = variant.match(/\bx([a-fA-F0-9lIoO?ghH]{38,50})/gi);
+        if (standaloneX) {
+          for (const match of standaloneX) {
+            let cleaned = match.replace(/^x/i, '');
+            cleaned = cleaned
+              .replace(/[lI|]/g, '1')
+              .replace(/[oO]/g, '0')
+              .replace(/\?/g, '7')
+              .replace(/h/g, 'b')
+              .replace(/H/g, 'B')
+              .replace(/g/g, '9')
+              .replace(/[^a-fA-F0-9]/g, '');
+            if (cleaned.length >= 40) {
+              addresses.add('0x' + cleaned.substring(0, 40).toLowerCase());
+            }
+          }
+        }
+        
         // Look for 0x followed by hex-like chars (including common misreads)
-        const potentialMatches = variant.match(/0x[a-fA-F0-9lIoO?]{30,50}/gi);
+        const potentialMatches = variant.match(/0x[a-fA-F0-9lIoO?ghH]{30,50}/gi);
         if (potentialMatches) {
           for (const match of potentialMatches) {
             let cleaned = match.replace(/0x/i, '');
             cleaned = cleaned
-              .replace(/[lI]/g, '1')
+              .replace(/[lI|]/g, '1')
               .replace(/[oO]/g, '0')
               .replace(/\?/g, '7')
+              .replace(/h/g, 'b')
+              .replace(/H/g, 'B')
+              .replace(/g/g, '9')
               .replace(/[^a-fA-F0-9]/g, '');
             
             // Take exactly 40 chars if we have enough
@@ -416,27 +438,35 @@ export const TokenScanner = () => {
     });
   };
 
-  // Fix common OCR misreads in addresses
+// Fix common OCR misreads in addresses
   const fixOcrMisreads = (text: string): string => {
-    // Common OCR errors: O<->0, l<->1, I<->1, S<->5, B<->8
     let fixed = text
+      // CRITICAL: Fix standalone "x" at word boundary that should be "0x"
+      // This handles when OCR misses the leading "0" entirely
+      .replace(/\bx([a-fA-F0-9]{38,42})/gi, '0x$1')
       // Fix Ethereum addresses: Ox -> 0x (capital O to zero)
-      .replace(/Ox([a-fA-F0-9]{40})/g, '0x$1')
-      .replace(/0X([a-fA-F0-9]{40})/g, '0x$1')
+      .replace(/Ox([a-fA-F0-9]{38,42})/g, '0x$1')
+      .replace(/0X([a-fA-F0-9]{38,42})/g, '0x$1')
       // Fix partial matches where O appears at start
       .replace(/\bOx([a-fA-F0-9])/g, '0x$1')
+      // Fix "Ox" anywhere
+      .replace(/Ox/g, '0x')
       // Fix common letter/number confusions in hex
       .replace(/0x([a-fA-F0-9]*[oO][a-fA-F0-9]*)/g, (_, group) => 
         '0x' + group.replace(/[oO]/g, '0')
       );
     
     // Enhanced: Look for 0x followed by hex-like characters and clean them
-    // Fix l -> 1, I -> 1, O -> 0, ? -> 7 in hex contexts
-    fixed = fixed.replace(/0x([a-fA-F0-9lIoO?]{35,50})/g, (match, group) => {
+    // Fix l -> 1, I -> 1, O -> 0, ? -> 7, g -> 9, h -> b in hex contexts
+    fixed = fixed.replace(/0x([a-fA-F0-9lIoO?ghGH]{35,50})/gi, (match, group) => {
       const cleaned = group
-        .replace(/[lI]/g, '1')
+        .replace(/[lI|]/g, '1')
         .replace(/[oO]/g, '0')
         .replace(/\?/g, '7')
+        .replace(/h/g, 'b')  // 'h' often misread from 'b'
+        .replace(/H/g, 'B')
+        .replace(/g/g, '9')  // 'g' can be misread from '9'
+        .replace(/G/g, '6')
         .replace(/[^a-fA-F0-9]/g, ''); // Remove any non-hex chars
       return '0x' + cleaned;
     });
@@ -444,24 +474,46 @@ export const TokenScanner = () => {
     return fixed;
   };
 
-  // Extract the best valid address from corrupted OCR text
+// Extract the best valid address from corrupted OCR text
   const extractBestEthAddress = (text: string): string | null => {
+    // First try to find standalone 'x' followed by hex (missing leading 0)
+    const standaloneX = text.match(/\bx([a-fA-F0-9lIoO?ghH]{38,50})/gi);
+    if (standaloneX) {
+      for (const match of standaloneX) {
+        let cleaned = match.replace(/^x/i, '');
+        cleaned = cleaned
+          .replace(/[lI|]/g, '1')
+          .replace(/[oO]/g, '0')
+          .replace(/\?/g, '7')
+          .replace(/h/g, 'b')
+          .replace(/H/g, 'B')
+          .replace(/g/g, '9')
+          .replace(/[^a-fA-F0-9]/g, '');
+        if (cleaned.length >= 40) {
+          return '0x' + cleaned.substring(0, 40).toLowerCase();
+        }
+      }
+    }
+    
     // Look for anything starting with 0x followed by hex-like chars
-    const potentialMatches = text.match(/0x[a-fA-F0-9lIoO?]{30,50}/gi);
+    const potentialMatches = text.match(/0x[a-fA-F0-9lIoO?ghH]{30,50}/gi);
     if (!potentialMatches) return null;
     
     for (const match of potentialMatches) {
       // Clean and fix the address
       let cleaned = match.replace(/0x/i, '');
       cleaned = cleaned
-        .replace(/[lI]/g, '1')
+        .replace(/[lI|]/g, '1')
         .replace(/[oO]/g, '0')
         .replace(/\?/g, '7')
+        .replace(/h/g, 'b')
+        .replace(/H/g, 'B')
+        .replace(/g/g, '9')
         .replace(/[^a-fA-F0-9]/g, '');
       
       // Take exactly 40 chars if we have enough
       if (cleaned.length >= 40) {
-        return '0x' + cleaned.substring(0, 40);
+        return '0x' + cleaned.substring(0, 40).toLowerCase();
       }
     }
     return null;
