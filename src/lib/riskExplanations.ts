@@ -238,6 +238,79 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     detailedExplanation: 'The contract code is not verified, hiding the actual logic. This makes it impossible to detect malicious functions.',
     impact: 'medium',
     whatToDo: 'Prefer verified contracts. Unverified code carries unknown risks.'
+  },
+
+  // RugCheck-specific risks (Solana)
+  'RugCheck Score': {
+    title: 'RugCheck Safety Score',
+    shortDesc: 'Overall token safety rating',
+    detailedExplanation: 'RugCheck analyzes Solana tokens for multiple risk factors including holder concentration, liquidity, authority settings, and known scam patterns to generate a 0-100 safety score.',
+    impact: 'medium',
+    whatToDo: 'Scores above 80 are safer. Below 50 indicates significant risk factors.'
+  },
+
+  'Insider Holdings': {
+    title: 'Insider Token Holdings',
+    shortDesc: 'Team/insider wallet concentration',
+    detailedExplanation: 'A significant portion of tokens are held by wallets identified as team members, early investors, or insiders. High insider holdings increase dump risk.',
+    impact: 'high',
+    whatToDo: 'Be cautious if insiders hold >20%. They can dump and crash the price.'
+  },
+
+  'Holder Concentration': {
+    title: 'Token Holder Concentration',
+    shortDesc: 'Large holders dominate supply',
+    detailedExplanation: 'The top wallets hold a large percentage of the total supply. This concentration means a few wallets can significantly impact price.',
+    impact: 'medium',
+    whatToDo: 'Well-distributed tokens are safer. Top 10 holding <30% is preferred.'
+  },
+
+  'Liquidity Depth': {
+    title: 'Trading Liquidity Depth',
+    shortDesc: 'Available liquidity for trading',
+    detailedExplanation: 'The total value locked in liquidity pools. Deep liquidity means you can trade larger amounts with less price impact.',
+    impact: 'medium',
+    whatToDo: 'Higher liquidity = easier exits. Low liquidity makes selling difficult.'
+  },
+
+  'Copycat Token': {
+    title: 'Copycat/Impersonator Token',
+    shortDesc: 'Token copies a popular project',
+    detailedExplanation: 'This token shares a name or branding with a well-known project. It may be an attempt to scam users into buying a fake version.',
+    impact: 'critical',
+    whatToDo: 'Verify the official contract address from the real project\'s website.'
+  },
+
+  'Low Liquidity': {
+    title: 'Insufficient Liquidity',
+    shortDesc: 'Very low trading liquidity',
+    detailedExplanation: 'The liquidity pool is too small for safe trading. You may experience high slippage or be unable to sell your tokens.',
+    impact: 'high',
+    whatToDo: 'Only invest small amounts. Large positions will be impossible to exit.'
+  },
+
+  'Single LP': {
+    title: 'Single Liquidity Provider',
+    shortDesc: 'One wallet provides all liquidity',
+    detailedExplanation: 'All liquidity is provided by a single wallet. If they withdraw, the token becomes untradeable - a classic rug pull setup.',
+    impact: 'critical',
+    whatToDo: 'Extreme risk. The LP provider can rug at any moment.'
+  },
+
+  'Unlocked Liquidity': {
+    title: 'Liquidity Not Locked',
+    shortDesc: 'LP tokens can be withdrawn',
+    detailedExplanation: 'The liquidity pool tokens are not locked in a timelock contract. The LP provider can remove liquidity and rug pull at any time.',
+    impact: 'critical',
+    whatToDo: 'Verify LP lock on trusted platforms. Unlocked LP = rug risk.'
+  },
+
+  'Mutable Metadata': {
+    title: 'Mutable Token Metadata',
+    shortDesc: 'Token info can be changed',
+    detailedExplanation: 'The token metadata (name, symbol, image) can be modified by the authority. Scammers use this to rebrand after dumping.',
+    impact: 'medium',
+    whatToDo: 'Not inherently dangerous but watch for sudden branding changes.'
   }
 };
 

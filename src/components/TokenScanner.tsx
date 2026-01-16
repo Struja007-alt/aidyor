@@ -32,6 +32,10 @@ import {
   analyzeBSCTraceSecurity,
 } from "@/lib/api/bsctrace";
 import {
+  getRugCheckSecurity,
+  analyzeRugCheckSecurity,
+} from "@/lib/api/rugcheck";
+import {
   analyzePumpDump,
   type PumpDumpAnalysis,
 } from "@/lib/api/pumpDump";
@@ -507,6 +511,27 @@ export const TokenScanner = () => {
                   hasHiddenOwner: false,
                   hasFreezeAuthority: solanaData.isFreezeAuthority,
                 };
+              }
+              
+              // Also fetch RugCheck data for enhanced Solana analysis
+              try {
+                const rugCheckData = await getRugCheckSecurity(mainPair.baseToken.address);
+                if (rugCheckData) {
+                  const { score: rcScore, factors: rcFactors } = analyzeRugCheckSecurity(rugCheckData);
+                  // Merge RugCheck with SolanaFM (average scores)
+                  securityScore = Math.round((securityScore + rcScore) / 2);
+                  // Add unique factors from RugCheck that aren't already present
+                  const existingFactorNames = new Set(securityFactors.map(f => f.name));
+                  const uniqueRcFactors = rcFactors.filter(f => !existingFactorNames.has(f.name));
+                  securityFactors = [...securityFactors, ...uniqueRcFactors];
+                  // Update security data with RugCheck insights
+                  if (securityData) {
+                    securityData.isMintable = securityData.isMintable || !!rugCheckData.tokenMeta.mintAuthority;
+                    securityData.hasFreezeAuthority = securityData.hasFreezeAuthority || !!rugCheckData.tokenMeta.freezeAuthority;
+                  }
+                }
+              } catch (rugCheckError) {
+                console.error('RugCheck API error:', rugCheckError);
               }
             } else {
               // Use GoPlus for EVM chains
