@@ -1,5 +1,5 @@
-// Detailed explanations for why each risk factor is dangerous
-// These help users understand the implications of each warning
+// Comprehensive risk factor explanations for educating users
+// Includes explanations for GoPlus EVM, GoPlus Solana, SolanaFM, RugCheck, and BSCTrace risk factors
 
 export interface RiskExplanation {
   title: string;
@@ -311,6 +311,87 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     detailedExplanation: 'The token metadata (name, symbol, image) can be modified by the authority. Scammers use this to rebrand after dumping.',
     impact: 'medium',
     whatToDo: 'Not inherently dangerous but watch for sudden branding changes.'
+  },
+
+  // GoPlus Solana-specific risks
+  'Trusted': {
+    title: 'Trusted Token',
+    shortDesc: 'Token is on a trust list',
+    detailedExplanation: 'This token is listed on a recognized trust list or registry, indicating it has been vetted or is a known legitimate project.',
+    impact: 'low',
+    whatToDo: 'This is a positive indicator, but always do your own research.'
+  },
+
+  'Freezeable': {
+    title: 'Token is Freezeable',
+    shortDesc: 'Authority can freeze tokens',
+    detailedExplanation: 'The token has an active freeze authority that can freeze any wallet\'s tokens, preventing transfers or sales without warning.',
+    impact: 'high',
+    whatToDo: 'Check if freeze authority is revoked. Some tokens legitimately need this feature.'
+  },
+
+  'Closable Program': {
+    title: 'Closable Program',
+    shortDesc: 'Program can be permanently closed',
+    detailedExplanation: 'The Solana program that controls this token can be closed by the authority. If closed, the token becomes completely unusable - a permanent rug pull.',
+    impact: 'critical',
+    whatToDo: 'DO NOT invest. Closable programs are extreme rug pull risks.'
+  },
+
+  'Upgradeable': {
+    title: 'Upgradeable Program',
+    shortDesc: 'Program logic can be changed',
+    detailedExplanation: 'The token\'s program can be upgraded by the authority, potentially adding malicious logic after you\'ve invested. The functionality could change at any time.',
+    impact: 'medium',
+    whatToDo: 'Check if there\'s a multisig or timelock for upgrades. Otherwise, proceed with caution.'
+  },
+
+  'Transfer Fee': {
+    title: 'Transfer Fee',
+    shortDesc: 'Fee charged on every transfer',
+    detailedExplanation: 'Every token transfer incurs a fee that goes to the token authority. High fees significantly reduce your returns on trades.',
+    impact: 'medium',
+    whatToDo: 'Check the fee percentage. Fees above 5% significantly impact profitability.'
+  },
+
+  'Non-Transferable': {
+    title: 'Non-Transferable Token',
+    shortDesc: 'Token CANNOT be transferred',
+    detailedExplanation: 'This token is marked as non-transferable. You cannot sell, trade, or move these tokens to another wallet. They are permanently locked.',
+    impact: 'critical',
+    whatToDo: 'DO NOT BUY. These tokens have zero liquidity by design.'
+  },
+
+  'Default Frozen': {
+    title: 'Default Frozen Accounts',
+    shortDesc: 'New accounts start frozen',
+    detailedExplanation: 'New token accounts are frozen by default and require the authority to unfreeze them before they can transact. This gives the authority control over who can use the token.',
+    impact: 'high',
+    whatToDo: 'Unusual for normal tokens. Check why this restriction exists.'
+  },
+
+  'Creator Holdings': {
+    title: 'High Creator Holdings',
+    shortDesc: 'Creator holds large supply',
+    detailedExplanation: 'The token creator wallet holds a significant percentage of the total supply. They can dump these tokens at any time, crashing the price.',
+    impact: 'high',
+    whatToDo: 'Creator holding >20% is risky. Check if tokens are vested or locked.'
+  },
+
+  'Holders (GoPlus)': {
+    title: 'Holder Count (GoPlus)',
+    shortDesc: 'Number of unique holders',
+    detailedExplanation: 'The number of unique wallets holding this token as reported by GoPlus. More holders generally indicates wider adoption and distribution.',
+    impact: 'medium',
+    whatToDo: '1000+ holders is healthier. Under 100 holders is high risk.'
+  },
+
+  'Mintable (GoPlus)': {
+    title: 'Mintable Token (GoPlus)',
+    shortDesc: 'Supply can increase',
+    detailedExplanation: 'GoPlus detected that more tokens can be minted by the authority. This allows infinite inflation of the supply, diluting existing holders.',
+    impact: 'high',
+    whatToDo: 'Check if mint authority has been revoked or if there are mint limits.'
   }
 };
 

@@ -513,12 +513,37 @@ export const TokenScanner = () => {
                 };
               }
               
+              // Also fetch GoPlus Solana data for enhanced analysis
+              try {
+                const { getGoPlusSolanaSecurity, analyzeGoPlusSolanaSecurity } = await import('@/lib/api/goplus');
+                const goPlusSolData = await getGoPlusSolanaSecurity(mainPair.baseToken.address);
+                if (goPlusSolData) {
+                  const { score: gpScore, factors: gpFactors } = analyzeGoPlusSolanaSecurity(goPlusSolData);
+                  // Merge GoPlus Solana with SolanaFM (average scores)
+                  securityScore = Math.round((securityScore + gpScore) / 2);
+                  // Add unique factors from GoPlus that aren't already present
+                  const existingFactorNames = new Set(securityFactors.map(f => f.name));
+                  const uniqueGpFactors = gpFactors.filter(f => !existingFactorNames.has(f.name));
+                  securityFactors = [...securityFactors, ...uniqueGpFactors];
+                  // Update security data with GoPlus insights
+                  if (securityData) {
+                    securityData.isMintable = securityData.isMintable || goPlusSolData.isMintable;
+                    securityData.hasFreezeAuthority = securityData.hasFreezeAuthority || goPlusSolData.isFreezeAuthority;
+                    if (goPlusSolData.holderCount) {
+                      securityData.holderCount = Math.max(securityData.holderCount, parseInt(goPlusSolData.holderCount) || 0);
+                    }
+                  }
+                }
+              } catch (goPlusSolError) {
+                console.error('GoPlus Solana API error:', goPlusSolError);
+              }
+              
               // Also fetch RugCheck data for enhanced Solana analysis
               try {
                 const rugCheckData = await getRugCheckSecurity(mainPair.baseToken.address);
                 if (rugCheckData) {
                   const { score: rcScore, factors: rcFactors } = analyzeRugCheckSecurity(rugCheckData);
-                  // Merge RugCheck with SolanaFM (average scores)
+                  // Merge RugCheck with existing (average scores)
                   securityScore = Math.round((securityScore + rcScore) / 2);
                   // Add unique factors from RugCheck that aren't already present
                   const existingFactorNames = new Set(securityFactors.map(f => f.name));
