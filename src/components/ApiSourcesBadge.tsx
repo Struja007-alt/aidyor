@@ -15,7 +15,8 @@ export type ApiSource =
   | "rugcheck" 
   | "bsctrace" 
   | "dexscreener" 
-  | "unicrypt";
+  | "unicrypt"
+  | "coingecko";
 
 interface ApiSourceConfig {
   label: string;
@@ -82,6 +83,14 @@ const apiSourceConfig: Record<ApiSource, ApiSourceConfig> = {
     bgColor: "bg-pink-500/20",
     borderColor: "border-pink-500/40",
     description: "Unicrypt/Team Finance - Liquidity lock verification",
+  },
+  coingecko: {
+    label: "CoinGecko",
+    shortLabel: "CG",
+    color: "text-lime-400",
+    bgColor: "bg-lime-500/20",
+    borderColor: "border-lime-500/40",
+    description: "CoinGecko API - Token metadata & original network detection",
   },
 };
 

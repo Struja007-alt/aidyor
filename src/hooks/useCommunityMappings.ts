@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { getTokenOriginalNetworks } from "@/lib/api/coingecko";
 
 export interface TokenMapping {
   id: string;
@@ -16,12 +17,34 @@ export interface TokenMapping {
   user_vote?: "up" | "down" | null;
 }
 
+// Cache for CoinGecko lookups to avoid repeated API calls
+const coinGeckoCache = new Map<string, string[]>();
+
 export const useCommunityMappings = () => {
   const { user } = useAuth();
   const [mappings, setMappings] = useState<TokenMapping[]>([]);
   const [approvedMappings, setApprovedMappings] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Look up original networks from CoinGecko for a symbol
+  const getCoinGeckoMapping = useCallback(async (symbol: string): Promise<string[]> => {
+    const upperSymbol = symbol.toUpperCase();
+    
+    // Check cache first
+    if (coinGeckoCache.has(upperSymbol)) {
+      return coinGeckoCache.get(upperSymbol)!;
+    }
+    
+    try {
+      const networks = await getTokenOriginalNetworks(symbol);
+      coinGeckoCache.set(upperSymbol, networks);
+      return networks;
+    } catch (error) {
+      console.error("CoinGecko lookup error:", error);
+      return [];
+    }
+  }, []);
 
   // Fetch all approved mappings for use in token detection
   const fetchApprovedMappings = useCallback(async () => {
@@ -218,5 +241,6 @@ export const useCommunityMappings = () => {
     vote,
     deleteMapping,
     refetch: fetchMappings,
+    getCoinGeckoMapping, // Expose CoinGecko lookup for real-time queries
   };
 };
