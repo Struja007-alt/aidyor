@@ -392,18 +392,56 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     detailedExplanation: 'GoPlus detected that more tokens can be minted by the authority. This allows infinite inflation of the supply, diluting existing holders.',
     impact: 'high',
     whatToDo: 'Check if mint authority has been revoked or if there are mint limits.'
+  },
+
+  // Structured Security Data Format fields
+  'Ownership Renounced': {
+    title: 'Ownership Status',
+    shortDesc: 'Contract ownership has been renounced',
+    detailedExplanation: 'The contract owner has renounced ownership, meaning no single wallet can modify contract parameters, taxes, or perform admin functions. This is generally positive but verify it cannot be reclaimed.',
+    impact: 'low',
+    whatToDo: 'This is a positive sign. Verify that ownership cannot be reclaimed via backdoor.'
+  },
+
+  'LP Lock': {
+    title: 'Liquidity Pool Lock',
+    shortDesc: 'Liquidity lock status',
+    detailedExplanation: 'Liquidity pool tokens are locked in a timelock contract, preventing the team from removing liquidity and rug pulling during the lock period.',
+    impact: 'medium',
+    whatToDo: 'Longer lock periods (6+ months) are safer. Check the unlock date and locked percentage.'
   }
 };
-
 // Get explanation for a risk factor by matching key
 export function getRiskExplanation(factorName: string): RiskExplanation | null {
-  // Direct match
+// Direct match
   if (riskExplanations[factorName]) {
     return riskExplanations[factorName];
   }
   
-  // Partial match for compound names
+  // Check aliases for structured security data format
+  const aliases: Record<string, string> = {
+    'lp lock': 'Lock',
+    'lp locked': 'Lock',
+    'liquidity lock': 'Lock',
+    'fixed supply': 'Fixed Supply',
+    'holder concentration': 'Holder Concentration',
+    'owner': 'Ownership',
+    'ownership': 'Ownership',
+    'owner renounced': 'Ownership Renounced',
+  };
+  
   const normalizedName = factorName.toLowerCase();
+  
+  // Check aliases first
+  for (const [alias, targetKey] of Object.entries(aliases)) {
+    if (normalizedName.includes(alias)) {
+      if (riskExplanations[targetKey]) {
+        return riskExplanations[targetKey];
+      }
+    }
+  }
+  
+  // Partial match for compound names
   for (const [key, explanation] of Object.entries(riskExplanations)) {
     if (normalizedName.includes(key.toLowerCase())) {
       return explanation;
