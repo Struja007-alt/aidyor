@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useWhaleAlerts, WhaleAlert } from "@/hooks/useWhaleAlerts";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { useNotifications } from "@/hooks/useNotifications";
+import { NotificationPermission } from "@/components/NotificationPermission";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,18 +15,67 @@ import {
   Clock, 
   AlertCircle,
   Loader2,
-  DollarSign
+  DollarSign,
+  Star
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "@/hooks/use-toast";
 
 export function WhaleAlerts() {
   const { alerts, isLoading, error, lastUpdated, fetchAlerts } = useWhaleAlerts();
+  const { watchlist, isInWatchlist } = useWatchlist();
+  const { isEnabled, sendWhaleAlert } = useNotifications();
   const [minAmount, setMinAmount] = useState(50000);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [notifyWatchlistOnly, setNotifyWatchlistOnly] = useState(true);
+  const notifiedAlertsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     fetchAlerts(minAmount);
   }, []);
+
+  // Check for watchlist matches and send notifications
+  useEffect(() => {
+    if (!isEnabled || alerts.length === 0) return;
+
+    alerts.forEach((alert) => {
+      // Skip if already notified
+      if (notifiedAlertsRef.current.has(alert.id)) return;
+
+      const isWatchlistToken = isInWatchlist(alert.tokenAddress);
+      
+      // Only notify for watchlist tokens if that setting is enabled
+      if (notifyWatchlistOnly && !isWatchlistToken) return;
+
+      // Send browser notification
+      sendWhaleAlert(
+        alert.tokenSymbol,
+        alert.tokenName,
+        formatAmount(alert.amountUsd),
+        alert.transactionType,
+        alert.network
+      );
+
+      // Show toast as well
+      toast({
+        title: `🐋 Whale ${alert.transactionType.toUpperCase()} Alert!`,
+        description: `${alert.tokenSymbol}: ${formatAmount(alert.amountUsd)} on ${alert.network}`,
+      });
+
+      // Mark as notified
+      notifiedAlertsRef.current.add(alert.id);
+    });
+  }, [alerts, isEnabled, isInWatchlist, notifyWatchlistOnly, sendWhaleAlert]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    
+    const interval = setInterval(() => {
+      fetchAlerts(minAmount);
+    }, 60000); // Refresh every minute
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, minAmount, fetchAlerts]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -137,6 +189,39 @@ export function WhaleAlerts() {
         </div>
       </Card>
 
+      {/* Notification Settings */}
+      <NotificationPermission />
+      
+      {isEnabled && (
+        <Card className="glass-card p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm text-foreground">Watchlist alerts only</span>
+            </div>
+            <Button
+              variant={notifyWatchlistOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setNotifyWatchlistOnly(!notifyWatchlistOnly)}
+              className="text-xs"
+            >
+              {notifyWatchlistOnly ? "ON" : "OFF"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            {notifyWatchlistOnly 
+              ? "Only receive notifications for tokens in your watchlist"
+              : "Receive notifications for all whale activity"
+            }
+          </p>
+          {watchlist.length === 0 && notifyWatchlistOnly && (
+            <p className="text-xs text-yellow-400 mt-2">
+              ⚠️ Your watchlist is empty. Add tokens to receive whale alerts.
+            </p>
+          )}
+        </Card>
+      )}
+
       {/* Error State */}
       {error && (
         <Card className="glass-card p-4 border-destructive/50">
@@ -172,7 +257,13 @@ export function WhaleAlerts() {
       {alerts.length > 0 && (
         <div className="space-y-3">
           {alerts.map((alert) => (
-            <WhaleAlertCard key={alert.id} alert={alert} formatAmount={formatAmount} getNetworkColor={getNetworkColor} />
+            <WhaleAlertCard 
+              key={alert.id} 
+              alert={alert} 
+              formatAmount={formatAmount} 
+              getNetworkColor={getNetworkColor} 
+              isWatchlistToken={isInWatchlist(alert.tokenAddress)}
+            />
           ))}
         </div>
       )}
@@ -184,13 +275,14 @@ interface WhaleAlertCardProps {
   alert: WhaleAlert;
   formatAmount: (amount: number) => string;
   getNetworkColor: (network: string) => string;
+  isWatchlistToken?: boolean;
 }
 
-function WhaleAlertCard({ alert, formatAmount, getNetworkColor }: WhaleAlertCardProps) {
+function WhaleAlertCard({ alert, formatAmount, getNetworkColor, isWatchlistToken }: WhaleAlertCardProps) {
   const isBuy = alert.transactionType === "buy";
   
   return (
-    <Card className={`glass-card p-4 border-l-4 ${isBuy ? 'border-l-green-500' : 'border-l-red-500'}`}>
+    <Card className={`glass-card p-4 border-l-4 ${isBuy ? 'border-l-green-500' : 'border-l-red-500'} ${isWatchlistToken ? 'ring-1 ring-yellow-500/50' : ''}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className={`p-2 rounded-lg ${isBuy ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
@@ -206,6 +298,12 @@ function WhaleAlertCard({ alert, formatAmount, getNetworkColor }: WhaleAlertCard
               <span className="font-semibold text-foreground">
                 {alert.tokenSymbol}
               </span>
+              {isWatchlistToken && (
+                <Badge variant="outline" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
+                  <Star className="w-3 h-3 mr-1" />
+                  Watching
+                </Badge>
+              )}
               <Badge variant="outline" className={getNetworkColor(alert.network)}>
                 {alert.network}
               </Badge>

@@ -75,10 +75,10 @@ The scanner now includes an "AI Risk Analysis" panel powered by Gemini AI that:
 
 - [x] **AI Risk Explanations:** LLM-powered analysis of why tokens are risky
 - [x] **Whale Alerts:** Track large transactions (>$50k) with dedicated alerts feed
+- [x] **Push Notifications:** Browser notifications for whale activity on watchlist tokens
 - [ ] **Wallet Connection:** Connect via RainbowKit to swap directly from the scanner.
 - [ ] **History Log:** Cloud-synced scan history for premium users.
 - [ ] **Telegram Bot:** Security-as-a-Service for crypto communities.
-- [ ] **Push Notifications:** Real-time alerts for watchlist tokens
 
 ### Whale Alerts Feature
 The app now includes a dedicated Whale Alerts section that monitors large transactions:
@@ -86,10 +86,21 @@ The app now includes a dedicated Whale Alerts section that monitors large transa
 - Tracks buy/sell pressure across trending tokens
 - Auto-refresh capability for real-time monitoring
 - Network-specific badges (ETH, BSC, SOL, etc.)
+- **Push notifications** for watchlist tokens when whale activity detected
 
 **Edge Function:** `supabase/functions/whale-alerts/index.ts`
 **Hook:** `src/hooks/useWhaleAlerts.ts`
 **Component:** `src/components/WhaleAlerts.tsx`
+
+### Push Notifications
+Browser push notifications alert users when whale activity is detected:
+- Permission request UI with clear explanation
+- Toggle for watchlist-only alerts vs all whale activity
+- Visual indicators for watchlist tokens in the feed
+- Toast notifications alongside browser push
+
+**Hook:** `src/hooks/useNotifications.ts`
+**Component:** `src/components/NotificationPermission.tsx`
 
 ---
 
