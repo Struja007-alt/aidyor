@@ -98,6 +98,22 @@ Optional extended fields: `pausable`, `proxy_contract`, `hidden_owner`, `honeypo
 **Parser:** `src/lib/api/structuredSecurityParser.ts`
 **Display Component:** `src/components/StructuredSecurityDisplay.tsx`
 
+### Merged Security Analysis (NEW)
+Combine JSON security data with live API results for comprehensive analysis:
+- **Data Fusion:** Merges user-provided JSON analysis with real-time API data
+- **Discrepancy Detection:** Highlights conflicts between JSON and live data sources
+- **Confidence Scoring:** High/Medium/Low confidence based on source agreement
+- **Source Tracking:** Clear attribution of which data came from JSON vs APIs
+
+**Workflow:**
+1. Paste JSON security data into the search bar
+2. Enter a contract address and scan the token
+3. Click "Merge with Live Data" to combine both analyses
+4. View comprehensive merged analysis with discrepancy alerts
+
+**Merge Utility:** `src/lib/api/mergeSecurityData.ts`
+**Display Component:** `src/components/MergedSecurityDisplay.tsx`
+
 ---
 
 ## 📈 Roadmap & Future Enhancements
