@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
-import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain } from "lucide-react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain, GitMerge } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,7 +57,13 @@ import {
   generateStructuredRiskSummary,
   type ParsedSecurityResult 
 } from "@/lib/api/structuredSecurityParser";
+import { 
+  mergeSecurityData, 
+  generateMergedRiskSummary,
+  type MergedSecurityResult 
+} from "@/lib/api/mergeSecurityData";
 import { StructuredSecurityDisplay } from "./StructuredSecurityDisplay";
+import { MergedSecurityDisplay } from "./MergedSecurityDisplay";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -135,6 +141,10 @@ export const TokenScanner = () => {
   // Structured JSON security data state
   const [structuredSecurityResult, setStructuredSecurityResult] = useState<ParsedSecurityResult | null>(null);
   const [rawJsonInput, setRawJsonInput] = useState<string>("");
+  
+  // Merged security data state (JSON + Live API)
+  const [mergedSecurityResult, setMergedSecurityResult] = useState<MergedSecurityResult | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
 
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
@@ -1330,7 +1340,62 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     setUploadedImage(null);
     setStructuredSecurityResult(null);
     setRawJsonInput("");
+    setMergedSecurityResult(null);
   };
+
+  // Merge JSON security data with live API results
+  const handleMergeWithLiveData = useCallback(async () => {
+    if (!structuredSecurityResult || scanResults.length === 0) {
+      toast.error("Need both JSON data and scan results to merge");
+      return;
+    }
+
+    setIsMerging(true);
+    
+    try {
+      // Use the best/selected result for merging
+      const resultToMerge = selectedResult || scanResults[0];
+      
+      // Prepare live security data
+      const liveSecurityData = resultToMerge.securityData ? {
+        isHoneypot: resultToMerge.securityData.isHoneypot,
+        isVerified: resultToMerge.securityData.isVerified,
+        holderCount: resultToMerge.securityData.holderCount,
+        buyTax: resultToMerge.securityData.buyTax,
+        sellTax: resultToMerge.securityData.sellTax,
+        isMintable: resultToMerge.securityData.isMintable,
+        hasHiddenOwner: resultToMerge.securityData.hasHiddenOwner,
+        hasFreezeAuthority: resultToMerge.securityData.hasFreezeAuthority,
+      } : undefined;
+      
+      // Prepare live market data
+      const liveMarketData = resultToMerge.marketData ? {
+        price: resultToMerge.marketData.price,
+        change24h: resultToMerge.marketData.change24h,
+        marketCap: resultToMerge.marketData.marketCap,
+        volume24h: resultToMerge.marketData.volume24h,
+        liquidity: resultToMerge.marketData.liquidity,
+      } : undefined;
+      
+      // Merge the data
+      const merged = mergeSecurityData(
+        structuredSecurityResult,
+        liveSecurityData,
+        resultToMerge.riskFactors,
+        resultToMerge.riskScore,
+        liveMarketData,
+        resultToMerge.apiSources
+      );
+      
+      setMergedSecurityResult(merged);
+      toast.success("Successfully merged JSON data with live API results");
+    } catch (error) {
+      console.error("Merge error:", error);
+      toast.error("Failed to merge security data");
+    } finally {
+      setIsMerging(false);
+    }
+  }, [structuredSecurityResult, scanResults, selectedResult]);
 
   // Check if input looks like JSON security data
   const isJsonSecurityData = useCallback((text: string): boolean => {
@@ -2009,32 +2074,94 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         </div>
       )}
 
+      {/* Merged Security Data Display */}
+      {mergedSecurityResult && !isScanning && (
+        <div className="glass-card p-6 animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-lg text-foreground flex items-center gap-2">
+              <GitMerge className="w-5 h-5 text-primary" />
+              Merged Security Analysis
+            </h3>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                setMergedSecurityResult(null);
+              }}
+              className="gap-2"
+            >
+              <X className="w-4 h-4" />
+              Close
+            </Button>
+          </div>
+          
+          <p className="text-sm text-muted-foreground mb-4">
+            {generateMergedRiskSummary(mergedSecurityResult)}
+          </p>
+          
+          <MergedSecurityDisplay result={mergedSecurityResult} />
+        </div>
+      )}
+
       {/* Structured Security Data Display */}
-      {structuredSecurityResult && !isScanning && (
+      {structuredSecurityResult && !isScanning && !mergedSecurityResult && (
         <div className="glass-card p-6 animate-fade-in">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display text-lg text-foreground flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
               JSON Security Analysis
             </h3>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => {
-                setStructuredSecurityResult(null);
-                setRawJsonInput("");
-                setTokenQuery("");
-              }}
-              className="gap-2"
-            >
-              <X className="w-4 h-4" />
-              Clear
-            </Button>
+            <div className="flex items-center gap-2">
+              {scanResults.length > 0 && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleMergeWithLiveData}
+                  disabled={isMerging}
+                  className="gap-2"
+                >
+                  {isMerging ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <GitMerge className="w-4 h-4" />
+                  )}
+                  Merge with Live Data
+                </Button>
+              )}
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  setStructuredSecurityResult(null);
+                  setRawJsonInput("");
+                  setTokenQuery("");
+                }}
+                className="gap-2"
+              >
+                <X className="w-4 h-4" />
+                Clear
+              </Button>
+            </div>
           </div>
           
           <p className="text-sm text-muted-foreground mb-4">
             {generateStructuredRiskSummary(structuredSecurityResult)}
           </p>
+          
+          {/* If no scan results, show prompt to scan a token */}
+          {scanResults.length === 0 && (
+            <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <div className="text-xs text-primary">
+                  <p className="font-medium mb-1">Merge with Live Data</p>
+                  <p className="text-primary/80">
+                    Enter a contract address and scan to merge this JSON analysis with real-time API data from multiple sources.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           
           <StructuredSecurityDisplay result={structuredSecurityResult} />
           
