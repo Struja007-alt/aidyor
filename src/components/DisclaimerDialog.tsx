@@ -1,3 +1,8 @@
+/**
+ * @fileoverview DisclaimerDialog component for legal disclaimer acceptance
+ * Shows a modal dialog on first visit requiring user acknowledgment
+ */
+
 import { useState, useEffect } from "react";
 import {
   AlertDialog,
@@ -9,6 +14,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ShieldAlert } from "lucide-react";
+
+/**
+ * A modal dialog that displays a legal disclaimer on first visit.
+ * Stores user acceptance in localStorage to prevent repeated displays.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <DisclaimerDialog />
+ * ```
+ * 
+ * @returns The disclaimer dialog component (renders null after acceptance)
+ */
 
 const DisclaimerDialog = () => {
   const [open, setOpen] = useState(false);

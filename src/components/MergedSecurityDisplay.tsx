@@ -1,3 +1,8 @@
+/**
+ * @fileoverview MergedSecurityDisplay component for combined security analysis
+ * Displays merged results from JSON input and live API data with discrepancy detection
+ */
+
 import { memo, useMemo } from "react";
 import { 
   ShieldCheck, ShieldAlert, AlertTriangle, CheckCircle, XCircle, 
@@ -9,10 +14,27 @@ import { RiskFactorTooltip } from "./RiskFactorTooltip";
 import type { MergedSecurityResult } from "@/lib/api/mergeSecurityData";
 import { Badge } from "@/components/ui/badge";
 
+/**
+ * Props for the MergedSecurityDisplay component
+ * @interface MergedSecurityDisplayProps
+ */
 interface MergedSecurityDisplayProps {
+  /** Merged security result combining JSON and API data */
   result: MergedSecurityResult;
+  /** Additional CSS classes */
   className?: string;
 }
+
+/**
+ * Displays comprehensive merged security analysis from JSON and live API data.
+ * Shows score comparison, data discrepancies, market data, and unified risk factors.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <MergedSecurityDisplay result={mergedResult} />
+ * ```
+ */
 
 export const MergedSecurityDisplay = memo(function MergedSecurityDisplay({
   result,

@@ -1,3 +1,8 @@
+/**
+ * @fileoverview ApiSourcesBadge component for displaying data source attribution
+ * Shows which security APIs contributed to the token analysis results
+ */
+
 import { memo, forwardRef } from "react";
 import { Shield, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -8,6 +13,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+/**
+ * Supported API data sources for token security analysis
+ * @typedef {string} ApiSource
+ */
 export type ApiSource = 
   | "goplus" 
   | "goplus-sol" 
@@ -18,12 +27,22 @@ export type ApiSource =
   | "unicrypt"
   | "coingecko";
 
+/**
+ * Configuration for individual API source styling and information
+ * @interface ApiSourceConfig
+ */
 interface ApiSourceConfig {
+  /** Full display name of the API */
   label: string;
+  /** Abbreviated name for compact display */
   shortLabel: string;
+  /** Text color class */
   color: string;
+  /** Background color class */
   bgColor: string;
+  /** Border color class */
   borderColor: string;
+  /** Description of what data this API provides */
   description: string;
 }
 

@@ -1,6 +1,24 @@
+/**
+ * @fileoverview Header component for AIDYOR application
+ * Provides navigation and branding for the app
+ */
+
 import { Shield, Menu } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+
+/**
+ * Main application header with responsive navigation.
+ * Features the AIDYOR logo, desktop navigation links, and a mobile hamburger menu.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <Header />
+ * ```
+ * 
+ * @returns The header component with navigation
+ */
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

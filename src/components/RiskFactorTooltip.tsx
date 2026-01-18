@@ -1,3 +1,8 @@
+/**
+ * @fileoverview RiskFactorTooltip component for educational risk factor explanations
+ * Provides interactive tooltips with detailed information about security risks
+ */
+
 import { memo, forwardRef } from "react";
 import { Info, AlertTriangle, ShieldAlert, Shield } from "lucide-react";
 import {
@@ -9,12 +14,25 @@ import {
 import { getRiskExplanation, getImpactColor, getImpactLabel } from "@/lib/riskExplanations";
 import { cn } from "@/lib/utils";
 
+/**
+ * Props for the RiskFactorTooltip component
+ * @interface RiskFactorTooltipProps
+ */
 interface RiskFactorTooltipProps {
+  /** Name of the risk factor (e.g., "Honeypot", "Mintable") */
   factorName: string;
+  /** Current status of the risk factor */
   status: "safe" | "warning" | "danger";
+  /** Brief description of the risk factor's current state */
   description: string;
+  /** Additional CSS classes */
   className?: string;
 }
+
+/**
+ * A wrapper span component that forwards refs for tooltip trigger compatibility.
+ * Required for proper integration with Radix UI Tooltip component.
+ */
 
 // ForwardRef wrapper for the trigger span - fixes React warning
 const TriggerSpan = forwardRef<

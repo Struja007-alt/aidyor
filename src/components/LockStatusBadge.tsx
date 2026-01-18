@@ -1,12 +1,39 @@
+/**
+ * @fileoverview LockStatusBadge component for displaying liquidity lock status
+ * Shows whether token liquidity is locked and when it unlocks
+ */
+
 import { useState, useEffect } from "react";
 import { Lock, Unlock, Clock, Timer, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LockInfo } from "@/lib/api/unicrypt";
 
+/**
+ * Props for the LockStatusBadge component
+ * @interface LockStatusBadgeProps
+ */
 interface LockStatusBadgeProps {
+  /** Liquidity lock information from Unicrypt/Team Finance APIs */
   lockInfo: LockInfo | null | undefined;
+  /** Display in compact mode (badge only) vs full card view */
   compact?: boolean;
 }
+
+/**
+ * Displays the liquidity lock status of a token with countdown timer.
+ * Shows lock percentage, unlock date, and platform information.
+ * Supports both compact badge and full card display modes.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * // Compact badge
+ * <LockStatusBadge lockInfo={lockData} compact />
+ * 
+ * // Full card view
+ * <LockStatusBadge lockInfo={lockData} />
+ * ```
+ */
 
 export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgeProps) => {
   const [countdown, setCountdown] = useState<string>("");

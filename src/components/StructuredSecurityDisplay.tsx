@@ -1,3 +1,8 @@
+/**
+ * @fileoverview StructuredSecurityDisplay component for JSON security data visualization
+ * Displays parsed structured security data from user-provided JSON input
+ */
+
 import { memo, useMemo } from "react";
 import { 
   ShieldCheck, ShieldAlert, AlertTriangle, CheckCircle, XCircle, 
@@ -7,10 +12,27 @@ import { cn } from "@/lib/utils";
 import { RiskFactorTooltip } from "./RiskFactorTooltip";
 import type { ParsedSecurityResult } from "@/lib/api/structuredSecurityParser";
 
+/**
+ * Props for the StructuredSecurityDisplay component
+ * @interface StructuredSecurityDisplayProps
+ */
 interface StructuredSecurityDisplayProps {
+  /** Parsed security result from JSON input */
   result: ParsedSecurityResult;
+  /** Additional CSS classes */
   className?: string;
 }
+
+/**
+ * Displays structured security analysis from parsed JSON data.
+ * Shows key security metrics, risk factors, and warnings in a grid layout.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <StructuredSecurityDisplay result={parsedResult} />
+ * ```
+ */
 
 export const StructuredSecurityDisplay = memo(function StructuredSecurityDisplay({
   result,

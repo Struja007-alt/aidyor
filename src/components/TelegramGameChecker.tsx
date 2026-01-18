@@ -1,19 +1,39 @@
+/**
+ * @fileoverview TelegramGameChecker component for P2E game verification
+ * Validates Telegram-based play-to-earn games against known scam database
+ */
+
 import { useState } from "react";
 import { Gamepad2, ExternalLink, CheckCircle, XCircle, AlertTriangle, Search, Link, Link2Off } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+/** Type of token rewards offered by the game */
 type RewardType = "on-chain" | "off-chain" | "hybrid" | "unknown";
 
+/**
+ * Game verification result structure
+ * @interface GameResult
+ */
 interface GameResult {
+  /** Game name */
   name: string;
+  /** Verification status */
   status: "verified" | "suspicious" | "scam";
+  /** Estimated player count */
   players: string;
+  /** Earnings/token information */
   earnings: string;
+  /** Type of rewards offered */
   rewardType: RewardType;
+  /** Warning message for suspicious/scam games */
   warning?: string;
 }
+
+/**
+ * Database of known Telegram P2E games with their verification status
+ */
 
 // Real Telegram game data - verified games with known status
 const knownGames: Record<string, GameResult> = {

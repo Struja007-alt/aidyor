@@ -1,14 +1,53 @@
+/**
+ * @fileoverview Browser push notification hook
+ * Manages notification permissions and sending for whale alerts
+ */
+
 import { useState, useEffect, useCallback } from "react";
 
+/** Browser notification permission states */
 type NotificationPermission = "default" | "granted" | "denied";
 
+/**
+ * Options for sending a notification
+ * @interface NotificationOptions
+ */
 interface NotificationOptions {
+  /** Notification title */
   title: string;
+  /** Notification body text */
   body: string;
+  /** Optional icon URL */
   icon?: string;
+  /** Optional tag for notification grouping */
   tag?: string;
+  /** Optional custom data payload */
   data?: Record<string, unknown>;
 }
+
+/**
+ * Hook for managing browser push notifications.
+ * Handles permission requests and sending notifications for whale activity.
+ * 
+ * @returns {Object} Notification state and functions
+ * @returns {NotificationPermission} permission - Current permission state
+ * @returns {boolean} isSupported - Whether browser supports notifications
+ * @returns {boolean} isEnabled - Whether notifications are allowed
+ * @returns {boolean} isDenied - Whether notifications are blocked
+ * @returns {Function} requestPermission - Request notification permission
+ * @returns {Function} sendNotification - Send a custom notification
+ * @returns {Function} sendWhaleAlert - Send a whale activity notification
+ * 
+ * @example
+ * ```tsx
+ * const { isEnabled, requestPermission, sendWhaleAlert } = useNotifications();
+ * 
+ * if (!isEnabled) {
+ *   await requestPermission();
+ * }
+ * sendWhaleAlert("ETH", "Ethereum", "$500K", "buy", "Ethereum");
+ * ```
+ */
 
 export function useNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>("default");

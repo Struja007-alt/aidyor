@@ -1,12 +1,32 @@
+/**
+ * @fileoverview NetworkBadge component for displaying blockchain network indicators
+ * Provides visual representation of supported blockchain networks with custom icons
+ */
+
 import { cn } from "@/lib/utils";
 
+/** Supported blockchain networks */
 type SupportedNetwork = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "TON" | "ARB" | "BASE" | "OP";
 
+/**
+ * Props for the NetworkBadge component
+ * @interface NetworkBadgeProps
+ */
 interface NetworkBadgeProps {
+  /** Network identifier (e.g., "ETH", "BSC", "SOL") */
   network: string;
+  /** Whether the network is currently selected */
   selected?: boolean;
+  /** Click handler for network selection */
   onClick?: () => void;
 }
+
+/**
+ * Renders an SVG icon for the specified blockchain network
+ * @param props - Component props
+ * @param props.network - Network identifier
+ * @param props.size - Icon size in pixels (default: 20)
+ */
 
 const NetworkIcon = ({ network, size = 20 }: { network: string; size?: number }) => {
   switch (network) {

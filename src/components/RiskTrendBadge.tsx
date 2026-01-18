@@ -1,3 +1,8 @@
+/**
+ * @fileoverview RiskTrendBadge component for displaying risk level trends
+ * Shows the current risk level and whether it's improving, stable, or worsening
+ */
+
 import { useMemo } from "react";
 import { TrendingUp, TrendingDown, Minus, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -8,21 +13,55 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+/** Risk level classifications */
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+/** Trend direction for risk changes */
 export type TrendDirection = "IMPROVING" | "STABLE" | "WORSENING";
 
+/**
+ * Data structure for risk trend analysis
+ * @interface RiskTrendData
+ */
 export interface RiskTrendData {
+  /** Current risk score (0-100) */
   riskScore: number;
+  /** Classified risk level */
   riskLevel: RiskLevel;
+  /** Confidence in the assessment (0-1) */
   confidence: number;
+  /** Current trend direction */
   trend: TrendDirection;
 }
 
+/**
+ * Props for the RiskTrendBadge component
+ * @interface RiskTrendBadgeProps
+ */
 interface RiskTrendBadgeProps {
+  /** Risk trend data to display */
   data: RiskTrendData;
+  /** Display in compact badge mode */
   compact?: boolean;
+  /** Additional CSS classes */
   className?: string;
 }
+
+/**
+ * Calculates risk trend based on market metrics
+ * 
+ * @param riskScore - Current risk score (0-100)
+ * @param change24h - 24-hour price change percentage
+ * @param volumeChange - Optional volume change percentage
+ * @param liquidityChange - Optional liquidity change percentage
+ * @returns Calculated risk trend data
+ * 
+ * @example
+ * ```ts
+ * const trend = calculateRiskTrend(75, -5.2, 120, 10);
+ * // { riskScore: 75, riskLevel: "LOW", confidence: 0.85, trend: "STABLE" }
+ * ```
+ */
 
 export function calculateRiskTrend(
   riskScore: number,
