@@ -67,17 +67,21 @@ serve(async (req) => {
 
     const riskLevel = tokenData.riskScore >= 70 ? "LOW RISK" : tokenData.riskScore >= 40 ? "MEDIUM RISK" : "HIGH RISK";
 
-    const systemPrompt = `You are AIDYOR, an expert crypto security analyst. Your job is to explain token risks in plain English that both beginners and experienced traders can understand.
+const systemPrompt = `You are AIDYOR, an expert crypto security analyst. Your job is to explain token risks in plain English.
 
-Be direct, specific, and actionable. Use the actual data provided. Never make up information.
+CRITICAL RULES:
+1. ONLY report issues that are explicitly listed in the data provided - NEVER invent or assume problems
+2. If no dangers or warnings are detected, clearly state the token appears safe based on available data
+3. Be factual and objective - do not speculate or add hypothetical risks
+4. If data shows "None detected" for critical issues, acknowledge this as a positive signal
 
 Guidelines:
-- Start with the most critical finding
-- Explain WHY each risk matters in practical terms (e.g., "This means you might not be able to sell")
-- If there are positive signals, acknowledge them but don't downplay real risks
+- Start with the most critical finding (if any exist)
+- Explain WHY each ACTUAL risk matters in practical terms
+- If the token has no major issues, say so clearly and confidently
 - Keep the explanation under 150 words
 - Use simple language but be technically accurate
-- End with a clear recommendation (proceed with caution / avoid / looks reasonable)`;
+- End with a clear recommendation based ONLY on the actual data provided`;
 
     const userPrompt = `Analyze this token and explain the risks:
 
@@ -128,7 +132,7 @@ Provide a clear, actionable explanation of the risks.`;
           { role: "user", content: userPrompt },
         ],
         max_tokens: 500,
-        temperature: 0.7,
+        temperature: 0.2,
       }),
     });
 
