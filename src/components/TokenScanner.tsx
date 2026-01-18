@@ -43,6 +43,7 @@ import { LockStatusBadge } from "./LockStatusBadge";
 import { AIRiskExplanation } from "./AIRiskExplanation";
 import { PumpDumpBadge } from "./PumpDumpBadge";
 import { ApiSourcesBadge, ApiSourcesCount, type ApiSource } from "./ApiSourcesBadge";
+import { RiskTrendBadge, calculateRiskTrend, type RiskTrendData } from "./RiskTrendBadge";
 import { 
   sanitizeContractAddress, 
   sanitizeSearchQuery, 
@@ -1745,6 +1746,18 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     </div>
                   </div>
 
+                  {/* Risk Trend Analysis */}
+                  {selectedResult.marketData && (
+                    <RiskTrendBadge 
+                      data={calculateRiskTrend(
+                        selectedResult.riskScore,
+                        selectedResult.marketData.change24h,
+                        undefined,
+                        undefined
+                      )} 
+                    />
+                  )}
+
                   {/* Key Metrics Grid */}
                   {selectedResult.marketData && (
                     <div className="grid grid-cols-2 gap-2">
@@ -2090,6 +2103,17 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                               </>
                             )}
                             <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
+                            {result.found && result.marketData && (
+                              <RiskTrendBadge 
+                                data={calculateRiskTrend(
+                                  result.riskScore,
+                                  result.marketData.change24h,
+                                  undefined,
+                                  undefined
+                                )} 
+                                compact 
+                              />
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
