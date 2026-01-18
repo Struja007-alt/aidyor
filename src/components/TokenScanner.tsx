@@ -51,6 +51,13 @@ import {
 } from "@/lib/security/inputSanitizer";
 import { knownOriginalNetworks } from "@/lib/constants/knownTokenNetworks";
 import { getTokenOriginalNetworks } from "@/lib/api/coingecko";
+import { 
+  tryParseStructuredSecurityJson, 
+  parseStructuredSecurityData,
+  generateStructuredRiskSummary,
+  type ParsedSecurityResult 
+} from "@/lib/api/structuredSecurityParser";
+import { StructuredSecurityDisplay } from "./StructuredSecurityDisplay";
 
 export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
 
@@ -124,6 +131,10 @@ export const TokenScanner = () => {
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [extractedAddresses, setExtractedAddresses] = useState<string[]>([]);
+
+  // Structured JSON security data state
+  const [structuredSecurityResult, setStructuredSecurityResult] = useState<ParsedSecurityResult | null>(null);
+  const [rawJsonInput, setRawJsonInput] = useState<string>("");
 
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
@@ -1317,7 +1328,30 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     setTokenQuery("");
     setDisplayAddress("");
     setUploadedImage(null);
+    setStructuredSecurityResult(null);
+    setRawJsonInput("");
   };
+
+  // Check if input looks like JSON security data
+  const isJsonSecurityData = useCallback((text: string): boolean => {
+    const trimmed = text.trim();
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false;
+    return tryParseStructuredSecurityJson(trimmed) !== null;
+  }, []);
+
+  // Handle JSON security data input
+  const handleJsonSecurityInput = useCallback((jsonText: string) => {
+    const parsed = tryParseStructuredSecurityJson(jsonText);
+    if (parsed) {
+      const result = parseStructuredSecurityData(parsed);
+      setStructuredSecurityResult(result);
+      setRawJsonInput(jsonText);
+      setScanResults([]);
+      setSelectedResult(null);
+      setTokenInfo(null);
+      toast.success("Security data parsed successfully!");
+    }
+  }, []);
 
   const foundNetworks = scanResults.filter(r => r.found);
 
@@ -1469,6 +1503,16 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
                       e.preventDefault();
                       const pastedText = e.clipboardData.getData('text').trim();
+                      
+                      // Check if it's JSON security data first
+                      if (isJsonSecurityData(pastedText)) {
+                        handleJsonSecurityInput(pastedText);
+                        setTokenQuery("[JSON Security Data]");
+                        return;
+                      }
+                      
+                      // Otherwise treat as address/token name
+                      setStructuredSecurityResult(null);
                       setTokenQuery(pastedText);
                       setDisplayAddress(pastedText);
                       if (isContractAddress(pastedText)) {
@@ -1965,8 +2009,49 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         </div>
       )}
 
+      {/* Structured Security Data Display */}
+      {structuredSecurityResult && !isScanning && (
+        <div className="glass-card p-6 animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-lg text-foreground flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              JSON Security Analysis
+            </h3>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                setStructuredSecurityResult(null);
+                setRawJsonInput("");
+                setTokenQuery("");
+              }}
+              className="gap-2"
+            >
+              <X className="w-4 h-4" />
+              Clear
+            </Button>
+          </div>
+          
+          <p className="text-sm text-muted-foreground mb-4">
+            {generateStructuredRiskSummary(structuredSecurityResult)}
+          </p>
+          
+          <StructuredSecurityDisplay result={structuredSecurityResult} />
+          
+          {/* Show Raw JSON toggle */}
+          <details className="mt-4">
+            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+              View raw JSON data
+            </summary>
+            <pre className="mt-2 p-3 rounded-lg bg-secondary/50 text-xs text-muted-foreground overflow-x-auto">
+              {rawJsonInput}
+            </pre>
+          </details>
+        </div>
+      )}
+
       {/* No Results Found */}
-      {scanResults.length === 0 && !isScanning && tokenQuery && displayAddress && (
+      {scanResults.length === 0 && !isScanning && !structuredSecurityResult && tokenQuery && displayAddress && (
         <div className="glass-card p-8 text-center animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
             <Search className="w-8 h-8 text-warning" />
