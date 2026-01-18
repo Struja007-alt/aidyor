@@ -1,12 +1,40 @@
+/**
+ * @fileoverview NotificationPermission component for push notification management
+ * Handles browser notification permission requests and status display
+ */
+
 import { useNotifications } from "@/hooks/useNotifications";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Bell, BellOff, BellRing, Check, X } from "lucide-react";
 
+/**
+ * Props for the NotificationPermission component
+ * @interface NotificationPermissionProps
+ */
 interface NotificationPermissionProps {
+  /** Display in compact mode (button only) vs full card view */
   compact?: boolean;
+  /** Additional CSS classes */
   className?: string;
 }
+
+/**
+ * Manages browser push notification permissions with visual feedback.
+ * Displays current permission state and provides enable/status UI.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * // Compact button mode
+ * <NotificationPermission compact />
+ * 
+ * // Full card mode
+ * <NotificationPermission />
+ * ```
+ * 
+ * @returns The notification permission UI or null if not supported
+ */
 
 export function NotificationPermission({ compact = false, className = "" }: NotificationPermissionProps) {
   const { permission, isSupported, isEnabled, isDenied, requestPermission } = useNotifications();

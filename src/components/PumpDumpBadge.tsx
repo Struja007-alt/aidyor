@@ -1,3 +1,8 @@
+/**
+ * @fileoverview PumpDumpBadge component for displaying pump/dump market activity
+ * Alerts users to unusual price movements and potential market manipulation
+ */
+
 import { Rocket, TrendingDown, Minus, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { 
@@ -8,11 +13,33 @@ import {
   getPumpDumpLabel,
 } from "@/lib/api/pumpDump";
 
+/**
+ * Props for the PumpDumpBadge component
+ * @interface PumpDumpBadgeProps
+ */
 interface PumpDumpBadgeProps {
+  /** Analysis data containing pump/dump detection results */
   analysis: PumpDumpAnalysis | null | undefined;
+  /** Display in compact badge mode */
   compact?: boolean;
+  /** Show detailed signal information */
   showDetails?: boolean;
 }
+
+/**
+ * Displays pump/dump market activity alerts with price change indicators.
+ * Supports both compact badge and full card display with detailed signals.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * // Compact badge
+ * <PumpDumpBadge analysis={pumpData} compact />
+ * 
+ * // Full card with details
+ * <PumpDumpBadge analysis={pumpData} showDetails />
+ * ```
+ */
 
 export const PumpDumpBadge = ({ 
   analysis, 

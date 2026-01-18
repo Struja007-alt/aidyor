@@ -1,27 +1,50 @@
+/**
+ * @fileoverview AIRiskExplanation component for AI-powered risk analysis
+ * Uses Gemini AI to generate human-readable explanations of token risks
+ */
+
 import { useState, useEffect, memo } from 'react';
 import { Brain, Sparkles, AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAIRiskExplanation } from '@/hooks/useAIRiskExplanation';
 
+/**
+ * Risk factor data structure
+ * @interface RiskFactor
+ */
 interface RiskFactor {
+  /** Name of the risk factor */
   name: string;
+  /** Current status of the factor */
   status: 'safe' | 'warning' | 'danger';
+  /** Description of the risk factor state */
   description: string;
 }
 
+/**
+ * Complete token data for AI analysis
+ * @interface TokenData
+ */
 interface TokenData {
+  /** Token name */
   name: string;
+  /** Token symbol/ticker */
   symbol: string;
+  /** Blockchain network */
   network: string;
+  /** Calculated risk score (0-100) */
   riskScore: number;
+  /** Array of detected risk factors */
   riskFactors: RiskFactor[];
+  /** Optional market data */
   marketData?: {
     price: number;
     liquidity: number;
     volume24h: number;
     marketCap: number;
   };
+  /** Optional security analysis data */
   securityData?: {
     isHoneypot: boolean;
     isVerified: boolean;
@@ -31,6 +54,7 @@ interface TokenData {
     isMintable: boolean;
     hasHiddenOwner: boolean;
   };
+  /** Optional liquidity lock information */
   lockInfo?: {
     isLocked: boolean;
     lockPercentage: number;
@@ -38,11 +62,29 @@ interface TokenData {
   };
 }
 
+/**
+ * Props for the AIRiskExplanation component
+ * @interface AIRiskExplanationProps
+ */
 interface AIRiskExplanationProps {
+  /** Token data to analyze */
   tokenData: TokenData;
+  /** Auto-generate explanation on mount */
   autoGenerate?: boolean;
+  /** Additional CSS classes */
   className?: string;
 }
+
+/**
+ * Displays AI-powered risk analysis explanations for tokens.
+ * Features expandable card with generation controls and loading states.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <AIRiskExplanation tokenData={tokenData} autoGenerate />
+ * ```
+ */
 
 export const AIRiskExplanation = memo(function AIRiskExplanation({
   tokenData,

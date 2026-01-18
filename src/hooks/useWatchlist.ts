@@ -1,14 +1,51 @@
+/**
+ * @fileoverview Local storage watchlist hook
+ * Manages token watchlist with browser localStorage persistence
+ */
+
 import { useState, useEffect, useCallback } from "react";
 
+/**
+ * Token data structure for local watchlist
+ * @interface WatchlistToken
+ */
 export interface WatchlistToken {
+  /** Token contract address */
   address: string;
+  /** Token display name */
   name: string;
+  /** Blockchain network */
   network: string;
+  /** Risk score (0-100) */
   riskScore: number;
+  /** Timestamp when added */
   addedAt: number;
 }
 
+/** LocalStorage key for watchlist persistence */
 const WATCHLIST_KEY = "aidyor_watchlist";
+
+/**
+ * Hook for managing a locally-stored token watchlist.
+ * Data persists in browser localStorage (not synced across devices).
+ * 
+ * @returns {Object} Watchlist state and management functions
+ * @returns {WatchlistToken[]} watchlist - Array of watched tokens
+ * @returns {Function} addToken - Add a token to the watchlist
+ * @returns {Function} removeToken - Remove a token by address
+ * @returns {Function} isInWatchlist - Check if token is already watched
+ * @returns {Function} updateToken - Update token properties
+ * @returns {Function} updateAllTokens - Replace entire watchlist
+ * 
+ * @example
+ * ```tsx
+ * const { watchlist, addToken, isInWatchlist } = useWatchlist();
+ * 
+ * if (!isInWatchlist("0x...")) {
+ *   addToken({ address: "0x...", name: "Token", network: "ETH", riskScore: 75 });
+ * }
+ * ```
+ */
 
 export const useWatchlist = () => {
   const [watchlist, setWatchlist] = useState<WatchlistToken[]>([]);

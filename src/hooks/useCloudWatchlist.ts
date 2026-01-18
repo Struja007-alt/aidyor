@@ -1,16 +1,36 @@
+/**
+ * @fileoverview Cloud-synced watchlist hook for authenticated users
+ * Manages token watchlist with Supabase backend persistence
+ */
+
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
+/**
+ * Token data structure for the watchlist
+ * @interface WatchlistToken
+ */
 export interface WatchlistToken {
+  /** Unique database ID */
   id?: string;
+  /** Token contract address */
   address: string;
+  /** Token display name */
   name: string;
+  /** Blockchain network (e.g., "ETH", "BSC") */
   network: string;
+  /** Calculated risk score (0-100) */
   riskScore: number;
+  /** Timestamp when token was added */
   addedAt: number;
 }
 
+/**
+ * Database representation of a watchlist token
+ * @interface DbWatchlistToken
+ * @internal
+ */
 interface DbWatchlistToken {
   id: string;
   user_id: string;
@@ -21,6 +41,31 @@ interface DbWatchlistToken {
   added_at: string;
   updated_at: string;
 }
+
+/**
+ * Hook for managing a cloud-synced token watchlist.
+ * Requires authenticated user - data persists in Supabase database.
+ * 
+ * @returns {Object} Watchlist state and management functions
+ * @returns {WatchlistToken[]} watchlist - Array of watched tokens
+ * @returns {Function} addToken - Add a token to the watchlist
+ * @returns {Function} removeToken - Remove a token by address
+ * @returns {Function} isInWatchlist - Check if token is already watched
+ * @returns {Function} updateToken - Update token properties
+ * @returns {Function} updateAllTokens - Batch update all tokens
+ * @returns {boolean} loading - Loading state
+ * @returns {boolean} isAuthenticated - Whether user is logged in
+ * @returns {Function} refetch - Manually refresh watchlist
+ * 
+ * @example
+ * ```tsx
+ * const { watchlist, addToken, isAuthenticated } = useCloudWatchlist();
+ * 
+ * if (isAuthenticated) {
+ *   await addToken({ address: "0x...", name: "Token", network: "ETH", riskScore: 75 });
+ * }
+ * ```
+ */
 
 export const useCloudWatchlist = () => {
   const { user } = useAuth();

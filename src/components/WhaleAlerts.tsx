@@ -1,3 +1,8 @@
+/**
+ * @fileoverview WhaleAlerts component for tracking large cryptocurrency transactions
+ * Monitors and displays significant buy/sell activity across multiple networks
+ */
+
 import { useEffect, useState, useRef } from "react";
 import { useWhaleAlerts, WhaleAlert } from "@/hooks/useWhaleAlerts";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -20,6 +25,17 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "@/hooks/use-toast";
+
+/**
+ * Whale alerts feed component with filtering and notification support.
+ * Displays large transactions and can send push notifications for watchlist tokens.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <WhaleAlerts />
+ * ```
+ */
 
 export function WhaleAlerts() {
   const { alerts, isLoading, error, lastUpdated, fetchAlerts } = useWhaleAlerts();

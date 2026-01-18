@@ -1,17 +1,45 @@
+/**
+ * @fileoverview Authentication hook and context provider
+ * Manages Supabase authentication state and user sessions
+ */
+
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * Authentication context type definition
+ * @interface AuthContextType
+ */
 interface AuthContextType {
+  /** Current authenticated user or null */
   user: User | null;
+  /** Current session or null */
   session: Session | null;
+  /** Whether auth state is still loading */
   loading: boolean;
+  /** Sign up a new user with email/password */
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  /** Sign in existing user with email/password */
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  /** Sign out current user */
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+/**
+ * Authentication context provider component.
+ * Wraps the app to provide auth state and functions to all children.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <AuthProvider>
+ *   <App />
+ * </AuthProvider>
+ * ```
+ */
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);

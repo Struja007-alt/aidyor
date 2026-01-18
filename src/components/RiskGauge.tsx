@@ -1,9 +1,36 @@
+/**
+ * @fileoverview RiskGauge component for visualizing token risk scores
+ * Displays a semi-circular gauge with color-coded risk levels
+ */
+
 import { useMemo, forwardRef } from "react";
 
+/**
+ * Props for the RiskGauge component
+ * @interface RiskGaugeProps
+ */
 interface RiskGaugeProps {
-  score: number; // 0-100, higher = safer
+  /** Risk score from 0-100 where higher values indicate safer tokens */
+  score: number;
+  /** Size of the gauge in pixels (default: 200) */
   size?: number;
 }
+
+/**
+ * A visual risk gauge component that displays a semi-circular progress indicator
+ * with color-coded risk levels (safe/caution/danger).
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <RiskGauge score={75} size={200} />
+ * ```
+ * 
+ * @param props - Component props
+ * @param props.score - Risk score from 0-100 (higher = safer)
+ * @param props.size - Optional size of the gauge in pixels
+ * @param ref - Forwarded ref for the container div
+ */
 
 export const RiskGauge = forwardRef<HTMLDivElement, RiskGaugeProps>(({ score, size = 200 }, ref) => {
   const { color, label, glowClass } = useMemo(() => {
