@@ -1,0 +1,43 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/components/*.tsx",
+    "src/hooks/*.ts",
+    "src/hooks/*.tsx",
+    "src/lib/**/*.ts",
+    "src/pages/*.tsx"
+  ],
+  "entryPointStrategy": "expand",
+  "out": "docs",
+  "name": "AIDYOR - Token Risk Scanner Documentation",
+  "readme": "README.md",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeExternals": true,
+  "hideGenerator": false,
+  "searchInComments": true,
+  "categorizeByGroup": true,
+  "navigationLinks": {
+    "App": "https://aidyor.app",
+    "GitHub": "https://github.com/aidyor"
+  },
+  "plugin": [],
+  "theme": "default",
+  "lightHighlightTheme": "github-light",
+  "darkHighlightTheme": "github-dark",
+  "sort": ["source-order", "alphabetical"],
+  "kindSortOrder": [
+    "Function",
+    "Class",
+    "Interface",
+    "TypeAlias",
+    "Variable"
+  ],
+  "visibilityFilters": {
+    "protected": false,
+    "private": false,
+    "inherited": true,
+    "external": false
+  }
+}
