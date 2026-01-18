@@ -76,9 +76,20 @@ The scanner now includes an "AI Risk Analysis" panel powered by Gemini AI that:
 - [x] **AI Risk Explanations:** LLM-powered analysis of why tokens are risky
 - [x] **Whale Alerts:** Track large transactions (>$50k) with dedicated alerts feed
 - [x] **Push Notifications:** Browser notifications for whale activity on watchlist tokens
+- [x] **Risk Trend Analysis:** Real-time risk level, trend direction, and confidence scoring
 - [ ] **Wallet Connection:** Connect via RainbowKit to swap directly from the scanner.
 - [ ] **History Log:** Cloud-synced scan history for premium users.
 - [ ] **Telegram Bot:** Security-as-a-Service for crypto communities.
+
+### Risk Trend Analysis (NEW)
+The Token Scanner now includes dynamic risk trend indicators:
+- **Risk Level:** LOW, MEDIUM, HIGH, or CRITICAL classification
+- **Trend Direction:** IMPROVING, STABLE, or WORSENING based on price/volume signals
+- **Confidence Score:** 0-100% confidence in the analysis based on data availability
+- Compact badge view in network results grid
+- Expanded view in detailed token analysis
+
+**Component:** `src/components/RiskTrendBadge.tsx`
 
 ### Whale Alerts Feature
 The app now includes a dedicated Whale Alerts section that monitors large transactions:
