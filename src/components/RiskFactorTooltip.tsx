@@ -6,7 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getRiskExplanation, getImpactColor, getImpactLabel, type RiskExplanation } from "@/lib/riskExplanations";
+import { getRiskExplanation, getImpactColor, getImpactLabel } from "@/lib/riskExplanations";
 import { cn } from "@/lib/utils";
 
 interface RiskFactorTooltipProps {
