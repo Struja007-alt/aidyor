@@ -46,13 +46,23 @@ AIDYOR (AI Do Your Own Research) provides an automated risk assessment for any s
 
 ---
 
-## 🔐 Security APIs Integrated
+## 🔐 Backend Architecture
 
-* **GoPlus Security:** Contract verification, honeypot detection, tax analysis
-* **RugCheck:** Solana-specific security analysis
-* **BSCTrace:** BNB Chain deep contract analysis
-* **DexScreener:** Market data, liquidity, and trading activity
-* **Unicrypt/Team Finance:** Liquidity lock verification
+The app uses a microservice-based architecture with dedicated edge functions:
+
+```
+[ Frontend ] → [ Risk Orchestrator ] → [ Market Data Service ]
+                                     → [ OnChain Data Service ]
+                                     → [ Simulation Engine ]
+                                     → [ AI Risk Engine ]
+```
+
+**Edge Functions:**
+- `risk-orchestrator` - Central API gateway that coordinates all services
+- `market-data-service` - DexScreener integration with caching
+- `onchain-data-service` - GoPlus, RugCheck, BSCTrace, SolanaFM
+- `simulation-engine` - Pump/dump pattern detection
+- `ai-risk-engine` - Gemini-powered risk explanations
 
 ---
 

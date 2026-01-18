@@ -14,3 +14,18 @@ verify_jwt = false
 
 [functions.whale-alerts]
 verify_jwt = false
+
+[functions.market-data-service]
+verify_jwt = false
+
+[functions.onchain-data-service]
+verify_jwt = false
+
+[functions.simulation-engine]
+verify_jwt = false
+
+[functions.ai-risk-engine]
+verify_jwt = false
+
+[functions.risk-orchestrator]
+verify_jwt = false
