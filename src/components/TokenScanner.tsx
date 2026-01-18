@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
-import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn } from "lucide-react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ import {
   type PumpDumpAnalysis,
 } from "@/lib/api/pumpDump";
 import { LockStatusBadge } from "./LockStatusBadge";
+import { AIRiskExplanation } from "./AIRiskExplanation";
 import { PumpDumpBadge } from "./PumpDumpBadge";
 import { ApiSourcesBadge, ApiSourcesCount, type ApiSource } from "./ApiSourcesBadge";
 import { 
@@ -2230,6 +2231,43 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </Button>
                 </div>
               </div>
+
+              {/* AI Risk Explanation */}
+              <AIRiskExplanation
+                tokenData={{
+                  name: tokenInfo?.name || 'Unknown',
+                  symbol: tokenInfo?.symbol || '???',
+                  network: selectedResult.network,
+                  riskScore: selectedResult.riskScore,
+                  riskFactors: selectedResult.riskFactors,
+                  marketData: selectedResult.marketData ? {
+                    price: selectedResult.marketData.price,
+                    liquidity: selectedResult.marketData.liquidity,
+                    volume24h: selectedResult.marketData.volume24h,
+                    marketCap: selectedResult.marketData.marketCap,
+                  } : undefined,
+                  securityData: selectedResult.securityData ? {
+                    isHoneypot: selectedResult.securityData.isHoneypot,
+                    isVerified: selectedResult.securityData.isVerified,
+                    buyTax: selectedResult.securityData.buyTax,
+                    sellTax: selectedResult.securityData.sellTax,
+                    holderCount: selectedResult.securityData.holderCount,
+                    isMintable: selectedResult.securityData.isMintable,
+                    hasHiddenOwner: selectedResult.securityData.hasHiddenOwner,
+                  } : undefined,
+                  lockInfo: selectedResult.lockInfo ? {
+                    isLocked: selectedResult.lockInfo.isLocked,
+                    lockPercentage: selectedResult.lockInfo.lockPercentage,
+                    unlockDate: typeof selectedResult.lockInfo.unlockDate === 'string' 
+                      ? selectedResult.lockInfo.unlockDate 
+                      : selectedResult.lockInfo.unlockDate 
+                        ? new Date(selectedResult.lockInfo.unlockDate).toISOString()
+                        : '',
+                  } : undefined,
+                }}
+                autoGenerate={false}
+                className="md:col-span-2"
+              />
 
               {/* Pump/Dump Analysis */}
               {selectedResult.pumpDumpAnalysis && (

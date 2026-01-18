@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.passkey-authenticate]
 verify_jwt = false
+
+[functions.ocr-extract]
+verify_jwt = false
+
+[functions.ai-risk-explain]
+verify_jwt = false
