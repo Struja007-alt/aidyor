@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.ai-risk-explain]
 verify_jwt = false
+
+[functions.whale-alerts]
+verify_jwt = false
