@@ -79,6 +79,22 @@ The scanner now includes an "AI Risk Analysis" panel powered by Gemini AI that:
 **Hook:** `src/hooks/useAIRiskExplanation.ts`
 **Component:** `src/components/AIRiskExplanation.tsx`
 
+### Structured Security Data Format
+The scanner supports parsing standardized JSON security data:
+```json
+{
+  "owner_renounced": false,
+  "mint_function": true,
+  "blacklist_function": false,
+  "lp_locked": false,
+  "lp_lock_duration_days": 0,
+  "holder_concentration_top10": 72
+}
+```
+Optional extended fields: `pausable`, `proxy_contract`, `hidden_owner`, `honeypot`, `buy_tax_percent`, `sell_tax_percent`, `verified_contract`
+
+**Parser:** `src/lib/api/structuredSecurityParser.ts`
+
 ---
 
 ## 📈 Roadmap & Future Enhancements
