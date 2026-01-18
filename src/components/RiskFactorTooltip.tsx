@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, forwardRef } from "react";
 import { Info, AlertTriangle, ShieldAlert, Shield } from "lucide-react";
 import {
   Tooltip,
@@ -6,7 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getRiskExplanation, getImpactColor, getImpactLabel } from "@/lib/riskExplanations";
+import { getRiskExplanation, getImpactColor, getImpactLabel, type RiskExplanation } from "@/lib/riskExplanations";
 import { cn } from "@/lib/utils";
 
 interface RiskFactorTooltipProps {
@@ -15,6 +15,27 @@ interface RiskFactorTooltipProps {
   description: string;
   className?: string;
 }
+
+// ForwardRef wrapper for the trigger span - fixes React warning
+const TriggerSpan = forwardRef<
+  HTMLSpanElement,
+  React.HTMLAttributes<HTMLSpanElement> & { status: "safe" | "warning" | "danger" }
+>(({ status, className, children, ...props }, ref) => (
+  <span
+    ref={ref}
+    className={cn(
+      "inline-flex items-center gap-1 cursor-help underline decoration-dotted decoration-1 underline-offset-2",
+      status === "danger" ? "text-danger" : 
+      status === "warning" ? "text-warning" : "text-safe",
+      className
+    )}
+    {...props}
+  >
+    {children}
+    <Info className="w-3 h-3 opacity-60" />
+  </span>
+));
+TriggerSpan.displayName = "TriggerSpan";
 
 export const RiskFactorTooltip = memo(function RiskFactorTooltip({ 
   factorName, 
@@ -40,15 +61,9 @@ export const RiskFactorTooltip = memo(function RiskFactorTooltip({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className={cn(
-            "inline-flex items-center gap-1 cursor-help underline decoration-dotted decoration-1 underline-offset-2",
-            status === "danger" ? "text-danger" : 
-            status === "warning" ? "text-warning" : "text-safe",
-            className
-          )}>
+          <TriggerSpan status={status} className={className}>
             {factorName}: {description}
-            <Info className="w-3 h-3 opacity-60" />
-          </span>
+          </TriggerSpan>
         </TooltipTrigger>
         <TooltipContent 
           side="top" 

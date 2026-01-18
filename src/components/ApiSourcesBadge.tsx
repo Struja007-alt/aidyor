@@ -1,5 +1,5 @@
-import { memo } from "react";
-import { Shield, Database, Search, Bug } from "lucide-react";
+import { memo, forwardRef } from "react";
+import { Shield, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -101,6 +101,35 @@ interface ApiSourcesBadgeProps {
   className?: string;
 }
 
+// ForwardRef wrapper for tooltip trigger
+const TriggerWrapper = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, children, ...props }, ref) => (
+    <div ref={ref} className={cn("cursor-help", className)} {...props}>
+      {children}
+    </div>
+  )
+);
+TriggerWrapper.displayName = "TriggerWrapper";
+
+// ForwardRef wrapper for count badge trigger
+const CountTrigger = forwardRef<HTMLSpanElement, React.HTMLAttributes<HTMLSpanElement> & { count: number }>(
+  ({ count, className, ...props }, ref) => (
+    <span
+      ref={ref}
+      className={cn(
+        "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded",
+        "bg-primary/20 text-primary border border-primary/40 font-medium cursor-help",
+        className
+      )}
+      {...props}
+    >
+      <Shield className="w-2.5 h-2.5" />
+      {count} API{count !== 1 ? "s" : ""}
+    </span>
+  )
+);
+CountTrigger.displayName = "CountTrigger";
+
 export const ApiSourcesBadge = memo(function ApiSourcesBadge({
   sources,
   compact = false,
@@ -143,7 +172,7 @@ export const ApiSourcesBadge = memo(function ApiSourcesBadge({
     <TooltipProvider>
       <Tooltip delayDuration={200}>
         <TooltipTrigger asChild>
-          <div className="cursor-help">{content}</div>
+          <TriggerWrapper>{content}</TriggerWrapper>
         </TooltipTrigger>
         <TooltipContent 
           side="bottom" 
@@ -200,16 +229,7 @@ export const ApiSourcesCount = memo(function ApiSourcesCount({
     <TooltipProvider>
       <Tooltip delayDuration={200}>
         <TooltipTrigger asChild>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded",
-              "bg-primary/20 text-primary border border-primary/40 font-medium cursor-help",
-              className
-            )}
-          >
-            <Shield className="w-2.5 h-2.5" />
-            {sources.length} API{sources.length !== 1 ? "s" : ""}
-          </span>
+          <CountTrigger count={sources.length} className={className} />
         </TooltipTrigger>
         <TooltipContent 
           side="bottom" 
