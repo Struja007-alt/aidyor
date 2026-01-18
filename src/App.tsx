@@ -1,4 +1,7 @@
-// CoinGecko prefetch is called at module level for immediate loading
+/**
+ * @fileoverview Main App component with optimized React Query configuration
+ * CoinGecko prefetch is called at module level for immediate loading
+ */
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,7 +21,31 @@ import FAQ from "./pages/FAQ";
 import Glossary from "./pages/Glossary";
 import GlossaryTerm from "./pages/GlossaryTerm";
 
-const queryClient = new QueryClient();
+/**
+ * Optimized QueryClient configuration for better caching and performance
+ * 
+ * @description
+ * - staleTime: 2 minutes - Data is considered fresh, prevents unnecessary refetches
+ * - gcTime: 10 minutes - Cached data retained for faster navigation
+ * - refetchOnWindowFocus: false - Prevents refetch on tab switch (crypto data updates via manual scan)
+ * - retry: 2 - Limited retries for failed requests (external APIs may rate limit)
+ * - retryDelay: Exponential backoff starting at 1s
+ */
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000, // 2 minutes - data stays fresh
+      gcTime: 10 * 60 * 1000, // 10 minutes - cache retention (formerly cacheTime)
+      refetchOnWindowFocus: false, // Prevent unnecessary refetches
+      refetchOnReconnect: true, // Refetch when connection restored
+      retry: 2, // Limit retries for rate-limited APIs
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 // Pre-fetch CoinGecko token list on app load for faster original detection
 prefetchCoinGeckoTokens();
