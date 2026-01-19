@@ -1,192 +1,227 @@
-# 🛡️ AIDYOR | Token Risk Analyzer
+# 🛡️ AIDYOR - AI-Powered Token Risk Scanner
 
-An advanced, real-time cryptocurrency token security scanner built with **React**, **Vite**, and **Tailwind CSS**. Designed for traders who need instant, actionable data to avoid "rug pulls" and "honeypots" in the DeFi space.
+> **Do Your Own Research, Powered by AI**
 
-## 🚀 Overview
+[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app)
+[![React](https://img.shields.io/badge/React-18.3-blue)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org)
+[![Supabase](https://img.shields.io/badge/Backend-Supabase-green)](https://supabase.com)
 
-AIDYOR (AI Do Your Own Research) provides an automated risk assessment for any smart contract address. By aggregating data across multiple security APIs, it delivers a "Risk Score" that helps users decide whether to invest or stay away.
+AIDYOR is a comprehensive cryptocurrency token security analysis platform that aggregates data from multiple blockchain security providers and uses AI to deliver actionable risk assessments.
 
-### ✨ Key Features
+---
 
-* **Instant Risk Scoring:** A visual gauge ranging from "Safe" to "High Risk."
-* **🆕 AI-Powered Risk Explanations:** Gemini AI analyzes security factors and explains in plain English why a token is risky (or safe).
-* **Contract Security Audit:** Checks for:
-    * **Honeypot Detection:** Can you sell once you buy?
-    * **Tax Analysis:** Real-time Buy/Sell tax percentages.
-    * **Contract Verification:** Confirmation of open-source code.
-    * **Mint Functions:** Identification of "hidden" minting capabilities.
-* **Liquidity Tracking:** Monitors locked liquidity and pool health.
-* **Screenshot OCR:** Upload token screenshots for automatic address extraction using AI Vision.
-* **Multi-Chain Support:** Ethereum, BSC, Solana, Base, Arbitrum, and more.
-* **Pump/Dump Detection:** Real-time alerts for unusual price activity.
-* **Mobile-First Design:** Fully responsive UI built for the "on-the-go" trader.
+## ✨ Features
+
+### Core Functionality
+- **🔍 Multi-Chain Token Scanner** - Scan tokens across 9+ blockchains
+- **📊 Risk Score Calculation** - Weighted 0-100 safety score
+- **🤖 AI Risk Explanations** - Natural language insights via Gemini 3
+- **📈 Market Data Dashboard** - Real-time price, liquidity, volume
+
+### Advanced Features
+- **📸 OCR Screenshot Scanner** - Extract addresses from images using Tesseract.js + AI Vision
+- **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k)
+- **⭐ Cloud Watchlist** - Synced favorites with risk tracking
+- **🔐 Passkey Authentication** - Passwordless WebAuthn login
+- **📱 Push Notifications** - Browser alerts for whale activity
+
+### Security Analysis
+- Honeypot detection (GoPlus, BSCTrace)
+- Tax analysis (buy/sell percentages)
+- Ownership verification (renounced, hidden owner)
+- Liquidity lock status (Unicrypt)
+- Holder concentration analysis
+- Mint/freeze authority (Solana via RugCheck)
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Framework:** [React.js](https://reactjs.org/)
-* **Build Tool:** [Vite](https://vitejs.dev/)
-* **Styling:** [Tailwind CSS](https://tailwindcss.com/)
-* **UI Components:** [Lucide React](https://lucide.dev/) (Icons), [Shadcn/UI](https://ui.shadcn.com/)
-* **Backend:** Lovable Cloud (Supabase)
-* **AI:** Lovable AI Gateway (Gemini 3 Flash) for risk explanations
-* **OCR:** Tesseract.js + AI Vision (Gemini)
-* **Deployment:** Optimized for [Lovable](https://lovable.dev) / Netlify / Vercel
-
----
-
-## 📊 How It Works
-
-1.  **Input:** User pastes a Smart Contract Address (CA) or uploads a screenshot.
-2.  **Fetch:** The app queries decentralized security protocols (GoPlus/RugCheck/BSCTrace/DexScreener APIs).
-3.  **Analyze:** Our logic engine parses the JSON data against 15+ "Red Flag" criteria.
-4.  **AI Explain:** Gemini AI generates a human-readable explanation of why the token is risky.
-5.  **Display:** Results are rendered in a clean, color-coded dashboard with actionable insights.
-
----
-
-## 🔐 Backend Architecture
-
-The app uses a microservice-based architecture with dedicated edge functions:
-
+### Frontend
 ```
-[ Frontend ] → [ Risk Orchestrator ] → [ Market Data Service ]
-                                     → [ OnChain Data Service ]
-                                     → [ Simulation Engine ]
-                                     → [ AI Risk Engine ]
+React 18.3 + TypeScript + Vite
+├── UI: Tailwind CSS + shadcn/ui + Radix Primitives
+├── State: React Query (TanStack) + Context API
+├── Routing: React Router v6
+├── Forms: React Hook Form + Zod validation
+├── Mobile: Capacitor (Android/iOS ready)
+└── OCR: Tesseract.js + Gemini Vision
 ```
 
-**Edge Functions:**
-- `risk-orchestrator` - Central API gateway that coordinates all services
-- `market-data-service` - DexScreener integration with caching
-- `onchain-data-service` - GoPlus, RugCheck, BSCTrace, SolanaFM
-- `simulation-engine` - Pump/dump pattern detection
-- `ai-risk-engine` - Gemini-powered risk explanations
-
----
-
-## 🤖 AI Features
-
-### AI Risk Explanations (NEW)
-The scanner now includes an "AI Risk Analysis" panel powered by Gemini AI that:
-- Analyzes all detected security factors in context
-- Explains WHY each risk matters in practical terms
-- Provides clear recommendations (proceed with caution / avoid / looks reasonable)
-- Works for all supported networks (ETH, BSC, SOL, etc.)
-
-**Edge Function:** `supabase/functions/ai-risk-explain/index.ts`
-**Hook:** `src/hooks/useAIRiskExplanation.ts`
-**Component:** `src/components/AIRiskExplanation.tsx`
-
-### Structured Security Data Format
-The scanner supports parsing and displaying standardized JSON security data. Simply paste JSON data into the search input and it will be automatically detected and analyzed:
-
-```json
-{
-  "owner_renounced": false,
-  "mint_function": true,
-  "blacklist_function": false,
-  "lp_locked": false,
-  "lp_lock_duration_days": 0,
-  "holder_concentration_top10": 72
-}
+### Backend (Lovable Cloud / Supabase Edge Functions)
+```
+Deno Runtime
+├── risk-orchestrator     → Central API gateway
+├── market-data-service   → DEXScreener integration
+├── onchain-data-service  → GoPlus/RugCheck/BSCTrace
+├── ai-risk-engine        → AI explanations (Gemini 3)
+├── simulation-engine     → Pump/dump detection
+├── whale-alerts          → Transaction monitoring
+├── ocr-extract           → VLM-based OCR
+└── passkey-*             → WebAuthn handlers
 ```
 
-Optional extended fields: `pausable`, `proxy_contract`, `hidden_owner`, `honeypot`, `buy_tax_percent`, `sell_tax_percent`, `verified_contract`
-
-**Parser:** `src/lib/api/structuredSecurityParser.ts`
-**Display Component:** `src/components/StructuredSecurityDisplay.tsx`
-
-### Merged Security Analysis (NEW)
-Combine JSON security data with live API results for comprehensive analysis:
-- **Data Fusion:** Merges user-provided JSON analysis with real-time API data
-- **Discrepancy Detection:** Highlights conflicts between JSON and live data sources
-- **Confidence Scoring:** High/Medium/Low confidence based on source agreement
-- **Source Tracking:** Clear attribution of which data came from JSON vs APIs
-
-**Workflow:**
-1. Paste JSON security data into the search bar
-2. Enter a contract address and scan the token
-3. Click "Merge with Live Data" to combine both analyses
-4. View comprehensive merged analysis with discrepancy alerts
-
-**Merge Utility:** `src/lib/api/mergeSecurityData.ts`
-**Display Component:** `src/components/MergedSecurityDisplay.tsx`
+### Data Sources
+| Provider | Coverage |
+|----------|----------|
+| GoPlus Labs | ETH, BSC, Polygon, Arbitrum, Base, OP, Avalanche |
+| RugCheck | Solana |
+| BSCTrace | BSC |
+| SolanaFM | Solana |
+| DEXScreener | All chains |
+| Unicrypt | ETH, BSC (liquidity locks) |
+| CoinGecko | Token validation |
 
 ---
 
-## 📈 Roadmap & Future Enhancements
+## 📊 Risk Scoring Logic
 
-- [x] **AI Risk Explanations:** LLM-powered analysis of why tokens are risky
-- [x] **Whale Alerts:** Track large transactions (>$50k) with dedicated alerts feed
-- [x] **Push Notifications:** Browser notifications for whale activity on watchlist tokens
-- [x] **Risk Trend Analysis:** Real-time risk level, trend direction, and confidence scoring
-- [ ] **Wallet Connection:** Connect via RainbowKit to swap directly from the scanner.
-- [ ] **History Log:** Cloud-synced scan history for premium users.
-- [ ] **Telegram Bot:** Security-as-a-Service for crypto communities.
+```javascript
+// Weighted calculation
+Final Score = (Market Score × 0.55) + (Security Score × 0.45)
 
-### Risk Trend Analysis (NEW)
-The Token Scanner now includes dynamic risk trend indicators:
-- **Risk Level:** LOW, MEDIUM, HIGH, or CRITICAL classification
-- **Trend Direction:** IMPROVING, STABLE, or WORSENING based on price/volume signals
-- **Confidence Score:** 0-100% confidence in the analysis based on data availability
-- Compact badge view in network results grid
-- Expanded view in detailed token analysis
+// Critical overrides
+if (isHoneypot) cap = 39
+if (sellTax > 50) cap = 29
+if (hiddenOwner) penalty = -15
+```
 
-**Component:** `src/components/RiskTrendBadge.tsx`
-
-### Whale Alerts Feature
-The app now includes a dedicated Whale Alerts section that monitors large transactions:
-- Detects transactions over configurable threshold (default $50k)
-- Tracks buy/sell pressure across trending tokens
-- Auto-refresh capability for real-time monitoring
-- Network-specific badges (ETH, BSC, SOL, etc.)
-- **Push notifications** for watchlist tokens when whale activity detected
-
-**Edge Function:** `supabase/functions/whale-alerts/index.ts`
-**Hook:** `src/hooks/useWhaleAlerts.ts`
-**Component:** `src/components/WhaleAlerts.tsx`
-
-### Push Notifications
-Browser push notifications alert users when whale activity is detected:
-- Permission request UI with clear explanation
-- Toggle for watchlist-only alerts vs all whale activity
-- Visual indicators for watchlist tokens in the feed
-- Toast notifications alongside browser push
-
-**Hook:** `src/hooks/useNotifications.ts`
-**Component:** `src/components/NotificationPermission.tsx`
-
----
-
-## 💰 Monetization & Value Prop
-
-This project is positioned as a **SaaS-ready template**. 
-* **B2B:** Can be sold as a "Security-as-a-Service" plugin for crypto telegram bots.
-* **B2C:** Can be launched as a subscription-based premium scanner.
-* **Affiliate:** Integrated trading links to DEX platforms.
+### Score Interpretation
+| Score | Rating | Meaning |
+|-------|--------|---------|
+| 70-100 | ✅ SAFE | Low risk, proceed with caution |
+| 40-69 | ⚠️ CAUTION | Moderate risk, research thoroughly |
+| 20-39 | 🔴 WARNING | High risk, not recommended |
+| 0-19 | ☠️ DANGER | Critical issues, avoid |
 
 ---
 
 ## 🚀 Getting Started
 
-```sh
-# Clone the repository
-git clone <YOUR_GIT_URL>
+### Prerequisites
+- Node.js 18+
+- npm or bun
 
-# Navigate to the project directory
-cd <YOUR_PROJECT_NAME>
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/aidyor.git
+cd aidyor
 
 # Install dependencies
 npm install
 
-# Start the development server
+# Start development server
 npm run dev
+```
+
+### Environment Variables
+The project uses Lovable Cloud - no manual `.env` configuration needed.
+
+---
+
+## 📁 Project Structure
+
+```
+├── src/
+│   ├── components/          # React components
+│   │   ├── ui/              # shadcn/ui primitives
+│   │   ├── TokenScanner.tsx # Main scanner (3000+ lines)
+│   │   ├── RiskGauge.tsx    # Visual risk display
+│   │   ├── WhaleAlerts.tsx  # Transaction monitor
+│   │   └── Watchlist.tsx    # User favorites
+│   ├── hooks/               # Custom React hooks
+│   │   ├── useAuth.tsx
+│   │   ├── useCloudWatchlist.ts
+│   │   ├── usePasskey.ts
+│   │   └── useWhaleAlerts.ts
+│   ├── lib/
+│   │   ├── api/             # External API clients
+│   │   └── security/        # Input sanitization
+│   └── pages/               # Route components
+├── supabase/
+│   └── functions/           # 8 Edge functions
+└── public/                  # Static assets
 ```
 
 ---
 
-## 📄 License
+## 🔒 Security
 
-MIT License - feel free to use and modify for your own projects.
+- ✅ Row Level Security (RLS) on all tables
+- ✅ Input sanitization via Zod schemas
+- ✅ XSS/SQL injection pattern blocking
+- ✅ API timeout controls (AbortController)
+- ✅ Address validation (EIP-55, Base58)
+- ✅ No exposed API keys in frontend
+
+---
+
+## 🗺️ Roadmap
+
+### Completed ✅
+- [x] Multi-chain token scanner
+- [x] AI risk explanations
+- [x] OCR screenshot scanner
+- [x] Whale activity alerts
+- [x] Cloud watchlist
+- [x] Passkey authentication
+- [x] Push notifications
+- [x] Risk trend analysis
+
+### Planned
+- [ ] Telegram bot integration
+- [ ] Browser extension
+- [ ] Mobile app (Capacitor)
+- [ ] Premium subscriptions
+- [ ] Public API
+
+---
+
+## 💰 Valuation & Selling
+
+**Estimated Value:** $18,000 - $32,000 USD
+
+### Recommended Marketplaces
+1. **Acquire.com** - Best for SaaS products
+2. **Flippa** - Wide audience, quick sales
+3. **MicroAcquire** - Free for sellers
+4. **Side Projectors** - Side project focus
+
+### Documentation
+- [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) - Complete technical audit
+- [WHITEPAPER.md](./WHITEPAPER.md) - Business whitepaper
+
+---
+
+## 📄 Legal Pages
+
+- [Privacy Policy](/privacy-policy)
+- [Terms of Service](/terms-of-service)
+- [Cookie Policy](/cookie-policy)
+- [Disclaimer](/disclaimer)
+- [Transparency](/transparency)
+- [FAQ](/faq)
+- [Glossary](/glossary)
+
+---
+
+## 🔗 Links
+
+- **Live Demo:** https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app
+- **Whitepaper:** [WHITEPAPER.md](./WHITEPAPER.md)
+- **Full Audit:** [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md)
+
+---
+
+## 📜 License
+
+Proprietary - All rights reserved.
+
+For licensing inquiries, contact through acquisition channels.
+
+---
+
+*Built with ❤️ using [Lovable](https://lovable.dev)*
