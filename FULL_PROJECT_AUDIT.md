@@ -80,13 +80,23 @@ Deno Runtime + Supabase
 ### Security Data Sources
 | Source | Networks | Data Provided |
 |--------|----------|---------------|
-| GoPlus Labs | ETH, BSC, Polygon, etc. | Honeypot, taxes, ownership |
+| GoPlus Labs | ETH, BSC, Polygon, etc. | Honeypot, taxes, ownership, ERC standards |
 | RugCheck.xyz | Solana | Mint/freeze authority, risks |
-| BSCTrace | BSC | Honeypot, taxes, verification |
+| BSCTrace | BSC | Honeypot, taxes, verification, BEP standards |
 | SolanaFM | Solana | Holder counts, metadata |
 | DEXScreener | All | Price, liquidity, volume |
 | Unicrypt | ETH, BSC | Liquidity locks |
 | CoinGecko | All | Token validation, originals |
+
+### Token Standard Detection
+| Standard | Networks | Detection Method |
+|----------|----------|------------------|
+| BEP-20 | BNB Chain | Function signature checks via BSCScan |
+| BEP-721 | BNB Chain | EIP-165 interface detection |
+| BEP-1155 | BNB Chain | EIP-165 interface detection |
+| ERC-20 | ETH, Polygon, Arbitrum, Base, OP, Avalanche | Function signature checks via RPC |
+| ERC-721 | ETH, Polygon, Arbitrum, Base, OP, Avalanche | EIP-165 interface detection |
+| ERC-1155 | ETH, Polygon, Arbitrum, Base, OP, Avalanche | EIP-165 interface detection |
 
 ---
 
@@ -107,6 +117,8 @@ Deno Runtime + Supabase
 10. **Passkey Authentication** - Passwordless WebAuthn login
 11. **Liquidity Lock Detection** - Unicrypt integration
 12. **Token Origin Detection** - CoinGecko original/bridged status
+13. **BEP Token Standard Detection** - BEP-20, BEP-721, BEP-1155 for BNB Chain
+14. **ERC Token Standard Detection** - ERC-20, ERC-721, ERC-1155 for EVM chains
 
 ### UX Features
 13. **Risk Gauge Visualization** - Visual speedometer display
@@ -328,6 +340,7 @@ AIDYOR provides:
 | Whale Alerts | ✅ Yes | ❌ No | ❌ No | ❌ No |
 | Multi-Chain | ✅ 9 chains | ✅ 4 chains | ❌ 2 chains | ✅ 20+ |
 | Watchlist | ✅ Cloud sync | ❌ Local | ❌ No | ❌ No |
+| Token Standards | ✅ BEP + ERC | ❌ No | ❌ No | ✅ Limited |
 | No Wallet | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 
 ---
