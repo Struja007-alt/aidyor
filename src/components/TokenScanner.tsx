@@ -30,7 +30,9 @@ import {
 import {
   getBSCTraceSecurity,
   analyzeBSCTraceSecurity,
+  type BEPStandardResult,
 } from "@/lib/api/bsctrace";
+import { BEPStandardBadge, BEPStandardIndicator } from "./BEPStandardBadge";
 import {
   getRugCheckSecurity,
   analyzeRugCheckSecurity,
@@ -84,6 +86,7 @@ interface SecurityData {
   isMintable: boolean;
   hasHiddenOwner: boolean;
   hasFreezeAuthority?: boolean; // Solana-specific
+  bepStandard?: BEPStandardResult | null; // BNB Chain token standard
 }
 
 
@@ -959,6 +962,8 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                       securityData.isHoneypot = securityData.isHoneypot || bscTraceData.isHoneypot;
                       securityData.buyTax = Math.max(securityData.buyTax, bscTraceData.buyTax * 100);
                       securityData.sellTax = Math.max(securityData.sellTax, bscTraceData.sellTax * 100);
+                      // Store BEP token standard detection result
+                      securityData.bepStandard = bscTraceData.bepStandard;
                     }
                   }
                 } catch (bscTraceError) {
@@ -2312,6 +2317,10 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                                       : result.securityData.holderCount}
                                   </span>
                                 )}
+                                {/* BEP Standard Badge for BSC tokens */}
+                                {result.network === 'BSC' && result.securityData.bepStandard && (
+                                  <BEPStandardIndicator standard={result.securityData.bepStandard.standard} compact />
+                                )}
                               </>
                             )}
                             <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
@@ -2682,6 +2691,10 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   
                   {/* Additional Security Flags */}
                   <div className="flex flex-wrap gap-2 mt-4">
+                    {/* BEP Token Standard Badge for BSC tokens */}
+                    {selectedResult.network === 'BSC' && selectedResult.securityData.bepStandard && (
+                      <BEPStandardBadge result={selectedResult.securityData.bepStandard} />
+                    )}
                     {selectedResult.securityData.isMintable && (
                       <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">
                         {selectedResult.network === 'SOL' ? 'Mint Authority Active' : 'Mintable'}
