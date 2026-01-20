@@ -93,13 +93,33 @@ Final Score = (Market Score × 0.55) + (Security Score × 0.45)
 
 Where:
 - Market Score = f(liquidity, volume, price stability, holder distribution)
-- Security Score = f(honeypot, taxes, ownership, locks, verification)
+- Security Score = f(honeypot, taxes, ownership, locks, verification, token standard)
 
 Critical Overrides:
 - Honeypot detected → Cap at 39/100
 - >50% sell tax → Cap at 29/100
 - Hidden owner → Penalty of -15 points
+- Non-standard token (no ERC/BEP compliance) → Warning flag
 ```
+
+#### Token Standard Detection
+
+AIDYOR automatically detects and validates token standards using EIP-165 interface detection:
+
+| Standard | Networks | Security Implications |
+|----------|----------|----------------------|
+| **BEP-20** | BNB Chain | Standard fungible token - lowest risk |
+| **BEP-721** | BNB Chain | NFT standard - verify collection legitimacy |
+| **BEP-1155** | BNB Chain | Multi-token standard - check metadata mutability |
+| **ERC-20** | ETH, Polygon, Arbitrum, Base, OP, Avalanche | Standard fungible token |
+| **ERC-721** | ETH, Polygon, Arbitrum, Base, OP, Avalanche | NFT standard |
+| **ERC-1155** | ETH, Polygon, Arbitrum, Base, OP, Avalanche | Multi-token standard |
+
+**Detection Method:**
+1. Query contract for EIP-165 `supportsInterface()` 
+2. Check for standard function signatures (e.g., `transfer`, `balanceOf`)
+3. Classify as fungible, NFT, or multi-token
+4. Flag non-compliant contracts as higher risk
 
 #### AI-Powered Explanations
 AIDYOR uses Gemini 3 Flash to translate technical findings into actionable insights:
@@ -225,6 +245,7 @@ impact on your exit strategy.
 - AI-powered explanations
 - Screenshot OCR scanning
 - Whale activity alerts
+- Token standard detection (BEP + ERC)
 - Zero-friction access
 
 ---
@@ -269,6 +290,8 @@ impact on your exit strategy.
 - [x] Passkey authentication
 - [x] OCR screenshot scanner
 - [x] Whale activity alerts
+- [x] BEP token standard detection (BEP-20, BEP-721, BEP-1155)
+- [x] ERC token standard detection (ERC-20, ERC-721, ERC-1155)
 
 ### Phase 2: Growth (Q1-Q2 2026)
 - [ ] Telegram bot integration
