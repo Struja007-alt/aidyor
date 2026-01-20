@@ -4,6 +4,18 @@
 // SolanaFM API - Free, no auth required
 // Docs: https://docs.solana.fm/
 
+import { 
+  detectERCStandard, 
+  getERCStandardRiskFactors, 
+  getERCStandardScoreModifier,
+  supportsERCDetection,
+  type ERCStandardResult 
+} from './ercStandards';
+
+// Re-export ERC standard types for convenience
+export type { ERCStandardResult } from './ercStandards';
+export { detectERCStandard, supportsERCDetection } from './ercStandards';
+
 export interface GoPlusSecurityResult {
   isHoneypot: boolean;
   isOpenSource: boolean;
@@ -26,6 +38,7 @@ export interface GoPlusSecurityResult {
   isBlacklisted: boolean;
   tradingCooldown: boolean;
   transferPausable: boolean;
+  ercStandard?: ERCStandardResult | null; // ERC token standard detection
 }
 
 // GoPlus Solana-specific security result
@@ -339,10 +352,16 @@ export async function getTokenSecurity(address: string, network: string): Promis
   const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
   try {
-    const response = await fetch(
-      `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${encodeURIComponent(sanitized)}`,
-      { signal: controller.signal }
-    );
+    // Fetch GoPlus data and ERC standard detection in parallel (for non-BSC networks)
+    const shouldDetectERC = supportsERCDetection(network) && network !== 'BSC';
+    
+    const [response, ercStandard] = await Promise.all([
+      fetch(
+        `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${encodeURIComponent(sanitized)}`,
+        { signal: controller.signal }
+      ),
+      shouldDetectERC ? detectERCStandard(sanitized, network).catch(() => null) : Promise.resolve(null)
+    ]);
     
     clearTimeout(timeoutId);
     if (!response.ok) return null;
@@ -374,6 +393,7 @@ export async function getTokenSecurity(address: string, network: string): Promis
       isBlacklisted: tokenData.is_blacklisted === '1',
       tradingCooldown: tokenData.trading_cooldown === '1',
       transferPausable: tokenData.transfer_pausable === '1',
+      ercStandard,
     };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -454,6 +474,13 @@ export function analyzeGoPlusSecurity(security: GoPlusSecurityResult): {
   if (security.transferPausable) {
     factors.push({ name: 'Pausable', status: 'warning', description: 'Transfers can be paused' });
     score -= 5;
+  }
+
+  // ERC Token Standard analysis
+  if (security.ercStandard) {
+    const standardFactors = getERCStandardRiskFactors(security.ercStandard);
+    factors.push(...standardFactors);
+    score += getERCStandardScoreModifier(security.ercStandard);
   }
 
   return { score, factors };
