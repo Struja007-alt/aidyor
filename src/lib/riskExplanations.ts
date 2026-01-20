@@ -470,3 +470,65 @@ export function getImpactLabel(impact: RiskExplanation['impact']): string {
     case 'low': return 'LOW';
   }
 }
+
+// BEP Token Standard explanations - Added dynamically to main explanations
+export const bepStandardExplanations: Record<string, RiskExplanation> = {
+  'BEP-20 Token': {
+    title: 'BEP-20 Fungible Token',
+    shortDesc: 'Standard fungible token on BNB Chain',
+    detailedExplanation: 'This token follows the BEP-20 standard, which is the BNB Chain equivalent of ERC-20. All tokens are identical and interchangeable, making it suitable for cryptocurrencies, utility tokens, and other fungible assets.',
+    impact: 'low',
+    whatToDo: 'Standard token type - compatible with all BNB Chain DEXs and wallets.'
+  },
+  
+  'BEP-721 NFT': {
+    title: 'BEP-721 Non-Fungible Token',
+    shortDesc: 'NFT standard on BNB Chain',
+    detailedExplanation: 'This is a BEP-721 token (NFT), where each token is unique and not interchangeable. NFTs have different trading dynamics than fungible tokens - liquidity may be limited and pricing can be subjective.',
+    impact: 'medium',
+    whatToDo: 'Ensure you understand NFT trading risks. Verify authenticity on NFT marketplaces.'
+  },
+  
+  'BEP-1155 Multi-Token': {
+    title: 'BEP-1155 Multi-Token Standard',
+    shortDesc: 'Hybrid token standard supporting multiple types',
+    detailedExplanation: 'BEP-1155 is a multi-token standard that can represent both fungible and non-fungible tokens in a single contract. Common for gaming assets, collectibles with editions, or mixed token ecosystems.',
+    impact: 'medium',
+    whatToDo: 'Check which token IDs represent fungible vs non-fungible assets.'
+  },
+  
+  'Unknown Standard': {
+    title: 'Non-Standard Token Contract',
+    shortDesc: 'Contract does not follow known standards',
+    detailedExplanation: 'This contract does not implement recognized BEP token standards (BEP-20, BEP-721, or BEP-1155). It may use a custom implementation, which could cause compatibility issues with wallets and DEXs.',
+    impact: 'high',
+    whatToDo: 'Exercise extreme caution. Non-standard tokens may not work with common tools.'
+  },
+  
+  'NFT Metadata': {
+    title: 'NFT Metadata Extension',
+    shortDesc: 'Supports token metadata',
+    detailedExplanation: 'This NFT contract supports the metadata extension, allowing tokens to have associated names, descriptions, and images stored on IPFS or other storage.',
+    impact: 'low',
+    whatToDo: 'Positive feature - tokens can display rich information in wallets and marketplaces.'
+  },
+  
+  'Enumerable NFT': {
+    title: 'Enumerable NFT Extension',
+    shortDesc: 'Supports token enumeration',
+    detailedExplanation: 'This NFT contract supports enumeration, meaning all tokens can be listed and iterated. This enables complete collection browsing and easier integration with marketplaces.',
+    impact: 'low',
+    whatToDo: 'Positive feature - provides better transparency for collection contents.'
+  },
+  
+  'Token Metadata URI': {
+    title: 'Token Metadata URI Support',
+    shortDesc: 'Tokens have associated metadata',
+    detailedExplanation: 'The contract supports metadata URIs for tokens, allowing each token type to have associated information like name, description, and image.',
+    impact: 'low',
+    whatToDo: 'Standard feature for multi-token contracts - tokens can display rich info.'
+  },
+};
+
+// Merge BEP explanations into main explanations object
+Object.assign(riskExplanations, bepStandardExplanations);
