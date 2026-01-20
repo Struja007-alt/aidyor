@@ -1,6 +1,8 @@
 // BSCTrace API - Free security analysis for BSC tokens
 // Provides contract analysis, honeypot detection, and risk assessment
 
+import { detectBEPStandard, getStandardRiskFactors, getStandardScoreModifier, type BEPStandardResult } from './bepStandards';
+
 export interface BSCTraceResult {
   isHoneypot: boolean;
   honeypotReason: string | null;
@@ -24,7 +26,12 @@ export interface BSCTraceResult {
   selfDestruct: boolean;
   externalCall: boolean;
   hiddenOwner: boolean;
+  bepStandard?: BEPStandardResult | null;
 }
+
+// Re-export BEP standard types for convenience
+export type { BEPStandardResult } from './bepStandards';
+export { detectBEPStandard } from './bepStandards';
 
 // Fetch BSC token security data from BSCTrace with timeout and validation
 export async function getBSCTraceSecurity(address: string): Promise<BSCTraceResult | null> {
@@ -37,24 +44,25 @@ export async function getBSCTraceSecurity(address: string): Promise<BSCTraceResu
   const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
   
   try {
-    // BSCTrace honeypot check endpoint
-    const response = await fetch(
-      `https://api.honeypot.is/v2/IsHoneypot?address=${encodeURIComponent(sanitized)}&chainId=56`,
-      {
-        headers: {
-          'Accept': 'application/json',
-        },
-        signal: controller.signal
-      }
-    );
+    // Fetch BSCTrace data and BEP standard detection in parallel
+    const [honeypotResponse, bepStandard] = await Promise.all([
+      fetch(
+        `https://api.honeypot.is/v2/IsHoneypot?address=${encodeURIComponent(sanitized)}&chainId=56`,
+        {
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal
+        }
+      ),
+      detectBEPStandard(sanitized).catch(() => null)
+    ]);
 
     clearTimeout(timeoutId);
-    if (!response.ok) {
-      console.error('BSCTrace API error:', response.status);
+    if (!honeypotResponse.ok) {
+      console.error('BSCTrace API error:', honeypotResponse.status);
       return null;
     }
 
-    const data = await response.json();
+    const data = await honeypotResponse.json();
     
     // Parse honeypot.is response format
     const simulationResult = data.simulationResult || {};
@@ -86,6 +94,7 @@ export async function getBSCTraceSecurity(address: string): Promise<BSCTraceResu
       selfDestruct: contractCode.hasSelfDestruct || false,
       externalCall: contractCode.hasExternalCall || false,
       hiddenOwner: contractCode.hasHiddenOwner || false,
+      bepStandard,
     };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -228,6 +237,13 @@ export function analyzeBSCTraceSecurity(security: BSCTraceResult): {
   if (security.isAntiWhale) {
     factors.push({ name: 'Anti-Whale', status: 'safe', description: 'Transaction limits enabled' });
     score += 3;
+  }
+
+  // BEP Token Standard analysis
+  if (security.bepStandard) {
+    const standardFactors = getStandardRiskFactors(security.bepStandard);
+    factors.push(...standardFactors);
+    score += getStandardScoreModifier(security.bepStandard);
   }
 
   return { score, factors };

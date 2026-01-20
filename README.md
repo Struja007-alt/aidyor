@@ -33,6 +33,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - Liquidity lock status (Unicrypt)
 - Holder concentration analysis
 - Mint/freeze authority (Solana via RugCheck)
+- **BEP Token Standard Detection** (BEP-20, BEP-721, BEP-1155) for BNB Chain
 
 ---
 
