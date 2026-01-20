@@ -562,3 +562,81 @@ export const ercStandardExplanations: Record<string, RiskExplanation> = {
 
 // Merge ERC explanations into main explanations object
 Object.assign(riskExplanations, ercStandardExplanations);
+
+// SPL Token Standard explanations for Solana
+export const splStandardExplanations: Record<string, RiskExplanation> = {
+  'SPL Token': {
+    title: 'SPL Fungible Token',
+    shortDesc: 'Standard fungible token on Solana',
+    detailedExplanation: 'This token follows the SPL Token standard, the native token program on Solana. All tokens are identical and interchangeable, with wide ecosystem support across Solana DEXs, wallets, and dApps.',
+    impact: 'low',
+    whatToDo: 'Standard token type - compatible with all major Solana DEXs and wallets.'
+  },
+  
+  'Token-2022': {
+    title: 'Token-2022 (Token Extensions)',
+    shortDesc: 'Enhanced token with extensions on Solana',
+    detailedExplanation: 'This is a Token-2022 program token, which supports advanced features like transfer fees, confidential transfers, and other extensions. These tokens may have built-in fees or restrictions.',
+    impact: 'medium',
+    whatToDo: 'Check for transfer fee extensions and other restrictions that may affect trading.'
+  },
+  
+  'Transfer Fee Extension': {
+    title: 'Token Has Transfer Fees',
+    shortDesc: 'Built-in transfer fees via Token-2022',
+    detailedExplanation: 'This Token-2022 token has the TransferFee extension enabled, meaning a percentage of each transfer is collected as a fee. This is different from traditional DEX trading fees.',
+    impact: 'medium',
+    whatToDo: 'Verify the fee percentage before trading. Factor fees into your profit calculations.'
+  },
+  
+  'Non-Transferable': {
+    title: 'Non-Transferable Token',
+    shortDesc: 'Soulbound or restricted token',
+    detailedExplanation: 'This token has the NonTransferable extension, making it a soulbound token that cannot be transferred between wallets. Common for credentials, achievements, or identity tokens.',
+    impact: 'high',
+    whatToDo: 'This token CANNOT be sold or transferred. Only acquire if intended as non-transferable.'
+  },
+  
+  'Permanent Delegate': {
+    title: 'Permanent Delegate Risk',
+    shortDesc: 'A delegate can transfer tokens without approval',
+    detailedExplanation: 'This Token-2022 token has a PermanentDelegate extension, meaning a designated address can transfer tokens from any holder without their approval. This is a significant security concern.',
+    impact: 'critical',
+    whatToDo: 'HIGH RISK - A permanent delegate can drain your tokens at any time without permission.'
+  },
+  
+  'Metaplex NFT': {
+    title: 'Metaplex NFT',
+    shortDesc: 'Non-fungible token on Solana',
+    detailedExplanation: 'This is a Metaplex NFT with on-chain metadata. NFTs are unique digital assets with different trading dynamics than fungible tokens - verify authenticity and ownership before purchasing.',
+    impact: 'medium',
+    whatToDo: 'Verify the NFT on Metaplex or marketplace. Check for proper metadata and collection verification.'
+  },
+  
+  'Compressed NFT': {
+    title: 'Compressed NFT (cNFT)',
+    shortDesc: 'Efficient NFT using merkle trees',
+    detailedExplanation: 'This is a Compressed NFT stored using merkle trees for efficient on-chain storage. While valid NFTs, some older wallets or marketplaces may have limited cNFT support.',
+    impact: 'medium',
+    whatToDo: 'Ensure your wallet and preferred marketplace support compressed NFTs before purchasing.'
+  },
+  
+  'On-Chain Metadata': {
+    title: 'On-Chain Metadata Available',
+    shortDesc: 'NFT has verifiable metadata',
+    detailedExplanation: 'The NFT has on-chain metadata through Metaplex, providing verifiable information about the asset including name, description, and attributes.',
+    impact: 'low',
+    whatToDo: 'Positive feature - metadata is verifiable and permanent on-chain.'
+  },
+  
+  'Master Edition': {
+    title: 'Master Edition NFT',
+    shortDesc: 'Original 1/1 or edition parent',
+    detailedExplanation: 'This NFT has a Master Edition, indicating it is either an original 1/1 NFT or the parent of an edition series. Master editions control how many prints/copies can be made.',
+    impact: 'low',
+    whatToDo: 'Check if this is a 1/1 or if editions exist. Master editions typically have higher value.'
+  },
+};
+
+// Merge SPL explanations into main explanations object
+Object.assign(riskExplanations, splStandardExplanations);

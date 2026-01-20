@@ -40,6 +40,13 @@ import {
   analyzeRugCheckSecurity,
 } from "@/lib/api/rugcheck";
 import {
+  detectSPLStandard,
+  getSPLStandardRiskFactors,
+  getSPLStandardScoreModifier,
+  type SPLStandardResult,
+} from "@/lib/api/splStandards";
+import { SPLStandardBadge, SPLStandardIndicator } from "./SPLStandardBadge";
+import {
   analyzePumpDump,
   type PumpDumpAnalysis,
 } from "@/lib/api/pumpDump";
@@ -90,6 +97,7 @@ interface SecurityData {
   hasFreezeAuthority?: boolean; // Solana-specific
   bepStandard?: BEPStandardResult | null; // BNB Chain token standard
   ercStandard?: ERCStandardResult | null; // ERC token standard for EVM chains
+  splStandard?: SPLStandardResult | null; // SPL token standard for Solana
 }
 
 
@@ -924,6 +932,23 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     securityData.isMintable = securityData.isMintable || !!rugCheckData.tokenMeta.mintAuthority;
                     securityData.hasFreezeAuthority = securityData.hasFreezeAuthority || !!rugCheckData.tokenMeta.freezeAuthority;
                   }
+                }
+                
+                // Detect SPL token standard for Solana
+                try {
+                  const splStandardResult = await detectSPLStandard(mainPair.baseToken.address);
+                  if (splStandardResult && securityData) {
+                    securityData.splStandard = splStandardResult;
+                    // Add SPL standard risk factors
+                    const splFactors = getSPLStandardRiskFactors(splStandardResult);
+                    const existingSplFactorNames = new Set(securityFactors.map(f => f.name));
+                    const uniqueSplFactors = splFactors.filter(f => !existingSplFactorNames.has(f.name));
+                    securityFactors = [...securityFactors, ...uniqueSplFactors];
+                    // Apply score modifier
+                    securityScore += getSPLStandardScoreModifier(splStandardResult);
+                  }
+                } catch (splError) {
+                  console.error('SPL standard detection error:', splError);
                 }
               } catch (rugCheckError) {
                 console.error('RugCheck API error:', rugCheckError);
@@ -2329,6 +2354,10 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                                 {result.network !== 'BSC' && result.network !== 'SOL' && result.securityData.ercStandard && (
                                   <ERCStandardIndicator standard={result.securityData.ercStandard.standard} compact />
                                 )}
+                                {/* SPL Standard Badge for Solana tokens */}
+                                {result.network === 'SOL' && result.securityData.splStandard && (
+                                  <SPLStandardIndicator standard={result.securityData.splStandard.standard} compact />
+                                )}
                               </>
                             )}
                             <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
@@ -2706,6 +2735,10 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     {/* ERC Standard Badge for other EVM chains */}
                     {selectedResult.network !== 'BSC' && selectedResult.network !== 'SOL' && selectedResult.securityData.ercStandard && (
                       <ERCStandardBadge result={selectedResult.securityData.ercStandard} />
+                    )}
+                    {/* SPL Standard Badge for Solana tokens */}
+                    {selectedResult.network === 'SOL' && selectedResult.securityData.splStandard && (
+                      <SPLStandardBadge result={selectedResult.securityData.splStandard} />
                     )}
                     {selectedResult.securityData.isMintable && (
                       <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">
