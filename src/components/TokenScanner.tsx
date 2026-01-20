@@ -21,7 +21,9 @@ import {
   analyzeGoPlusSecurity,
   getSolanaTokenSecurity,
   analyzeSolanaSecurity,
+  type ERCStandardResult,
 } from "@/lib/api/goplus";
+import { ERCStandardBadge, ERCStandardIndicator } from "./ERCStandardBadge";
 import {
   getLiquidityLockInfo,
   analyzeLockSecurity,
@@ -87,6 +89,7 @@ interface SecurityData {
   hasHiddenOwner: boolean;
   hasFreezeAuthority?: boolean; // Solana-specific
   bepStandard?: BEPStandardResult | null; // BNB Chain token standard
+  ercStandard?: ERCStandardResult | null; // ERC token standard for EVM chains
 }
 
 
@@ -941,6 +944,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   sellTax: parseFloat(goplusData.sellTax) * 100,
                   isMintable: goplusData.isMintable,
                   hasHiddenOwner: goplusData.hiddenOwner,
+                  ercStandard: goplusData.ercStandard, // ERC token standard
                 };
               }
               
@@ -2321,6 +2325,10 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                                 {result.network === 'BSC' && result.securityData.bepStandard && (
                                   <BEPStandardIndicator standard={result.securityData.bepStandard.standard} compact />
                                 )}
+                                {/* ERC Standard Badge for other EVM chains */}
+                                {result.network !== 'BSC' && result.network !== 'SOL' && result.securityData.ercStandard && (
+                                  <ERCStandardIndicator standard={result.securityData.ercStandard.standard} compact />
+                                )}
                               </>
                             )}
                             <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
@@ -2694,6 +2702,10 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     {/* BEP Token Standard Badge for BSC tokens */}
                     {selectedResult.network === 'BSC' && selectedResult.securityData.bepStandard && (
                       <BEPStandardBadge result={selectedResult.securityData.bepStandard} />
+                    )}
+                    {/* ERC Standard Badge for other EVM chains */}
+                    {selectedResult.network !== 'BSC' && selectedResult.network !== 'SOL' && selectedResult.securityData.ercStandard && (
+                      <ERCStandardBadge result={selectedResult.securityData.ercStandard} />
                     )}
                     {selectedResult.securityData.isMintable && (
                       <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">

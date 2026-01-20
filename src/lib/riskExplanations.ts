@@ -532,3 +532,33 @@ export const bepStandardExplanations: Record<string, RiskExplanation> = {
 
 // Merge BEP explanations into main explanations object
 Object.assign(riskExplanations, bepStandardExplanations);
+
+// ERC Token Standard explanations for EVM chains (ETH, Polygon, Arbitrum, etc.)
+export const ercStandardExplanations: Record<string, RiskExplanation> = {
+  'ERC-20 Token': {
+    title: 'ERC-20 Fungible Token',
+    shortDesc: 'Standard fungible token on EVM chains',
+    detailedExplanation: 'This token follows the ERC-20 standard, the most widely adopted token standard on Ethereum and EVM-compatible chains. All tokens are identical and interchangeable, making it suitable for cryptocurrencies, utility tokens, and other fungible assets.',
+    impact: 'low',
+    whatToDo: 'Standard token type - compatible with all major DEXs and wallets.'
+  },
+  
+  'ERC-721 NFT': {
+    title: 'ERC-721 Non-Fungible Token',
+    shortDesc: 'NFT standard on EVM chains',
+    detailedExplanation: 'This is an ERC-721 token (NFT), where each token is unique and not interchangeable. NFTs have different trading dynamics than fungible tokens - liquidity may be limited and pricing can be subjective.',
+    impact: 'medium',
+    whatToDo: 'Ensure you understand NFT trading risks. Verify authenticity on NFT marketplaces.'
+  },
+  
+  'ERC-1155 Multi-Token': {
+    title: 'ERC-1155 Multi-Token Standard',
+    shortDesc: 'Hybrid token standard supporting multiple types',
+    detailedExplanation: 'ERC-1155 is a multi-token standard that can represent both fungible and non-fungible tokens in a single contract. Common for gaming assets, collectibles with editions, or mixed token ecosystems.',
+    impact: 'medium',
+    whatToDo: 'Check which token IDs represent fungible vs non-fungible assets.'
+  },
+};
+
+// Merge ERC explanations into main explanations object
+Object.assign(riskExplanations, ercStandardExplanations);
