@@ -104,7 +104,7 @@ Critical Overrides:
 
 #### Token Standard Detection
 
-AIDYOR automatically detects and validates token standards using EIP-165 interface detection:
+AIDYOR automatically detects and validates token standards using interface detection:
 
 | Standard | Networks | Security Implications |
 |----------|----------|----------------------|
@@ -114,12 +114,17 @@ AIDYOR automatically detects and validates token standards using EIP-165 interfa
 | **ERC-20** | ETH, Polygon, Arbitrum, Base, OP, Avalanche | Standard fungible token |
 | **ERC-721** | ETH, Polygon, Arbitrum, Base, OP, Avalanche | NFT standard |
 | **ERC-1155** | ETH, Polygon, Arbitrum, Base, OP, Avalanche | Multi-token standard |
+| **SPL Token** | Solana | Standard fungible token - wide ecosystem support |
+| **Token-2022** | Solana | Extended token - check for transfer fees/restrictions |
+| **Metaplex NFT** | Solana | NFT with on-chain metadata |
+| **Compressed NFT** | Solana | Efficient NFT - verify marketplace support |
 
 **Detection Method:**
-1. Query contract for EIP-165 `supportsInterface()` 
-2. Check for standard function signatures (e.g., `transfer`, `balanceOf`)
+1. Query contract for EIP-165 `supportsInterface()` (EVM) or program ownership (Solana)
+2. Check for standard function signatures or token supply characteristics
 3. Classify as fungible, NFT, or multi-token
-4. Flag non-compliant contracts as higher risk
+4. Detect Token-2022 extensions (transfer fees, non-transferable, etc.)
+5. Flag non-compliant contracts as higher risk
 
 #### AI-Powered Explanations
 AIDYOR uses Gemini 3 Flash to translate technical findings into actionable insights:
@@ -292,6 +297,7 @@ impact on your exit strategy.
 - [x] Whale activity alerts
 - [x] BEP token standard detection (BEP-20, BEP-721, BEP-1155)
 - [x] ERC token standard detection (ERC-20, ERC-721, ERC-1155)
+- [x] SPL token standard detection (SPL Token, Token-2022, Metaplex NFT, cNFT)
 
 ### Phase 2: Growth (Q1-Q2 2026)
 - [ ] Telegram bot integration

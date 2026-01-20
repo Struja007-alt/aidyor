@@ -97,6 +97,10 @@ Deno Runtime + Supabase
 | ERC-20 | ETH, Polygon, Arbitrum, Base, OP, Avalanche | Function signature checks via RPC |
 | ERC-721 | ETH, Polygon, Arbitrum, Base, OP, Avalanche | EIP-165 interface detection |
 | ERC-1155 | ETH, Polygon, Arbitrum, Base, OP, Avalanche | EIP-165 interface detection |
+| SPL Token | Solana | Token program ownership analysis |
+| Token-2022 | Solana | Token Extensions program detection |
+| Metaplex NFT | Solana | Supply/decimals analysis + metadata |
+| Compressed NFT | Solana | Bubblegum program detection |
 
 ---
 

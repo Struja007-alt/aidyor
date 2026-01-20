@@ -35,6 +35,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - Mint/freeze authority (Solana via RugCheck)
 - **BEP Token Standard Detection** (BEP-20, BEP-721, BEP-1155) for BNB Chain
 - **ERC Token Standard Detection** (ERC-20, ERC-721, ERC-1155) for ETH, Polygon, Arbitrum, Base, OP, Avalanche
+- **SPL Token Standard Detection** (SPL Token, Token-2022, Metaplex NFT, cNFT) for Solana
 
 ---
 
