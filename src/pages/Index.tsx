@@ -1,10 +1,9 @@
 import { Header } from "@/components/Header";
 import { TokenScanner } from "@/components/TokenScanner";
-import { TelegramGameChecker } from "@/components/TelegramGameChecker";
 import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info, Fish } from "lucide-react";
+import { Shield, Zap, Eye, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -39,7 +38,7 @@ const Index = () => {
             </TooltipProvider>
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
-            Advanced token scanner with risk analysis, P2E game verification, and screenshot-based token detection.
+            Advanced token scanner with risk analysis and screenshot-based token detection.
           </p>
           
           {/* Feature Highlights */}
@@ -83,14 +82,6 @@ const Index = () => {
           <TokenScanner />
         </section>
 
-        {/* P2E Games Section */}
-        <section id="games" className="scroll-mt-20">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-1 h-8 bg-accent rounded-full" />
-            <h2 className="font-display text-2xl font-bold text-foreground">P2E Games</h2>
-          </div>
-          <TelegramGameChecker />
-        </section>
 
         {/* Whale Alerts Section */}
         <section id="whale-alerts" className="scroll-mt-20">
