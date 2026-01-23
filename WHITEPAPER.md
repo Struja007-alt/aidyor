@@ -169,6 +169,7 @@ impact on your exit strategy.
 │  React 18 + TypeScript + Vite                                   │
 │  ├── TokenScanner (Main scanning interface)                     │
 │  ├── RiskGauge (Visual score display)                           │
+│  ├── CryptoSecurityNews (Live security alerts)                  │
 │  ├── WhaleAlerts (Transaction monitoring)                       │
 │  ├── Watchlist (Cloud-synced favorites)                         │
 │  └── OCR Scanner (Image-to-address extraction)                  │
@@ -186,6 +187,7 @@ impact on your exit strategy.
 │       ├── simulation-engine (Pump/dump pattern detection)       │
 │       └── ai-risk-engine (Gemini 3 explanations)                │
 │                                                                  │
+│  security-alerts (Live crypto scam/hack news aggregation)        │
 │  whale-alerts (Trending token large transaction detection)       │
 │  ocr-extract (Vision Language Model processing)                  │
 │  passkey-register / passkey-authenticate (WebAuthn flow)         │
@@ -248,9 +250,10 @@ impact on your exit strategy.
 
 **AIDYOR Differentiation:**
 - AI-powered explanations
+- Live security alerts feed
 - Screenshot OCR scanning
 - Whale activity alerts
-- Token standard detection (BEP + ERC)
+- Token standard detection (BEP + ERC + SPL)
 - Zero-friction access
 
 ---
@@ -294,16 +297,17 @@ impact on your exit strategy.
 - [x] Cloud watchlist
 - [x] Passkey authentication
 - [x] OCR screenshot scanner
+- [x] Live security alerts feed
 - [x] Whale activity alerts
 - [x] BEP token standard detection (BEP-20, BEP-721, BEP-1155)
 - [x] ERC token standard detection (ERC-20, ERC-721, ERC-1155)
 - [x] SPL token standard detection (SPL Token, Token-2022, Metaplex NFT, cNFT)
 
 ### Phase 2: Growth (Q1-Q2 2026)
-- [ ] Telegram bot integration
 - [ ] Browser extension (Chrome/Firefox)
 - [ ] Push notification alerts
 - [ ] Premium subscription launch
+- [ ] Telegram bot integration
 
 ### Phase 3: Scale (Q3-Q4 2026)
 - [ ] Mobile app (iOS/Android)
