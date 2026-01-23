@@ -4,9 +4,7 @@ import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info, Download, Play } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import demoVideo from "@/assets/demo-promo-video.mp4";
+import { Shield, Zap, Eye, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -57,34 +55,6 @@ const Index = () => {
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/30">
               <span>🛡️</span>
               <span className="text-muted-foreground">Scam pattern detection</span>
-            </div>
-          </div>
-
-          {/* Demo Video Section */}
-          <div className="mt-8 max-w-2xl mx-auto">
-            <div className="glass-card p-4 rounded-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <Play className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium text-foreground">Demo Video</span>
-              </div>
-              <video 
-                src={demoVideo} 
-                controls 
-                className="w-full rounded-lg mb-3"
-                poster=""
-              >
-                Your browser does not support the video tag.
-              </video>
-              <a 
-                href={demoVideo} 
-                download="AIDYOR-Demo-Promo.mp4"
-                className="inline-flex"
-              >
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Download className="w-4 h-4" />
-                  Download Video
-                </Button>
-              </a>
             </div>
           </div>
         </section>
