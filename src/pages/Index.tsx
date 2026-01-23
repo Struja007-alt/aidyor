@@ -2,8 +2,9 @@ import { Header } from "@/components/Header";
 import { TokenScanner } from "@/components/TokenScanner";
 import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
+import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info } from "lucide-react";
+import { Shield, Zap, Eye, Info, Newspaper } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -82,6 +83,15 @@ const Index = () => {
           <TokenScanner />
         </section>
 
+
+        {/* Security News Section */}
+        <section id="security-news" className="scroll-mt-20">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-1 h-8 bg-destructive rounded-full" />
+            <h2 className="font-display text-2xl font-bold text-foreground">Security Alerts</h2>
+          </div>
+          <CryptoSecurityNews />
+        </section>
 
         {/* Whale Alerts Section */}
         <section id="whale-alerts" className="scroll-mt-20">
