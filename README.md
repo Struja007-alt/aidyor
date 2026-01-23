@@ -21,6 +21,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 
 ### Advanced Features
 - **📸 OCR Screenshot Scanner** - Extract addresses from images using Tesseract.js + AI Vision
+- **🚨 Live Security Alerts** - Real-time crypto scam warnings and hack reports
 - **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k)
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
@@ -61,6 +62,7 @@ Deno Runtime
 ├── ai-risk-engine        → AI explanations (Gemini 3)
 ├── simulation-engine     → Pump/dump detection
 ├── whale-alerts          → Transaction monitoring
+├── security-alerts       → Live scam/hack news feed
 ├── ocr-extract           → VLM-based OCR
 └── passkey-*             → WebAuthn handlers
 ```
@@ -134,10 +136,12 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 │   │   ├── TokenScanner.tsx # Main scanner (3000+ lines)
 │   │   ├── RiskGauge.tsx    # Visual risk display
 │   │   ├── WhaleAlerts.tsx  # Transaction monitor
+│   │   ├── CryptoSecurityNews.tsx # Live security alerts
 │   │   └── Watchlist.tsx    # User favorites
 │   ├── hooks/               # Custom React hooks
 │   │   ├── useAuth.tsx
 │   │   ├── useCloudWatchlist.ts
+│   │   ├── useSecurityAlerts.ts
 │   │   ├── usePasskey.ts
 │   │   └── useWhaleAlerts.ts
 │   ├── lib/
@@ -145,7 +149,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 │   │   └── security/        # Input sanitization
 │   └── pages/               # Route components
 ├── supabase/
-│   └── functions/           # 8 Edge functions
+│   └── functions/           # 9 Edge functions
 └── public/                  # Static assets
 ```
 
@@ -168,6 +172,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Multi-chain token scanner
 - [x] AI risk explanations
 - [x] OCR screenshot scanner
+- [x] Live security alerts feed
 - [x] Whale activity alerts
 - [x] Cloud watchlist
 - [x] Passkey authentication
@@ -175,7 +180,6 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Risk trend analysis
 
 ### Planned
-- [ ] Telegram bot integration
 - [ ] Browser extension
 - [ ] Mobile app (Capacitor)
 - [ ] Premium subscriptions
