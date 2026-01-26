@@ -678,12 +678,13 @@ async function handleSendAlert(request: SendAlertRequest): Promise<Response> {
       break;
 
     case "security":
-      const severityEmoji = {
+      const severityMap: Record<string, string> = {
         critical: "🚨",
         high: "⚠️",
         medium: "⚡",
         info: "ℹ️",
-      }[data.severity] || "📢";
+      };
+      const severityEmoji = severityMap[data.severity as string] || "📢";
       message =
         `${severityEmoji} <b>Security Alert</b>\n\n` +
         `<b>${data.title}</b>\n\n` +
