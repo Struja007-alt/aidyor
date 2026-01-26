@@ -57,18 +57,19 @@ React 18.3 + TypeScript + Vite
 
 ### Backend (Lovable Cloud / Supabase Edge Functions)
 ```
-Deno Runtime
-├── risk-orchestrator     → Central API gateway
-├── market-data-service   → DEXScreener integration
-├── onchain-data-service  → GoPlus/RugCheck/BSCTrace
-├── ai-risk-engine        → AI explanations (Gemini 3)
-├── simulation-engine     → Pump/dump detection
-├── whale-alerts          → Transaction monitoring
-├── security-alerts       → Live scam/hack news feed
-├── ocr-extract           → VLM-based OCR
-├── telegram-webhook      → Telegram bot & alerts
-├── api-token-scan        → B2B API with key management
-└── passkey-*             → WebAuthn handlers
+Deno Runtime - 13 Edge Functions
+├── risk-orchestrator       → Central API gateway (JWT auth)
+├── market-data-service     → DEXScreener integration
+├── onchain-data-service    → GoPlus/RugCheck/BSCTrace
+├── ai-risk-engine          → AI explanations (Gemini 3)
+├── ai-risk-explain         → Natural language risk summaries
+├── simulation-engine       → Pump/dump detection
+├── whale-alerts            → Transaction monitoring (public)
+├── security-alerts         → Live scam/hack news feed (public)
+├── ocr-extract             → VLM-based OCR
+├── telegram-webhook        → Telegram bot & payments
+├── api-token-scan          → B2B API with key management
+└── passkey-*               → WebAuthn handlers (2 functions)
 ```
 
 ### Data Sources
@@ -150,10 +151,11 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 │   │   └── useWhaleAlerts.ts
 │   ├── lib/
 │   │   ├── api/             # External API clients
-│   │   └── security/        # Input sanitization
+│   │   ├── security/        # Input sanitization (Zod + XSS firewall)
+│   │   └── constants/       # Known token networks
 │   └── pages/               # Route components
 ├── supabase/
-│   └── functions/           # 9 Edge functions
+│   └── functions/           # 13 Edge functions
 ├── browser-extension/       # Chrome/Firefox extension
 │   ├── manifest.json        # Extension manifest (MV3)
 │   ├── popup/               # Popup UI
@@ -167,35 +169,57 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 
 ## 🔒 Security
 
-- ✅ Row Level Security (RLS) on all tables
-- ✅ Input sanitization via Zod schemas
-- ✅ XSS/SQL injection pattern blocking
-- ✅ API timeout controls (AbortController)
-- ✅ Address validation (EIP-55, Base58)
-- ✅ No exposed API keys in frontend
+### Database Security (Supabase RLS)
+- ✅ **Row Level Security (RLS)** on all 9 tables
+- ✅ **Service role isolation** - Telegram tables use `TO service_role` policies
+- ✅ **Secure views** - `api_keys_safe` hides key hashes with `security_invoker=on`
+- ✅ **NOT NULL constraints** - All user_id columns enforce ownership
+- ✅ **Supabase Linter** - 0 warnings/errors
+
+### Edge Function Security
+- ✅ **Dynamic CORS** - Origin allowlist (aidyor.app, preview URLs, localhost)
+- ✅ **JWT authentication** - Required for user-specific endpoints
+- ✅ **Input validation** - Email RFC 5322 regex, address format validation
+- ✅ **Generic error responses** - No implementation details leaked to clients
+- ✅ **Sanitized logging** - Sensitive payment/PII data excluded from logs
+
+### Frontend Security
+- ✅ **Input sanitization** via Zod schemas (`src/lib/security/inputSanitizer.ts`)
+- ✅ **XSS/SQL injection pattern blocking** - Centralized prompt firewall
+- ✅ **API timeout controls** - AbortController (5-15s timeouts)
+- ✅ **Address validation** - EIP-55 (EVM), Base58 (Solana), T-prefix (Tron)
+- ✅ **No exposed API keys** - All external APIs are public/free tier
+
+### Audit Status
+- **Last Audit:** January 26, 2026
+- **Overall Status:** ✅ SECURE
+- **Report:** [SECURITY_AUDIT_REPORT.md](./SECURITY_AUDIT_REPORT.md)
 
 ---
 
 ## 🗺️ Roadmap
 
 ### Completed ✅
-- [x] Multi-chain token scanner
-- [x] AI risk explanations
-- [x] OCR screenshot scanner
-- [x] Live security alerts feed
-- [x] Whale activity alerts
-- [x] Cloud watchlist
-- [x] Passkey authentication
-- [x] Push notifications
+- [x] Multi-chain token scanner (9+ blockchains)
+- [x] AI risk explanations (Gemini 3)
+- [x] OCR screenshot scanner (Tesseract.js + Vision AI)
+- [x] Live security alerts feed (public endpoint)
+- [x] Whale activity alerts (public endpoint)
+- [x] Cloud watchlist (RLS-protected)
+- [x] Passkey/WebAuthn authentication
+- [x] Push notifications (browser)
 - [x] Risk trend analysis
-- [x] Telegram bot integration
+- [x] Telegram bot integration (@aidyor_bot)
 - [x] Freemium subscription (10 scans/day free)
 - [x] Premium subscriptions ($9.99/month via Telegram Payments)
 - [x] B2B API Client Tier ($49-199/month)
+- [x] Browser extension (Chrome/Firefox MV3)
+- [x] Token standard detection (BEP, ERC, SPL)
+- [x] Comprehensive security audit (0 critical issues)
+- [x] Edge function hardening (JWT, CORS, input validation)
 
 ### In Progress
-- [x] Browser extension (Chrome/Firefox) - `/browser-extension`
-- [ ] Mobile app (Capacitor)
+- [ ] Mobile app (Capacitor configured, ready for build)
 
 ---
 
