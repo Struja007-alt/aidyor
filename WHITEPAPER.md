@@ -269,10 +269,10 @@ impact on your exit strategy.
 - **Free:** 10 scans/day, basic risk score
 - **Pro ($9.99/mo via Telegram Payments):** Unlimited scans, AI explanations, whale alerts, priority support
 
-#### Tier 2: API (B2B)
-- **Starter:** $49/mo - 1,000 API calls
-- **Growth:** $199/mo - 10,000 API calls
-- **Enterprise:** Custom pricing, SLA support
+#### Tier 2: API (B2B) - Now Live!
+- **Starter:** $49/mo - 1,000 API calls + $0.01/scan overage
+- **Growth:** $99/mo - 5,000 API calls + $0.01/scan overage
+- **Enterprise:** $199/mo - 25,000 API calls + $0.01/scan overage, priority support
 
 #### Tier 3: White-Label (Enterprise)
 - **License Fee:** $50,000-$100,000
