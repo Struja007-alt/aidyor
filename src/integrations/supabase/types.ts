@@ -14,6 +14,164 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_clients: {
+        Row: {
+          billing_cycle_start: string
+          company_name: string
+          contact_email: string
+          created_at: string
+          id: string
+          plan_tier: Database["public"]["Enums"]["api_plan_tier"]
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          billing_cycle_start?: string
+          company_name: string
+          contact_email: string
+          created_at?: string
+          id?: string
+          plan_tier?: Database["public"]["Enums"]["api_plan_tier"]
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          billing_cycle_start?: string
+          company_name?: string
+          contact_email?: string
+          created_at?: string
+          id?: string
+          plan_tier?: Database["public"]["Enums"]["api_plan_tier"]
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      api_keys: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "api_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_plans: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          monthly_scan_limit: number
+          name: string
+          overage_price_cents: number
+          price_cents: number
+          tier: Database["public"]["Enums"]["api_plan_tier"]
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          monthly_scan_limit: number
+          name: string
+          overage_price_cents?: number
+          price_cents: number
+          tier: Database["public"]["Enums"]["api_plan_tier"]
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          monthly_scan_limit?: number
+          name?: string
+          overage_price_cents?: number
+          price_cents?: number
+          tier?: Database["public"]["Enums"]["api_plan_tier"]
+        }
+        Relationships: []
+      }
+      api_usage: {
+        Row: {
+          api_key_id: string
+          billing_period: string
+          client_id: string
+          created_at: string
+          id: string
+          overage_count: number
+          scan_count: number
+          updated_at: string
+        }
+        Insert: {
+          api_key_id: string
+          billing_period?: string
+          client_id: string
+          created_at?: string
+          id?: string
+          overage_count?: number
+          scan_count?: number
+          updated_at?: string
+        }
+        Update: {
+          api_key_id?: string
+          billing_period?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          overage_count?: number
+          scan_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_usage_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_usage_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "api_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       passkey_credentials: {
         Row: {
           counter: number
@@ -184,6 +342,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      api_plan_tier: "starter" | "growth" | "enterprise"
       subscription_status: "active" | "expired" | "cancelled" | "pending"
     }
     CompositeTypes: {
@@ -312,6 +471,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      api_plan_tier: ["starter", "growth", "enterprise"],
       subscription_status: ["active", "expired", "cancelled", "pending"],
     },
   },
