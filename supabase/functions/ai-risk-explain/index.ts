@@ -1,10 +1,23 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// Dynamic CORS - restrict to allowed origins
+const ALLOWED_ORIGINS = [
+  'https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app',
+  'https://aidyor.app',
+  'https://www.aidyor.app',
+  'http://localhost:5173',
+  'http://localhost:8080',
+];
+
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Credentials': 'true',
+  };
+}
 
 interface RiskFactor {
   name: string;
@@ -52,6 +65,9 @@ function validateTokenData(data: any): data is TokenData {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -224,6 +240,8 @@ Provide a clear, actionable explanation of the risks.`;
 
   } catch (error) {
     console.error("[ai-risk-explain] Error:", error);
+    const origin = req.headers.get('origin');
+    const corsHeaders = getCorsHeaders(origin);
     return new Response(
       JSON.stringify({ error: "An error occurred processing your request" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
