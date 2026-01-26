@@ -24,6 +24,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **🚨 Live Security Alerts** - Real-time crypto scam warnings and hack reports
 - **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k)
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
+- **🤖 Telegram Bot** - Scan tokens and receive alerts via @aidyor_bot
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
 - **📱 Push Notifications** - Browser alerts for whale activity
 
@@ -64,6 +65,7 @@ Deno Runtime
 ├── whale-alerts          → Transaction monitoring
 ├── security-alerts       → Live scam/hack news feed
 ├── ocr-extract           → VLM-based OCR
+├── telegram-webhook      → Telegram bot & alerts
 └── passkey-*             → WebAuthn handlers
 ```
 
@@ -178,6 +180,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Passkey authentication
 - [x] Push notifications
 - [x] Risk trend analysis
+- [x] Telegram bot integration
 
 ### Planned
 - [ ] Browser extension
