@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.risk-orchestrator]
 verify_jwt = false
+
+[functions.security-alerts]
+verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false
