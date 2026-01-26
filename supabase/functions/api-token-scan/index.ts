@@ -429,10 +429,12 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('API error:', error);
+    // Log detailed error server-side only
+    console.error('[Internal] API token scan error:', error);
+    // Return generic error message to client (no implementation details)
     return new Response(JSON.stringify({
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Request failed',
+      message: 'An error occurred processing your request'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

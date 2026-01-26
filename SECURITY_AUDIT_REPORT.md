@@ -20,6 +20,9 @@
 - ✅ Added DELETE policy for `api_clients` (users can delete their own)
 - ✅ Supabase linter: **0 issues** (all warnings resolved)
 - ✅ Supply chain vulnerability: **RESOLVED** (Capacitor packages upgraded)
+- ✅ **Passkey email validation**: Added RFC 5322 format validation, 320 char length limit
+- ✅ **Error details exposure**: Removed sensitive error messages from all edge functions
+- ✅ **Telegram log sanitization**: Removed sensitive payment/PII data from console logs
 
 ---
 
