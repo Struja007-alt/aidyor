@@ -47,6 +47,75 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_orders: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          currency: string
+          expires_at: string
+          id: string
+          invoice_payload: string
+          status: string
+          telegram_user_id: number
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          currency?: string
+          expires_at?: string
+          id?: string
+          invoice_payload: string
+          status?: string
+          telegram_user_id: number
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          expires_at?: string
+          id?: string
+          invoice_payload?: string
+          status?: string
+          telegram_user_id?: number
+        }
+        Relationships: []
+      }
+      premium_subscriptions: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          provider_payment_charge_id: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["subscription_status"]
+          telegram_payment_charge_id: string | null
+          telegram_user_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider_payment_charge_id?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          telegram_payment_charge_id?: string | null
+          telegram_user_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider_payment_charge_id?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          telegram_payment_charge_id?: string | null
+          telegram_user_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       watchlist_tokens: {
         Row: {
           added_at: string
@@ -88,7 +157,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      subscription_status: "active" | "expired" | "cancelled" | "pending"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -215,6 +284,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      subscription_status: ["active", "expired", "cancelled", "pending"],
+    },
   },
 } as const
