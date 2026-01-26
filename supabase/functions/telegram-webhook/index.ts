@@ -939,7 +939,12 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    console.log("[Telegram] Incoming request:", JSON.stringify(body).slice(0, 500));
+    // Log request type only - do NOT log sensitive payment data or PII
+    const logSafeType = body.pre_checkout_query ? 'pre_checkout_query' : 
+                        body.message?.successful_payment ? 'successful_payment' :
+                        body.update_id ? 'telegram_update' : 
+                        body.action || 'unknown';
+    console.log("[Telegram] Incoming request type:", logSafeType);
 
     // Handle pre-checkout query (payment validation)
     if (body.pre_checkout_query) {
@@ -1025,11 +1030,13 @@ serve(async (req) => {
         );
     }
   } catch (error) {
-    console.error("[Telegram] Error:", error);
+    // Log detailed error server-side only
+    console.error("[Internal] Telegram webhook error:", error);
+    // Return generic error message to client (no implementation details)
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "Request processing failed",
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

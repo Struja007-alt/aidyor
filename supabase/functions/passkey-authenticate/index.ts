@@ -19,6 +19,24 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
+// Email validation regex (RFC 5322 simplified)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_EMAIL_LENGTH = 320;
+
+// Validate email format and length
+function validateEmail(email: unknown): { valid: boolean; error?: string } {
+  if (!email || typeof email !== 'string') {
+    return { valid: false, error: 'Email is required' };
+  }
+  if (email.length > MAX_EMAIL_LENGTH) {
+    return { valid: false, error: 'Invalid email format' };
+  }
+  if (!EMAIL_REGEX.test(email)) {
+    return { valid: false, error: 'Invalid email format' };
+  }
+  return { valid: true };
+}
+
 // Generate a random challenge
 function generateChallenge(): string {
   const array = new Uint8Array(32);
@@ -43,9 +61,11 @@ serve(async (req) => {
     const { action, email, credential } = await req.json();
 
     if (action === 'start') {
-      if (!email) {
+      // Validate email format and length
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.valid) {
         return new Response(
-          JSON.stringify({ error: 'Email is required' }),
+          JSON.stringify({ error: emailValidation.error }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -184,12 +204,13 @@ serve(async (req) => {
     );
 
   } catch (error: unknown) {
-    console.error('Error in passkey-authenticate:', error);
+    // Log detailed error server-side only
+    console.error('[Internal] Passkey authentication error:', error);
     const origin = req.headers.get('origin');
     const corsHeaders = getCorsHeaders(origin);
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    // Return generic error message to client (no implementation details)
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: 'Authentication failed' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
