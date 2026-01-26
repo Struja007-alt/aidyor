@@ -67,6 +67,7 @@ Deno Runtime
 ├── security-alerts       → Live scam/hack news feed
 ├── ocr-extract           → VLM-based OCR
 ├── telegram-webhook      → Telegram bot & alerts
+├── api-token-scan        → B2B API with key management
 └── passkey-*             → WebAuthn handlers
 ```
 
@@ -189,12 +190,12 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Risk trend analysis
 - [x] Telegram bot integration
 - [x] Freemium subscription (10 scans/day free)
-- [x] Premium subscriptions ($19/month via Telegram Payments)
+- [x] Premium subscriptions ($9.99/month via Telegram Payments)
+- [x] B2B API Client Tier ($49-199/month)
 
 ### In Progress
 - [x] Browser extension (Chrome/Firefox) - `/browser-extension`
 - [ ] Mobile app (Capacitor)
-- [ ] Public API
 
 ---
 
