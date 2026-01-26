@@ -267,7 +267,7 @@ impact on your exit strategy.
 
 #### Tier 1: Consumer (Freemium)
 - **Free:** 10 scans/day, basic risk score
-- **Pro ($19/mo via Telegram Payments):** Unlimited scans, AI explanations, whale alerts, priority support
+- **Pro ($9.99/mo via Telegram Payments):** Unlimited scans, AI explanations, whale alerts, priority support
 
 #### Tier 2: API (B2B)
 - **Starter:** $49/mo - 1,000 API calls
