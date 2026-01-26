@@ -10,11 +10,16 @@
 
 ✅ **Overall Status: SECURE** - All critical vulnerabilities addressed
 
-### Recent Fixes (January 26, 2026)
+### Recent Fixes (January 26, 2026) - HIGHEST SECURITY LEVEL
 - ✅ Fixed RLS policies for `api_clients`, `api_keys`, `api_usage` tables
-- ✅ Service role policies now properly restricted to `service_role` role
+- ✅ Service role policies now properly restricted to `TO service_role` role
 - ✅ Added user-level SELECT policies for API key and usage visibility
-- ✅ Supabase linter: **0 issues** (was 3 warnings)
+- ✅ Created `api_keys_safe` view with `security_invoker=on` to hide `key_hash`
+- ✅ Added NOT NULL constraint on `api_clients.user_id` (no orphan records)
+- ✅ Telegram tables (`pending_orders`, `premium_subscriptions`, `scan_usage`) restricted to service_role only
+- ✅ Added DELETE policy for `api_clients` (users can delete their own)
+- ✅ Supabase linter: **0 issues** (all warnings resolved)
+- ✅ Supply chain vulnerability: **RESOLVED** (Capacitor packages upgraded)
 
 ---
 
