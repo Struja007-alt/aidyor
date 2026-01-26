@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,6 +74,25 @@ interface MarketDataResponse {
 const cache = new Map<string, { data: MarketDataResponse; expiry: number }>();
 const CACHE_TTL = 30000; // 30 seconds
 
+// Address validation patterns
+const ADDRESS_PATTERNS = {
+  evm: /^0x[a-fA-F0-9]{40}$/,
+  solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+};
+
+const VALID_NETWORKS = ['eth', 'ethereum', 'bsc', 'polygon', 'arbitrum', 'base', 'optimism', 'avalanche', 'sol', 'solana'];
+
+function validateAddress(address: string): boolean {
+  if (!address || typeof address !== 'string' || address.length > 100) return false;
+  return ADDRESS_PATTERNS.evm.test(address) || ADDRESS_PATTERNS.solana.test(address);
+}
+
+function validateNetwork(network: string | undefined): boolean {
+  if (!network) return true;
+  if (typeof network !== 'string' || network.length > 20) return false;
+  return VALID_NETWORKS.includes(network.toLowerCase());
+}
+
 function getCached(key: string): MarketDataResponse | null {
   const entry = cache.get(key);
   if (entry && entry.expiry > Date.now()) {
@@ -98,7 +118,7 @@ async function fetchDexScreener(address: string): Promise<DexPair[]> {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      console.error(`DexScreener API error: ${response.status}`);
+      console.error(`[Market Data Service] DexScreener API error: ${response.status}`);
       return [];
     }
 
@@ -106,7 +126,7 @@ async function fetchDexScreener(address: string): Promise<DexPair[]> {
     return data.pairs || [];
   } catch (error) {
     clearTimeout(timeout);
-    console.error("DexScreener fetch error:", error);
+    console.error("[Market Data Service] DexScreener fetch error");
     return [];
   }
 }
@@ -228,29 +248,63 @@ serve(async (req) => {
   }
 
   try {
+    // Authentication check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[Market Data Service] Request from user: ${user.id}`);
+
     const { address, network }: MarketDataRequest = await req.json();
 
-    if (!address) {
+    if (!address || !validateAddress(address)) {
       return new Response(
-        JSON.stringify({ success: false, error: "Address is required", timestamp: new Date().toISOString() }),
+        JSON.stringify({ success: false, error: "Invalid address format", timestamp: new Date().toISOString() }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[Market Data Service] Fetching data for: ${address}`);
+    if (!validateNetwork(network)) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid network", timestamp: new Date().toISOString() }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const normalizedAddress = address.toLowerCase().trim();
+    console.log(`[Market Data Service] Fetching data for: ${normalizedAddress}`);
 
     // Check cache
-    const cacheKey = `market:${address.toLowerCase()}`;
+    const cacheKey = `market:${normalizedAddress}`;
     const cached = getCached(cacheKey);
     if (cached) {
-      console.log(`[Market Data Service] Cache hit for ${address}`);
+      console.log(`[Market Data Service] Cache hit for ${normalizedAddress}`);
       return new Response(JSON.stringify(cached), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // Fetch from DexScreener
-    const pairs = await fetchDexScreener(address);
+    const pairs = await fetchDexScreener(normalizedAddress);
 
     if (pairs.length === 0) {
       const response: MarketDataResponse = {
@@ -310,7 +364,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "An error occurred processing your request",
         timestamp: new Date().toISOString(),
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

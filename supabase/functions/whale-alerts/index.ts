@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,15 +56,53 @@ const chainNameMap: Record<string, string> = {
   optimism: "Optimism",
 };
 
+// Input validation
+const MIN_AMOUNT_RANGE = { min: 1000, max: 10000000 };
+const LIMIT_RANGE = { min: 1, max: 100 };
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { minAmountUsd = 50000, limit = 20 } = await req.json().catch(() => ({}));
+    // Authentication check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[whale-alerts] Request from user: ${user.id}`);
+
+    const body = await req.json().catch(() => ({}));
     
-    console.log(`Fetching whale alerts with min amount: $${minAmountUsd}`);
+    // Validate and sanitize inputs
+    let minAmountUsd = typeof body.minAmountUsd === 'number' ? body.minAmountUsd : 50000;
+    let limit = typeof body.limit === 'number' ? body.limit : 20;
+    
+    // Enforce bounds
+    minAmountUsd = Math.max(MIN_AMOUNT_RANGE.min, Math.min(MIN_AMOUNT_RANGE.max, minAmountUsd));
+    limit = Math.max(LIMIT_RANGE.min, Math.min(LIMIT_RANGE.max, Math.floor(limit)));
+    
+    console.log(`[whale-alerts] Fetching with min amount: $${minAmountUsd}, limit: ${limit}`);
     
     const whaleAlerts: WhaleAlert[] = [];
     
@@ -95,11 +134,11 @@ serve(async (req) => {
           }
         }
       } catch (e) {
-        console.log(`Failed to fetch from ${endpoint}:`, e);
+        console.log(`[whale-alerts] Failed to fetch trending data`);
       }
     }
     
-    console.log(`Found ${trendingTokens.length} trending tokens to analyze`);
+    console.log(`[whale-alerts] Found ${trendingTokens.length} trending tokens to analyze`);
     
     // Analyze each trending token for whale activity
     const tokenPromises = trendingTokens.slice(0, 15).map(async (token) => {
@@ -108,7 +147,7 @@ serve(async (req) => {
         const timeoutId = setTimeout(() => controller.abort(), 8000);
         
         const response = await fetch(
-          `https://api.dexscreener.com/latest/dex/tokens/${token.tokenAddress}`,
+          `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(token.tokenAddress)}`,
           {
             signal: controller.signal,
             headers: { "Accept": "application/json" }
@@ -160,7 +199,7 @@ serve(async (req) => {
         
         return [];
       } catch (e) {
-        console.log(`Failed to analyze token ${token.tokenAddress}:`, e);
+        console.log(`[whale-alerts] Failed to analyze token`);
         return [];
       }
     });
@@ -173,7 +212,7 @@ serve(async (req) => {
       .sort((a, b) => b.amountUsd - a.amountUsd)
       .slice(0, limit);
     
-    console.log(`Returning ${sortedAlerts.length} whale alerts`);
+    console.log(`[whale-alerts] Returning ${sortedAlerts.length} whale alerts`);
     
     return new Response(
       JSON.stringify({
@@ -186,9 +225,9 @@ serve(async (req) => {
     );
     
   } catch (error) {
-    console.error("Whale alerts error:", error);
+    console.error("[whale-alerts] Error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Failed to fetch whale alerts" }),
+      JSON.stringify({ error: "An error occurred processing your request" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
