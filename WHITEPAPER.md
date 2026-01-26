@@ -187,6 +187,7 @@ impact on your exit strategy.
 │       ├── simulation-engine (Pump/dump pattern detection)       │
 │       └── ai-risk-engine (Gemini 3 explanations)                │
 │                                                                  │
+│  telegram-webhook (Bot commands, payments, premium subscriptions)│
 │  security-alerts (Live crypto scam/hack news aggregation)        │
 │  whale-alerts (Trending token large transaction detection)       │
 │  ocr-extract (Vision Language Model processing)                  │
@@ -200,7 +201,8 @@ impact on your exit strategy.
 ├─────────────────────────────────────────────────────────────────┤
 │  watchlist_tokens (User favorites with risk tracking)           │
 │  passkey_credentials (WebAuthn public keys)                     │
-│  [Future: scan_history, user_preferences, alerts]               │
+│  premium_subscriptions (Telegram Pro user management)           │
+│  pending_orders (Payment tracking for Telegram Payments)        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -255,6 +257,7 @@ impact on your exit strategy.
 - Whale activity alerts
 - Token standard detection (BEP + ERC + SPL)
 - Zero-friction access
+- **Telegram bot with native payments** (scan tokens directly in chat)
 
 ---
 
@@ -264,7 +267,7 @@ impact on your exit strategy.
 
 #### Tier 1: Consumer (Freemium)
 - **Free:** 10 scans/day, basic risk score
-- **Pro ($9.99/mo):** Unlimited scans, AI explanations, whale alerts
+- **Pro ($19/mo via Telegram Payments):** Unlimited scans, AI explanations, whale alerts, priority support
 
 #### Tier 2: API (B2B)
 - **Starter:** $49/mo - 1,000 API calls
@@ -302,12 +305,13 @@ impact on your exit strategy.
 - [x] BEP token standard detection (BEP-20, BEP-721, BEP-1155)
 - [x] ERC token standard detection (ERC-20, ERC-721, ERC-1155)
 - [x] SPL token standard detection (SPL Token, Token-2022, Metaplex NFT, cNFT)
+- [x] Telegram bot integration with token scanning
+- [x] Telegram Payments premium subscription ($19/month)
 
 ### Phase 2: Growth (Q1-Q2 2026)
 - [ ] Browser extension (Chrome/Firefox)
 - [ ] Push notification alerts
-- [ ] Premium subscription launch
-- [ ] Telegram bot integration
+- [ ] Premium tier rate limiting (free vs Pro scans)
 
 ### Phase 3: Scale (Q3-Q4 2026)
 - [ ] Mobile app (iOS/Android)
