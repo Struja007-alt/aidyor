@@ -18,7 +18,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Subscription config
-const PREMIUM_PRICE_CENTS = 1900; // $19.00
+const PREMIUM_PRICE_CENTS = 999; // $9.99
 const PREMIUM_DURATION_DAYS = 30;
 const FREE_DAILY_SCAN_LIMIT = 10;
 

@@ -25,7 +25,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k)
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
 - **🤖 Telegram Bot** - Scan tokens and receive alerts via @aidyor_bot
-- **💎 Premium Subscriptions** - $19/month for unlimited scans (10 free/day)
+- **💎 Premium Subscriptions** - $9.99/month for unlimited scans (10 free/day)
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
 - **📱 Push Notifications** - Browser alerts for whale activity
 
