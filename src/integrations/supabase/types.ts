@@ -116,6 +116,33 @@ export type Database = {
         }
         Relationships: []
       }
+      scan_usage: {
+        Row: {
+          created_at: string
+          id: string
+          scan_count: number
+          scan_date: string
+          telegram_user_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          scan_count?: number
+          scan_date?: string
+          telegram_user_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          scan_count?: number
+          scan_date?: string
+          telegram_user_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       watchlist_tokens: {
         Row: {
           added_at: string
