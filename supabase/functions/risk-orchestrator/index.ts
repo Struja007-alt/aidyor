@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,10 +67,21 @@ interface OrchestratorResponse {
   timestamp: string;
 }
 
+// Address validation patterns
+const ADDRESS_PATTERNS = {
+  evm: /^0x[a-fA-F0-9]{40}$/,
+  solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+};
+
+function validateAddress(address: string): boolean {
+  if (!address || typeof address !== 'string' || address.length > 100) return false;
+  return ADDRESS_PATTERNS.evm.test(address) || ADDRESS_PATTERNS.solana.test(address);
+}
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
-async function callService<T>(serviceName: string, body: any): Promise<T | null> {
+async function callService<T>(serviceName: string, body: any, authHeader: string): Promise<T | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
 
@@ -78,7 +90,7 @@ async function callService<T>(serviceName: string, body: any): Promise<T | null>
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        Authorization: authHeader,
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -94,7 +106,7 @@ async function callService<T>(serviceName: string, body: any): Promise<T | null>
     return data.success ? data : null;
   } catch (error) {
     clearTimeout(timeout);
-    console.error(`[Orchestrator] ${serviceName} error:`, error);
+    console.error(`[Orchestrator] ${serviceName} error`);
     return null;
   }
 }
@@ -143,13 +155,49 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { address, network, includeAI = false }: OrchestratorRequest = await req.json();
-
-    if (!address) {
+    // Authentication check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: "Address is required", 
+          error: "Unauthorized", 
+          processingTime: Date.now() - startTime,
+          timestamp: new Date().toISOString() 
+        }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Unauthorized", 
+          processingTime: Date.now() - startTime,
+          timestamp: new Date().toISOString() 
+        }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[Orchestrator] Request from user: ${user.id}`);
+
+    const { address, network, includeAI = false }: OrchestratorRequest = await req.json();
+
+    if (!address || !validateAddress(address)) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Invalid address format", 
           processingTime: Date.now() - startTime,
           timestamp: new Date().toISOString() 
         }),
@@ -157,10 +205,11 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[Orchestrator] Starting analysis for: ${address}${network ? ` on ${network}` : ""}`);
+    const normalizedAddress = address.toLowerCase().trim();
+    console.log(`[Orchestrator] Starting analysis for: ${normalizedAddress}${network ? ` on ${network}` : ""}`);
 
     // Step 1: Fetch market data first (needed for other services)
-    const marketResult = await callService<any>("market-data-service", { address, network });
+    const marketResult = await callService<any>("market-data-service", { address: normalizedAddress, network }, authHeader);
 
     if (!marketResult?.data) {
       return new Response(
@@ -179,9 +228,9 @@ serve(async (req) => {
 
     // Step 2: Parallel fetch security data and run simulation
     const [securityResult, simulationResult] = await Promise.all([
-      callService<any>("onchain-data-service", { address, network: detectedNetwork }),
+      callService<any>("onchain-data-service", { address: normalizedAddress, network: detectedNetwork }, authHeader),
       callService<any>("simulation-engine", {
-        address,
+        address: normalizedAddress,
         network: detectedNetwork,
         marketData: {
           price: parseFloat(bestPair?.priceUsd) || 0,
@@ -190,7 +239,7 @@ serve(async (req) => {
           change24h: bestPair?.priceChange?.h24 || 0,
           txns24h: bestPair?.txns?.h24,
         },
-      }),
+      }, authHeader),
     ]);
 
     // Aggregate risk factors
@@ -220,7 +269,7 @@ serve(async (req) => {
         token: {
           name: bestPair?.baseToken?.name || "Unknown",
           symbol: bestPair?.baseToken?.symbol || "???",
-          address,
+          address: normalizedAddress,
           network: detectedNetwork.toUpperCase(),
           imageUrl: bestPair?.info?.imageUrl,
         },
@@ -269,7 +318,7 @@ serve(async (req) => {
           lockInfo: response.data.securityData.lockInfo,
           pumpDumpStatus: simulationStatus,
         },
-      });
+      }, authHeader);
 
       if (aiResult?.data) {
         response.data.aiExplanation = {
@@ -291,7 +340,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "An error occurred processing your request",
         processingTime: Date.now() - startTime,
         timestamp: new Date().toISOString(),
       }),

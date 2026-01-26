@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +56,17 @@ interface AIRiskResponse {
   };
   error?: string;
   timestamp: string;
+}
+
+// Input validation
+function validateTokenData(data: any): boolean {
+  if (!data || typeof data !== 'object') return false;
+  if (typeof data.name !== 'string' || data.name.length > 200) return false;
+  if (typeof data.symbol !== 'string' || data.symbol.length > 50) return false;
+  if (typeof data.network !== 'string' || data.network.length > 50) return false;
+  if (typeof data.riskScore !== 'number' || data.riskScore < 0 || data.riskScore > 100) return false;
+  if (!Array.isArray(data.riskFactors) || data.riskFactors.length > 50) return false;
+  return true;
 }
 
 function buildPrompt(tokenData: AIRiskRequest["tokenData"]): string {
@@ -135,11 +147,37 @@ serve(async (req) => {
   }
 
   try {
+    // Authentication check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[AI Risk Engine] Request from user: ${user.id}`);
+
     const { tokenData }: AIRiskRequest = await req.json();
 
-    if (!tokenData) {
+    if (!tokenData || !validateTokenData(tokenData)) {
       return new Response(
-        JSON.stringify({ success: false, error: "Token data is required", timestamp: new Date().toISOString() }),
+        JSON.stringify({ success: false, error: "Invalid request format", timestamp: new Date().toISOString() }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -148,7 +186,11 @@ serve(async (req) => {
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+      console.error("[AI Risk Engine] LOVABLE_API_KEY not configured");
+      return new Response(
+        JSON.stringify({ success: false, error: "Service temporarily unavailable", timestamp: new Date().toISOString() }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const prompt = buildPrompt(tokenData);
@@ -187,19 +229,24 @@ FORMAT:
 
     if (!response.ok) {
       const status = response.status;
+      console.error(`[AI Risk Engine] AI gateway error: ${status}`);
+      
       if (status === 429) {
         return new Response(
-          JSON.stringify({ success: false, error: "Rate limit exceeded. Try again later.", timestamp: new Date().toISOString() }),
+          JSON.stringify({ success: false, error: "Too many requests. Please try again later.", timestamp: new Date().toISOString() }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (status === 402) {
         return new Response(
-          JSON.stringify({ success: false, error: "AI credits exhausted.", timestamp: new Date().toISOString() }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: false, error: "Service temporarily unavailable.", timestamp: new Date().toISOString() }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      throw new Error(`AI gateway error: ${status}`);
+      return new Response(
+        JSON.stringify({ success: false, error: "Service temporarily unavailable", timestamp: new Date().toISOString() }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const aiResponse = await response.json();
@@ -254,7 +301,7 @@ FORMAT:
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "An error occurred processing your request",
         timestamp: new Date().toISOString(),
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

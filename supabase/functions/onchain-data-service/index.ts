@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +49,24 @@ interface OnChainResponse {
 const cache = new Map<string, { data: OnChainResponse; expiry: number }>();
 const CACHE_TTL = 60000; // 1 minute for security data
 
+// Address validation patterns
+const ADDRESS_PATTERNS = {
+  evm: /^0x[a-fA-F0-9]{40}$/,
+  solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+};
+
+const VALID_NETWORKS = ['eth', 'ethereum', 'bsc', 'polygon', 'arbitrum', 'base', 'optimism', 'avalanche', 'sol', 'solana', 'arb', 'op', 'avax'];
+
+function validateAddress(address: string): boolean {
+  if (!address || typeof address !== 'string' || address.length > 100) return false;
+  return ADDRESS_PATTERNS.evm.test(address) || ADDRESS_PATTERNS.solana.test(address);
+}
+
+function validateNetwork(network: string): boolean {
+  if (!network || typeof network !== 'string' || network.length > 20) return false;
+  return VALID_NETWORKS.includes(network.toLowerCase());
+}
+
 function getCached(key: string): OnChainResponse | null {
   const entry = cache.get(key);
   if (entry && entry.expiry > Date.now()) {
@@ -95,7 +114,7 @@ async function fetchGoPlusSecurity(address: string, network: string): Promise<an
     return data.result?.[address.toLowerCase()] || null;
   } catch (error) {
     clearTimeout(timeout);
-    console.error("GoPlus fetch error:", error);
+    console.error("[OnChain Data Service] GoPlus fetch error");
     return null;
   }
 }
@@ -117,7 +136,7 @@ async function fetchBSCTraceSecurity(address: string): Promise<any> {
     return data.data || null;
   } catch (error) {
     clearTimeout(timeout);
-    console.error("BSCTrace fetch error:", error);
+    console.error("[OnChain Data Service] BSCTrace fetch error");
     return null;
   }
 }
@@ -138,7 +157,7 @@ async function fetchRugCheck(address: string): Promise<any> {
     return await response.json();
   } catch (error) {
     clearTimeout(timeout);
-    console.error("RugCheck fetch error:", error);
+    console.error("[OnChain Data Service] RugCheck fetch error");
     return null;
   }
 }
@@ -159,7 +178,7 @@ async function fetchSolanaFM(address: string): Promise<any> {
     return await response.json();
   } catch (error) {
     clearTimeout(timeout);
-    console.error("SolanaFM fetch error:", error);
+    console.error("[OnChain Data Service] SolanaFM fetch error");
     return null;
   }
 }
@@ -189,7 +208,7 @@ async function fetchUnicryptLock(address: string): Promise<LockInfo | null> {
     };
   } catch (error) {
     clearTimeout(timeout);
-    console.error("Unicrypt fetch error:", error);
+    console.error("[OnChain Data Service] Unicrypt fetch error");
     return null;
   }
 }
@@ -342,22 +361,56 @@ serve(async (req) => {
   }
 
   try {
+    // Authentication check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[OnChain Data Service] Request from user: ${user.id}`);
+
     const { address, network }: OnChainRequest = await req.json();
 
-    if (!address || !network) {
+    if (!address || !validateAddress(address)) {
       return new Response(
-        JSON.stringify({ success: false, error: "Address and network are required", timestamp: new Date().toISOString() }),
+        JSON.stringify({ success: false, error: "Invalid address format", timestamp: new Date().toISOString() }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[OnChain Data Service] Fetching security for: ${address} on ${network}`);
+    if (!network || !validateNetwork(network)) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid network", timestamp: new Date().toISOString() }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const normalizedAddress = address.toLowerCase().trim();
+    console.log(`[OnChain Data Service] Fetching security for: ${normalizedAddress} on ${network}`);
 
     // Check cache
-    const cacheKey = `onchain:${network}:${address.toLowerCase()}`;
+    const cacheKey = `onchain:${network}:${normalizedAddress}`;
     const cached = getCached(cacheKey);
     if (cached) {
-      console.log(`[OnChain Data Service] Cache hit for ${address}`);
+      console.log(`[OnChain Data Service] Cache hit for ${normalizedAddress}`);
       return new Response(JSON.stringify(cached), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -375,20 +428,20 @@ serve(async (req) => {
     if (network.toLowerCase() === "sol") {
       // Solana: Use RugCheck + SolanaFM
       [rugCheckData, solanaFMData] = await Promise.all([
-        fetchRugCheck(address),
-        fetchSolanaFM(address),
+        fetchRugCheck(normalizedAddress),
+        fetchSolanaFM(normalizedAddress),
       ]);
       if (rugCheckData) sources.push("rugcheck");
       if (solanaFMData) sources.push("solanafm");
     } else {
       // EVM: Use GoPlus + optional BSCTrace
       const promises: Promise<any>[] = [
-        fetchGoPlusSecurity(address, network),
-        fetchUnicryptLock(address),
+        fetchGoPlusSecurity(normalizedAddress, network),
+        fetchUnicryptLock(normalizedAddress),
       ];
 
       if (network.toLowerCase() === "bsc") {
-        promises.push(fetchBSCTraceSecurity(address));
+        promises.push(fetchBSCTraceSecurity(normalizedAddress));
       }
 
       const results = await Promise.all(promises);
@@ -443,7 +496,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "An error occurred processing your request",
         timestamp: new Date().toISOString(),
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

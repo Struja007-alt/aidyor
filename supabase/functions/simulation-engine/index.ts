@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +46,26 @@ interface SimulationResponse {
   };
   error?: string;
   timestamp: string;
+}
+
+// Address validation patterns
+const ADDRESS_PATTERNS = {
+  evm: /^0x[a-fA-F0-9]{40}$/,
+  solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+};
+
+function validateAddress(address: string): boolean {
+  if (!address || typeof address !== 'string' || address.length > 100) return false;
+  return ADDRESS_PATTERNS.evm.test(address) || ADDRESS_PATTERNS.solana.test(address);
+}
+
+function validateMarketData(data: any): boolean {
+  if (!data || typeof data !== 'object') return false;
+  if (typeof data.price !== 'number') return false;
+  if (typeof data.liquidity !== 'number') return false;
+  if (typeof data.volume24h !== 'number') return false;
+  if (typeof data.change24h !== 'number') return false;
+  return true;
 }
 
 // Thresholds for pump/dump detection
@@ -240,11 +261,44 @@ serve(async (req) => {
   }
 
   try {
+    // Authentication check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[Simulation Engine] Request from user: ${user.id}`);
+
     const { address, network, marketData }: SimulationRequest = await req.json();
 
-    if (!address || !marketData) {
+    if (!address || !validateAddress(address)) {
       return new Response(
-        JSON.stringify({ success: false, error: "Address and market data are required", timestamp: new Date().toISOString() }),
+        JSON.stringify({ success: false, error: "Invalid address format", timestamp: new Date().toISOString() }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!marketData || !validateMarketData(marketData)) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid market data format", timestamp: new Date().toISOString() }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -271,7 +325,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "An error occurred processing your request",
         timestamp: new Date().toISOString(),
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
