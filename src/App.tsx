@@ -20,6 +20,7 @@ import Transparency from "./pages/Transparency";
 import FAQ from "./pages/FAQ";
 import Glossary from "./pages/Glossary";
 import GlossaryTerm from "./pages/GlossaryTerm";
+import ApiDocs from "./pages/ApiDocs";
 
 /**
  * Optimized QueryClient configuration for better caching and performance
@@ -68,6 +69,7 @@ const App = () => (
             <Route path="/faq" element={<FAQ />} />
             <Route path="/glossary" element={<Glossary />} />
             <Route path="/glossary/:slug" element={<GlossaryTerm />} />
+            <Route path="/api-docs" element={<ApiDocs />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

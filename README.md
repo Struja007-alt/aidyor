@@ -215,8 +215,9 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 
 ---
 
-## 📄 Legal Pages
+## 📄 Legal & Documentation Pages
 
+- [API Documentation](/api-docs) ⭐ NEW
 - [Privacy Policy](/privacy-policy)
 - [Terms of Service](/terms-of-service)
 - [Cookie Policy](/cookie-policy)
