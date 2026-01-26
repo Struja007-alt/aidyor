@@ -17,9 +17,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
-// Premium subscription config
+// Subscription config
 const PREMIUM_PRICE_CENTS = 1900; // $19.00
 const PREMIUM_DURATION_DAYS = 30;
+const FREE_DAILY_SCAN_LIMIT = 10;
 
 // Risk level emoji mapping
 const RISK_EMOJIS: Record<string, string> = {
@@ -335,6 +336,81 @@ async function checkPremiumStatus(userId: number): Promise<{ isPremium: boolean;
 }
 
 /**
+ * Get today's scan count for a user
+ */
+async function getDailyScanCount(userId: number): Promise<number> {
+  const today = new Date().toISOString().split("T")[0];
+  
+  const { data, error } = await supabase
+    .from("scan_usage")
+    .select("scan_count")
+    .eq("telegram_user_id", userId)
+    .eq("scan_date", today)
+    .maybeSingle();
+
+  if (error || !data) {
+    return 0;
+  }
+
+  return data.scan_count;
+}
+
+/**
+ * Increment scan count for a user (returns new count)
+ */
+async function incrementScanCount(userId: number): Promise<number> {
+  const today = new Date().toISOString().split("T")[0];
+  
+  // Try to upsert the scan count
+  const { data: existing } = await supabase
+    .from("scan_usage")
+    .select("id, scan_count")
+    .eq("telegram_user_id", userId)
+    .eq("scan_date", today)
+    .maybeSingle();
+
+  if (existing) {
+    // Update existing record
+    const newCount = existing.scan_count + 1;
+    await supabase
+      .from("scan_usage")
+      .update({ scan_count: newCount })
+      .eq("id", existing.id);
+    return newCount;
+  } else {
+    // Insert new record
+    await supabase
+      .from("scan_usage")
+      .insert({
+        telegram_user_id: userId,
+        scan_date: today,
+        scan_count: 1,
+      });
+    return 1;
+  }
+}
+
+/**
+ * Check if user can perform a scan (premium or under free limit)
+ */
+async function canUserScan(userId: number): Promise<{ allowed: boolean; remaining: number; isPremium: boolean }> {
+  const { isPremium } = await checkPremiumStatus(userId);
+  
+  if (isPremium) {
+    return { allowed: true, remaining: -1, isPremium: true }; // -1 = unlimited
+  }
+
+  const scanCount = await getDailyScanCount(userId);
+  const remaining = FREE_DAILY_SCAN_LIMIT - scanCount;
+  
+  return {
+    allowed: remaining > 0,
+    remaining: Math.max(0, remaining),
+    isPremium: false,
+  };
+}
+
+/**
  * Call the risk-orchestrator to scan a token
  */
 async function scanToken(address: string, network?: string): Promise<any> {
@@ -581,11 +657,16 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
           `• Advanced AI analysis`
         );
       } else {
+        const scansUsed = await getDailyScanCount(userId);
+        const scansRemaining = FREE_DAILY_SCAN_LIMIT - scansUsed;
         await sendTelegramMessage(
           chatId,
           `📊 <b>AIDYOR Status</b>\n\n` +
           `You're on the <b>Free</b> plan.\n\n` +
-          `Upgrade to Pro for:\n` +
+          `<b>Today's usage:</b>\n` +
+          `• Scans used: ${scansUsed}/${FREE_DAILY_SCAN_LIMIT}\n` +
+          `• Remaining: ${Math.max(0, scansRemaining)} scans\n\n` +
+          `<b>Upgrade to Pro for:</b>\n` +
           `• Unlimited token scans\n` +
           `• Priority whale & security alerts\n` +
           `• Advanced AI risk analysis\n\n` +
@@ -618,6 +699,30 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
         return;
       }
 
+      // Check scan limits for free users
+      if (userId) {
+        const { allowed, remaining, isPremium } = await canUserScan(userId);
+        
+        if (!allowed) {
+          await sendTelegramMessage(
+            chatId,
+            `🚫 <b>Daily Limit Reached</b>\n\n` +
+            `You've used all ${FREE_DAILY_SCAN_LIMIT} free scans for today.\n\n` +
+            `<b>Options:</b>\n` +
+            `• Wait until tomorrow for more free scans\n` +
+            `• Upgrade to Pro for <b>unlimited scans</b>\n\n` +
+            `Use /upgrade to get Pro ($19/month)`,
+            { replyToMessageId: message.message_id }
+          );
+          return;
+        }
+
+        // Increment scan count for free users
+        if (!isPremium) {
+          await incrementScanCount(userId);
+        }
+      }
+
       // Send "scanning" message
       await sendTelegramMessage(
         chatId,
@@ -626,23 +731,71 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
       );
 
       // Perform scan
-      const result = await scanToken(address, network);
-      const formattedResult = formatScanResult(result);
+      const scanResult = await scanToken(address, network);
+      const formattedResult = formatScanResult(scanResult);
 
-      await sendTelegramMessage(chatId, formattedResult);
+      // Show remaining scans for free users
+      if (userId) {
+        const { remaining: scansLeft, isPremium } = await canUserScan(userId);
+        if (!isPremium && scansLeft >= 0) {
+          await sendTelegramMessage(
+            chatId,
+            formattedResult + `\n\n📊 <i>Free scans remaining today: ${scansLeft}/${FREE_DAILY_SCAN_LIMIT}</i>`
+          );
+        } else {
+          await sendTelegramMessage(chatId, formattedResult);
+        }
+      } else {
+        await sendTelegramMessage(chatId, formattedResult);
+      }
       break;
     }
 
     default:
       // Check if message looks like an address (for quick scan)
       if (isValidEvmAddress(text) || isValidSolanaAddress(text)) {
+        // Check scan limits for free users
+        if (userId) {
+          const { allowed, isPremium } = await canUserScan(userId);
+          
+          if (!allowed) {
+            await sendTelegramMessage(
+              chatId,
+              `🚫 <b>Daily Limit Reached</b>\n\n` +
+              `You've used all ${FREE_DAILY_SCAN_LIMIT} free scans for today.\n\n` +
+              `Use /upgrade to get unlimited scans!`,
+              { replyToMessageId: message.message_id }
+            );
+            return;
+          }
+
+          if (!isPremium) {
+            await incrementScanCount(userId);
+          }
+        }
+
         await sendTelegramMessage(
           chatId,
           `🔍 <b>Scanning...</b>\n\nAnalyzing <code>${text.slice(0, 10)}...${text.slice(-6)}</code>`,
           { replyToMessageId: message.message_id }
         );
-        const result = await scanToken(text);
-        await sendTelegramMessage(chatId, formatScanResult(result));
+        const quickResult = await scanToken(text);
+        const quickFormatted = formatScanResult(quickResult);
+
+        // Show remaining scans for free users
+        if (userId) {
+          const { remaining: scansLeft, isPremium } = await canUserScan(userId);
+          if (!isPremium && scansLeft >= 0) {
+            await sendTelegramMessage(
+              chatId,
+              quickFormatted + `\n\n📊 <i>Free scans remaining today: ${scansLeft}/${FREE_DAILY_SCAN_LIMIT}</i>`
+            );
+          } else {
+            await sendTelegramMessage(chatId, quickFormatted);
+          }
+        } else {
+          await sendTelegramMessage(chatId, quickFormatted);
+        }
       } else if (text.startsWith("/")) {
         await sendTelegramMessage(
           chatId,
