@@ -24,7 +24,7 @@ export type Database = {
           plan_tier: Database["public"]["Enums"]["api_plan_tier"]
           status: string
           updated_at: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           billing_cycle_start?: string
@@ -35,7 +35,7 @@ export type Database = {
           plan_tier?: Database["public"]["Enums"]["api_plan_tier"]
           status?: string
           updated_at?: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           billing_cycle_start?: string
@@ -46,7 +46,7 @@ export type Database = {
           plan_tier?: Database["public"]["Enums"]["api_plan_tier"]
           status?: string
           updated_at?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -161,6 +161,13 @@ export type Database = {
             columns: ["api_key_id"]
             isOneToOne: false
             referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_usage_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys_safe"
             referencedColumns: ["id"]
           },
           {
@@ -336,7 +343,44 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      api_keys_safe: {
+        Row: {
+          client_id: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          key_prefix: string | null
+          last_used_at: string | null
+          name: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          key_prefix?: string | null
+          last_used_at?: string | null
+          name?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          key_prefix?: string | null
+          last_used_at?: string | null
+          name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "api_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       [_ in never]: never
