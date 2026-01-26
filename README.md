@@ -153,6 +153,12 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 │   └── pages/               # Route components
 ├── supabase/
 │   └── functions/           # 9 Edge functions
+├── browser-extension/       # Chrome/Firefox extension
+│   ├── manifest.json        # Extension manifest (MV3)
+│   ├── popup/               # Popup UI
+│   ├── background/          # Service worker
+│   ├── content/             # Content scripts
+│   └── icons/               # Extension icons
 └── public/                  # Static assets
 ```
 
@@ -185,8 +191,8 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Freemium subscription (10 scans/day free)
 - [x] Premium subscriptions ($19/month via Telegram Payments)
 
-### Planned
-- [ ] Browser extension
+### In Progress
+- [x] Browser extension (Chrome/Firefox) - `/browser-extension`
 - [ ] Mobile app (Capacitor)
 - [ ] Public API
 

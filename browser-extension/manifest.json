@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "AIDYOR - Token Risk Scanner",
+  "short_name": "AIDYOR",
+  "version": "1.0.0",
+  "description": "AI-powered cryptocurrency token risk scanner. Instantly analyze any token for honeypots, scams, and security risks.",
+  "author": "AIDYOR",
+  "homepage_url": "https://aidyor.app",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "AIDYOR Token Scanner"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.dexscreener.com/*", "*://*.coingecko.com/*", "*://*.dextools.io/*", "*://*.birdeye.so/*", "*://*.etherscan.io/*", "*://*.bscscan.com/*", "*://*.polygonscan.com/*", "*://*.arbiscan.io/*", "*://*.basescan.org/*", "*://*.solscan.io/*"],
+      "js": ["content/content-script.js"],
+      "css": ["content/content-styles.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "contextMenus",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://*.lovable.app/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "popup/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
