@@ -266,10 +266,16 @@ impact on your exit strategy.
 ### 6.1 Revenue Streams
 
 #### Tier 1: Consumer (Freemium)
-- **Free:** 10 scans/day, basic risk score
-- **Pro ($9.99/mo via Telegram Payments):** Unlimited scans, AI explanations, whale alerts, priority support
+- **Free:** 10 scans/day, basic risk score, 5 whale alerts/hour
+- **Pro ($9.99/mo via Telegram Payments):** Unlimited scans, AI explanations, priority support
 
-#### Tier 2: API (B2B) - Now Live!
+#### Tier 2: Whale Pro Add-on ($49/mo)
+- **Unlimited whale alerts** - No rate limiting
+- **Real-time push notifications** - Instant browser alerts for watchlist tokens
+- **Priority data access** - Faster refresh rates
+- Requires active Pro subscription
+
+#### Tier 3: API (B2B) - Now Live!
 - **Starter:** $49/mo - 1,000 API calls + $0.01/scan overage
 - **Growth:** $99/mo - 5,000 API calls + $0.01/scan overage
 - **Enterprise:** $199/mo - 25,000 API calls + $0.01/scan overage, priority support
