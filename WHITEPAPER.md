@@ -306,7 +306,7 @@ impact on your exit strategy.
 - [x] ERC token standard detection (ERC-20, ERC-721, ERC-1155)
 - [x] SPL token standard detection (SPL Token, Token-2022, Metaplex NFT, cNFT)
 - [x] Telegram bot integration with token scanning
-- [x] Telegram Payments premium subscription ($19/month)
+- [x] Telegram Payments premium subscription ($9.99/month)
 
 ### Phase 2: Growth (Q1-Q2 2026)
 - [ ] Browser extension (Chrome/Firefox)
