@@ -22,10 +22,10 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 ### Advanced Features
 - **📸 OCR Screenshot Scanner** - Extract addresses from images using Tesseract.js + AI Vision
 - **🚨 Live Security Alerts** - Real-time crypto scam warnings and hack reports
-- **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k)
+- **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k) - 5 free/hour
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
 - **🤖 Telegram Bot** - Scan tokens and receive alerts via @aidyor_bot
-- **💎 Premium Subscriptions** - $9.99/month for unlimited scans (10 free/day)
+- **💎 Premium Subscriptions** - Pro $9.99/mo (unlimited scans) + Whale Pro $49/mo add-on
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
 - **📱 Push Notifications** - Browser alerts for whale activity
 

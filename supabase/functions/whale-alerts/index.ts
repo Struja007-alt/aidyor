@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Dynamic CORS - restrict to allowed origins
 const ALLOWED_ORIGINS = [
@@ -16,6 +17,32 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Credentials': 'true',
   };
+}
+
+// Rate limiting config
+const FREE_REQUESTS_PER_HOUR = 5;
+const WHALE_PRO_PRICE_CENTS = 4900; // $49.00
+
+// In-memory rate limiter (resets on function cold start)
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now = Date.now();
+  const hourMs = 60 * 60 * 1000;
+  
+  const entry = rateLimitMap.get(identifier);
+  
+  if (!entry || now >= entry.resetAt) {
+    rateLimitMap.set(identifier, { count: 1, resetAt: now + hourMs });
+    return { allowed: true, remaining: FREE_REQUESTS_PER_HOUR - 1, resetIn: hourMs };
+  }
+  
+  if (entry.count >= FREE_REQUESTS_PER_HOUR) {
+    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now };
+  }
+  
+  entry.count++;
+  return { allowed: true, remaining: FREE_REQUESTS_PER_HOUR - entry.count, resetIn: entry.resetAt - now };
 }
 
 interface WhaleAlert {
@@ -72,6 +99,29 @@ const chainNameMap: Record<string, string> = {
 const MIN_AMOUNT_RANGE = { min: 1000, max: 10000000 };
 const LIMIT_RANGE = { min: 1, max: 100 };
 
+async function checkWhaleProSubscription(supabase: any, userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('whale_subscriptions')
+      .select('status, expires_at')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .single();
+    
+    if (error || !data) return false;
+    
+    // Check if subscription is still valid
+    const expiresAt = (data as { status: string; expires_at: string | null }).expires_at;
+    if (expiresAt && new Date(expiresAt) < new Date()) {
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
@@ -93,7 +143,77 @@ serve(async (req) => {
     minAmountUsd = Math.max(MIN_AMOUNT_RANGE.min, Math.min(MIN_AMOUNT_RANGE.max, minAmountUsd));
     limit = Math.max(LIMIT_RANGE.min, Math.min(LIMIT_RANGE.max, Math.floor(limit)));
     
-    console.log(`[whale-alerts] Fetching with min amount: $${minAmountUsd}, limit: ${limit}`);
+    // Check authentication and subscription status
+    const authHeader = req.headers.get('Authorization');
+    let isWhalePro = false;
+    let userId: string | null = null;
+    let rateLimitIdentifier: string;
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      
+      const token = authHeader.replace('Bearer ', '');
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      
+      if (!claimsError && claimsData?.claims?.sub) {
+        userId = claimsData.claims.sub as string;
+        rateLimitIdentifier = `user:${userId}`;
+        
+        // Check Whale Pro subscription using service role
+        const serviceSupabase = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        );
+        isWhalePro = await checkWhaleProSubscription(serviceSupabase, userId);
+        console.log(`[whale-alerts] User ${userId} - Whale Pro: ${isWhalePro}`);
+      } else {
+        // Invalid token, use IP-based rate limiting
+        rateLimitIdentifier = `ip:${req.headers.get('x-forwarded-for') || 'unknown'}`;
+      }
+    } else {
+      // No auth, use IP-based rate limiting
+      rateLimitIdentifier = `ip:${req.headers.get('x-forwarded-for') || 'unknown'}`;
+    }
+    
+    // Apply rate limiting for non-Whale Pro users
+    if (!isWhalePro) {
+      const rateLimit = checkRateLimit(rateLimitIdentifier);
+      
+      if (!rateLimit.allowed) {
+        console.log(`[whale-alerts] Rate limited: ${rateLimitIdentifier}`);
+        return new Response(
+          JSON.stringify({
+            error: "Rate limit exceeded",
+            message: "Free users are limited to 5 whale alert requests per hour. Upgrade to Whale Pro ($49/month) for unlimited access.",
+            resetIn: Math.ceil(rateLimit.resetIn / 1000 / 60), // minutes
+            upgradeUrl: "/api-docs#whale-pro",
+          }),
+          { 
+            status: 429, 
+            headers: { 
+              ...corsHeaders, 
+              "Content-Type": "application/json",
+              "X-RateLimit-Remaining": "0",
+              "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetIn / 1000)),
+            } 
+          }
+        );
+      }
+      
+      // Add rate limit headers for free users
+      corsHeaders["X-RateLimit-Remaining"] = String(rateLimit.remaining);
+      corsHeaders["X-RateLimit-Reset"] = String(Math.ceil(rateLimit.resetIn / 1000));
+      corsHeaders["X-RateLimit-Limit"] = String(FREE_REQUESTS_PER_HOUR);
+    } else {
+      // Whale Pro users get unlimited header
+      corsHeaders["X-RateLimit-Limit"] = "unlimited";
+    }
+    
+    console.log(`[whale-alerts] Fetching with min amount: $${minAmountUsd}, limit: ${limit}, isWhalePro: ${isWhalePro}`);
     
     const whaleAlerts: WhaleAlert[] = [];
     
@@ -211,6 +331,7 @@ serve(async (req) => {
         totalFound: sortedAlerts.length,
         minAmountUsd,
         timestamp: new Date().toISOString(),
+        subscription: isWhalePro ? "whale_pro" : "free",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
