@@ -64,7 +64,7 @@ const Index = () => {
           {[
             { icon: Shield, label: "Tokens Scanned", value: "2.4M+" },
             { icon: Eye, label: "Scams Detected", value: "128K" },
-            { icon: Zap, label: "Networks", value: "5" },
+            { icon: Zap, label: "Networks", value: "9" },
           ].map((stat, i) => (
             <div key={i} className="glass-card p-4 text-center">
               <stat.icon className="w-6 h-6 text-primary mx-auto mb-2" />
