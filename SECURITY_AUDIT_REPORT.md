@@ -34,8 +34,8 @@
 | Table | RLS | Policy Type | Access Control | Status |
 |-------|-----|-------------|----------------|--------|
 | `api_clients` | ✅ | Owner-scoped | `auth.uid() = user_id` | ✅ SECURE |
-| `api_keys` | ✅ | Owner-scoped | Via `api_clients` relationship | ✅ SECURE |
-| `api_keys_safe` | ✅ | View | `security_invoker=on` inherits base RLS | ✅ SECURE |
+| `api_keys` | ✅ | **Deny user SELECT** | Service-role only + `api_keys_safe` view | ✅ HARDENED |
+| `api_keys_safe` | ✅ | View | `security_invoker=on` excludes `key_hash` | ✅ SECURE |
 | `api_plans` | ✅ | Public READ | Pricing info (intentional) | ✅ INTENTIONAL |
 | `api_usage` | ✅ | Owner-scoped | Via `api_clients` relationship | ✅ SECURE |
 | `passkey_credentials` | ✅ | Owner-scoped | `auth.uid() = user_id` | ✅ SECURE |
@@ -44,6 +44,16 @@
 | `scan_usage` | ✅ | Service-only | `service_role` exclusive | ✅ SECURE |
 | `watchlist_tokens` | ✅ | Owner-scoped | `auth.uid() = user_id` | ✅ SECURE |
 | `whale_subscriptions` | ✅ | Owner SELECT | `auth.uid() = user_id` + service mgmt | ✅ SECURE |
+
+### API Keys Security Hardening (January 29, 2026)
+
+**Issue Fixed:** `api_keys_hash_exposure` - The base `api_keys` table allowed direct SELECT access, potentially exposing `key_hash` values that could enable offline brute force attacks.
+
+**Resolution:**
+- Dropped policy: `"Users can view own api_keys metadata"`
+- Created policy: `"No direct user access to api_keys"` with `USING (false)` for authenticated users
+- All client-side queries now forced through `api_keys_safe` view which excludes sensitive `key_hash` field
+- Service role retains full access for Edge Functions
 
 ### Telegram Tables Architecture
 
