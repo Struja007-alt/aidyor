@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
-import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain, GitMerge } from "lucide-react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain, GitMerge, Crown, Lock } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RiskGauge } from "./RiskGauge";
 import { RiskFactorTooltip } from "./RiskFactorTooltip";
 import { useCloudWatchlist } from "@/hooks/useCloudWatchlist";
+import { useScanUsage } from "@/hooks/useScanUsage";
 import { cn } from "@/lib/utils";
 import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { 
   searchTokens, 
   getTokenByAddress, 
@@ -163,6 +165,7 @@ export const TokenScanner = () => {
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
   const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
+  const { canScan, recordScan, remainingScans, scansUsedToday, dailyLimit, isPro } = useScanUsage();
 
   // Contract address patterns for OCR extraction
   const ADDRESS_PATTERNS = {
@@ -800,6 +803,20 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
   const handleScanWithAddress = async (address: string) => {
     if (!address) return;
     
+    // Check scan limit for free users
+    if (!canScan) {
+      toast.error(
+        `Daily scan limit reached (${dailyLimit} scans). Upgrade to Pro for unlimited scans!`,
+        {
+          action: {
+            label: "Upgrade",
+            onClick: () => window.location.href = "/subscription",
+          },
+        }
+      );
+      return;
+    }
+    
     // Security: Validate and sanitize contract address input
     const addressValidation = sanitizeContractAddress(address);
     if (containsDangerousPatterns(address)) {
@@ -809,6 +826,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     
     // Use the sanitized address for API calls
     const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : address.trim();
+    
+    // Record the scan usage
+    recordScan();
     
     setIsScanning(true);
     setScanResults([]);
@@ -1583,6 +1603,47 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               </div>
               <h3 className="font-display text-xl text-foreground mb-1">Scan Any Token</h3>
               <p className="text-sm text-muted-foreground">Multi-chain risk analysis powered by real-time data</p>
+              
+              {/* Scan Usage Indicator */}
+              {!isPro && (
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/50">
+                  {canScan ? (
+                    <>
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: dailyLimit }).map((_, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "w-2 h-2 rounded-full transition-colors",
+                              i < scansUsedToday ? "bg-muted-foreground/30" : "bg-primary"
+                            )}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {remainingScans} scan{remainingScans !== 1 ? 's' : ''} left today
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3 h-3 text-destructive" />
+                      <span className="text-xs text-destructive">Daily limit reached</span>
+                      <Link 
+                        to="/subscription" 
+                        className="text-xs text-primary hover:underline font-medium"
+                      >
+                        Upgrade
+                      </Link>
+                    </>
+                  )}
+                </div>
+              )}
+              {isPro && (
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30">
+                  <Crown className="w-3 h-3 text-primary" />
+                  <span className="text-xs text-primary font-medium">Pro — Unlimited Scans</span>
+                </div>
+              )}
             </div>
 
             {/* Unified Smart Search Input */}
