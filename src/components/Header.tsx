@@ -46,9 +46,6 @@ export const Header = () => {
             <a href="#scanner" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Scanner
             </a>
-            <a href="#games" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-              P2E Checker
-            </a>
             <a href="#watchlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Watchlist
             </a>
@@ -80,9 +77,6 @@ export const Header = () => {
           <div className="flex flex-col gap-2 py-2">
             <a href="#scanner" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
               Scanner
-            </a>
-            <a href="#games" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-              P2E Checker
             </a>
             <a href="#watchlist" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
               Watchlist
