@@ -26,6 +26,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
 - **🤖 Telegram Bot** - Scan tokens and receive alerts via @aidyor_bot
 - **💎 Premium Subscriptions** - Pro $9.99/mo (unlimited scans) + Whale Pro $49/mo add-on
+- **💳 Stripe Payments** - Web-based subscription checkout + customer portal
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
 - **📱 Push Notifications** - Browser alerts for whale activity
 
@@ -57,7 +58,7 @@ React 18.3 + TypeScript + Vite
 
 ### Backend (Lovable Cloud / Supabase Edge Functions)
 ```
-Deno Runtime - 13 Edge Functions
+Deno Runtime - 16 Edge Functions
 ├── risk-orchestrator       → Central API gateway (JWT auth)
 ├── market-data-service     → DEXScreener integration
 ├── onchain-data-service    → GoPlus/RugCheck/BSCTrace
@@ -69,6 +70,9 @@ Deno Runtime - 13 Edge Functions
 ├── ocr-extract             → VLM-based OCR
 ├── telegram-webhook        → Telegram bot & payments
 ├── api-token-scan          → B2B API with key management
+├── stripe-checkout         → Stripe subscription checkout
+├── stripe-check-subscription → Verify active subscriptions
+├── stripe-customer-portal  → Manage billing via Stripe Portal
 └── passkey-*               → WebAuthn handlers (2 functions)
 ```
 
