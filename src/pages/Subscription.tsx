@@ -16,6 +16,7 @@ export default function Subscription() {
   const { 
     status, 
     loading, 
+    checkoutLoading,
     checkSubscription, 
     startCheckout, 
     openCustomerPortal,
@@ -207,8 +208,19 @@ export default function Subscription() {
                   Manage Plan
                 </Button>
               ) : (
-                <Button className="w-full" onClick={() => startCheckout('pro')}>
-                  Subscribe to Pro
+                <Button 
+                  className="w-full" 
+                  onClick={() => startCheckout('pro')}
+                  disabled={checkoutLoading}
+                >
+                  {checkoutLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Subscribe to Pro'
+                  )}
                 </Button>
               )}
             </CardFooter>
@@ -260,9 +272,18 @@ export default function Subscription() {
                   variant="secondary" 
                   className="w-full" 
                   onClick={() => startCheckout('whale_pro')}
-                  disabled={!isPro}
+                  disabled={!isPro || checkoutLoading}
                 >
-                  {isPro ? 'Add Whale Pro' : 'Pro Required'}
+                  {checkoutLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : isPro ? (
+                    'Add Whale Pro'
+                  ) : (
+                    'Pro Required'
+                  )}
                 </Button>
               )}
             </CardFooter>

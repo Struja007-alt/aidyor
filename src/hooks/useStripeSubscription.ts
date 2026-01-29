@@ -15,6 +15,7 @@ export function useStripeSubscription() {
   const { user, session } = useAuth();
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const checkSubscription = useCallback(async () => {
@@ -71,6 +72,7 @@ export function useStripeSubscription() {
       return;
     }
 
+    setCheckoutLoading(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('stripe-checkout', {
         headers: {
@@ -88,6 +90,8 @@ export function useStripeSubscription() {
       const message = err instanceof Error ? err.message : 'Failed to start checkout';
       toast.error(message);
       console.error('Checkout error:', err);
+    } finally {
+      setCheckoutLoading(false);
     }
   };
 
@@ -119,6 +123,7 @@ export function useStripeSubscription() {
   return {
     status,
     loading,
+    checkoutLoading,
     error,
     checkSubscription,
     startCheckout,
