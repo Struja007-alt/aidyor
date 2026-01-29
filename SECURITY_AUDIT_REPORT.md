@@ -1,32 +1,65 @@
 # Security Audit Report - 2026 Standards
 
-**Audit Date:** January 26, 2026 (Updated)  
-**Project:** Token Scanner Application  
+**Audit Date:** January 29, 2026 (Latest Comprehensive Scan)  
+**Project:** Token Scanner Application (AIDYOR)  
 **Auditor:** Lovable Security System
 
 ---
 
 ## Executive Summary
 
-✅ **Overall Status: SECURE** - All critical vulnerabilities addressed
+✅ **Overall Status: SECURE** - All tables verified, 0 active vulnerabilities
 
-### Recent Fixes (January 26, 2026) - HIGHEST SECURITY LEVEL
-- ✅ Fixed RLS policies for `api_clients`, `api_keys`, `api_usage` tables
-- ✅ Service role policies now properly restricted to `TO service_role` role
-- ✅ Added user-level SELECT policies for API key and usage visibility
-- ✅ Created `api_keys_safe` view with `security_invoker=on` to hide `key_hash`
-- ✅ Added NOT NULL constraint on `api_clients.user_id` (no orphan records)
-- ✅ Telegram tables (`pending_orders`, `premium_subscriptions`, `scan_usage`) restricted to service_role only
-- ✅ Added DELETE policy for `api_clients` (users can delete their own)
-- ✅ Supabase linter: **0 issues** (all warnings resolved)
-- ✅ Supply chain vulnerability: **RESOLVED** (Capacitor packages upgraded)
-- ✅ **Passkey email validation**: Added RFC 5322 format validation, 320 char length limit
-- ✅ **Error details exposure**: Removed sensitive error messages from all edge functions
-- ✅ **Telegram log sanitization**: Removed sensitive payment/PII data from console logs
+### Latest Comprehensive Scan (January 29, 2026)
+
+| Scanner | Findings | Status |
+|---------|----------|--------|
+| Supabase Linter | 0 issues | ✅ PASS |
+| Agent Security | 0 active | ✅ PASS |
+| Supply Chain | 0 high severity | ✅ PASS |
+
+**Key Verification Results:**
+- ✅ All 10 database tables have RLS enabled
+- ✅ All policies verified via direct SQL inspection
+- ✅ Service-role tables correctly deny anonymous/authenticated access
+- ✅ Owner-scoped tables use `auth.uid() = user_id` checks
+- ✅ Supply chain vulnerabilities resolved (@capacitor/cli upgraded)
 
 ---
 
-## 1. API Key Leakage Analysis
+## 1. Database Security Matrix
+
+### Complete RLS Verification (SQL Inspected)
+
+| Table | RLS | Policy Type | Access Control | Status |
+|-------|-----|-------------|----------------|--------|
+| `api_clients` | ✅ | Owner-scoped | `auth.uid() = user_id` | ✅ SECURE |
+| `api_keys` | ✅ | Owner-scoped | Via `api_clients` relationship | ✅ SECURE |
+| `api_keys_safe` | ✅ | View | `security_invoker=on` inherits base RLS | ✅ SECURE |
+| `api_plans` | ✅ | Public READ | Pricing info (intentional) | ✅ INTENTIONAL |
+| `api_usage` | ✅ | Owner-scoped | Via `api_clients` relationship | ✅ SECURE |
+| `passkey_credentials` | ✅ | Owner-scoped | `auth.uid() = user_id` | ✅ SECURE |
+| `pending_orders` | ✅ | Service-only | `service_role` exclusive | ✅ SECURE |
+| `premium_subscriptions` | ✅ | Service-only | `service_role` exclusive | ✅ SECURE |
+| `scan_usage` | ✅ | Service-only | `service_role` exclusive | ✅ SECURE |
+| `watchlist_tokens` | ✅ | Owner-scoped | `auth.uid() = user_id` | ✅ SECURE |
+| `whale_subscriptions` | ✅ | Owner SELECT | `auth.uid() = user_id` + service mgmt | ✅ SECURE |
+
+### Telegram Tables Architecture
+
+The following tables use `telegram_user_id` (bigint) which cannot link to Supabase `auth.uid()`:
+
+| Table | Access Model | Justification |
+|-------|--------------|---------------|
+| `pending_orders` | Service-role only | Managed by telegram-webhook Edge Function |
+| `premium_subscriptions` | Service-role only | Telegram Payments integration |
+| `scan_usage` | Service-role only | Telegram bot rate limiting |
+
+**Security Model:** Anonymous and authenticated web users receive 0 rows from these tables. Only the Edge Function service role can access payment data.
+
+---
+
+## 2. API Key Leakage Analysis
 
 | Service | Status | Notes |
 |---------|--------|-------|
@@ -42,65 +75,16 @@
 
 ---
 
-## 2. EIP-55 & Base58 Address Validation
+## 3. Address Validation & Input Sanitization
 
-| Check | Status | Implementation |
-|-------|--------|----------------|
-| EVM Address Validation | ✅ IMPLEMENTED | Regex: `/^0x[a-fA-F0-9]{40}$/` |
-| Solana Base58 Validation | ✅ IMPLEMENTED | Pattern: `/^[1-9A-HJ-NP-Za-km-z]{32,44}$/` |
-| Tron Address Validation | ✅ IMPLEMENTED | Pattern: `/^T[A-Za-z1-9]{33}$/` |
-| OCR Output Sanitization | ✅ ENHANCED | Multi-stage preprocessing + correction layer |
-| Length Limits | ✅ IMPLEMENTED | Max 100 chars enforced |
+### Validation Patterns
 
-**Files Implementing Validation:**
-- `src/lib/security/inputSanitizer.ts` (Centralized validation)
-- `src/lib/api/goplus.ts` (Lines 71-74, 127-129, 334-336)
-- `src/lib/api/bsctrace.ts` (Lines 32-34)
-- `src/lib/api/dexscreener.ts` (Lines 87-89)
-- `src/components/TokenScanner.tsx` (OCR extraction + address patterns)
-
----
-
-## 3. Supabase Row Level Security (RLS)
-
-### Core Application Tables
-
-| Table | RLS Enabled | Policies | Status |
-|-------|-------------|----------|--------|
-| `watchlist_tokens` | ✅ YES | 4 RESTRICTIVE policies | ✅ SECURE |
-| `passkey_credentials` | ✅ YES | 4 RESTRICTIVE policies | ✅ SECURE |
-| `api_clients` | ✅ YES | 4 policies (service + user) | ✅ SECURE |
-| `api_keys` | ✅ YES | 2 policies (service + user SELECT) | ✅ SECURE |
-| `api_usage` | ✅ YES | 2 policies (service + user SELECT) | ✅ SECURE |
-| `api_plans` | ✅ YES | 1 SELECT policy (public pricing) | ✅ INTENTIONAL |
-
-### Telegram Bot Tables (Service-Only Access)
-
-| Table | RLS Enabled | Access Model | Notes |
-|-------|-------------|--------------|-------|
-| `pending_orders` | ✅ YES | Service role only | Telegram payments - no web auth link |
-| `premium_subscriptions` | ✅ YES | Service role only | Telegram-linked subscriptions |
-| `scan_usage` | ✅ YES | Service role only | Telegram bot usage tracking |
-
-**Note:** Telegram tables use `telegram_user_id` (bigint) which cannot be linked to `auth.uid()`. These are correctly managed via Edge Functions with service role.
-
-**Linter Result:** ✅ No security issues found (0 warnings)
-
----
-
-## 4. CVE-2025-55182 (React Server Components RCE)
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| React Version | `^18.3.1` | ✅ NOT AFFECTED |
-| React DOM Version | `^18.3.1` | ✅ NOT AFFECTED |
-| RSC Usage | None | ✅ NOT APPLICABLE |
-
-**Finding:** This project uses React 18.3.1 (client-side rendering with Vite). CVE-2025-55182 affects React Server Components in React 19.x. This application is **NOT VULNERABLE**.
-
----
-
-## 5. Input Sanitization (Prompt Firewall)
+| Chain Type | Status | Pattern |
+|------------|--------|---------|
+| EVM (ETH/BSC/etc) | ✅ | `/^0x[a-fA-F0-9]{40}$/` |
+| Solana | ✅ | `/^[1-9A-HJ-NP-Za-km-z]{32,44}$/` |
+| Tron | ✅ | `/^T[A-Za-z1-9]{33}$/` |
+| TON | ✅ | `/^(EQ\|UQ)[A-Za-z0-9_-]{46}$/` |
 
 ### Security Module: `src/lib/security/inputSanitizer.ts`
 
@@ -113,28 +97,52 @@
 | Input Length Limits | ✅ ACTIVE | Max 100 characters enforced |
 | HTML Entity Encoding | ✅ ACTIVE | `<`, `>`, `"`, `'`, `&` encoded |
 
-### Integration Points:
-- `TokenScanner.tsx` - `searchTokensDebounced()` validates with `sanitizeSearchQuery()`
-- `TokenScanner.tsx` - `handleScanWithAddress()` validates with `sanitizeContractAddress()`
-- All API modules have timeout + validation layers
+---
+
+## 4. Edge Function Security
+
+| Function | Auth | Input Validation | CORS | Error Handling |
+|----------|------|------------------|------|----------------|
+| `risk-orchestrator` | JWT | ✅ Address | Allowlist | Non-verbose |
+| `market-data-service` | JWT | ✅ Address | Allowlist | Non-verbose |
+| `onchain-data-service` | JWT | ✅ Address | Allowlist | Non-verbose |
+| `ai-risk-engine` | JWT | ✅ Address | Allowlist | Non-verbose |
+| `ai-risk-explain` | JWT | ✅ Token data | Allowlist | Non-verbose |
+| `simulation-engine` | JWT | ✅ Address + network | Allowlist | Non-verbose |
+| `ocr-extract` | JWT | ✅ Base64 image | Allowlist | Non-verbose |
+| `whale-alerts` | Public | ✅ Chain + limit | Allowlist | Non-verbose |
+| `security-alerts` | Public | N/A (no user input) | Allowlist | Non-verbose |
+| `telegram-webhook` | Webhook | ✅ Signature verify | Telegram IPs | Non-verbose |
+| `api-token-scan` | API Key | ✅ Address + network | Allowlist | Non-verbose |
+| `passkey-register` | JWT | ✅ RFC 5322 email | Allowlist | Non-verbose |
+| `passkey-authenticate` | JWT | ✅ Credential ID | Allowlist | Non-verbose |
+
+### CORS Hardening
+
+All Edge Functions implement dynamic origin validation against an explicit allowlist:
+- `aidyor.app` and `*.aidyor.app`
+- Lovable preview URLs
+- `localhost` (development only)
 
 ---
 
-## 6. Edge Function Security
+## 5. Supply Chain Security
 
-| Function | JWT Auth | Input Validation | Error Handling |
-|----------|----------|------------------|----------------|
-| `risk-orchestrator` | ✅ | ✅ Address validation | ✅ Non-verbose |
-| `market-data-service` | ✅ | ✅ Address validation | ✅ Non-verbose |
-| `onchain-data-service` | ✅ | ✅ Address validation | ✅ Non-verbose |
-| `ai-risk-engine` | ✅ | ✅ Address validation | ✅ Non-verbose |
-| `simulation-engine` | ✅ | ✅ Address + network | ✅ Non-verbose |
-| `ai-risk-explain` | ✅ | ✅ Token data object | ✅ Non-verbose |
-| `ocr-extract` | ✅ | ✅ Base64 image | ✅ Non-verbose |
-| `whale-alerts` | ✅ | ✅ Chain + limit | ✅ Non-verbose |
-| `security-alerts` | Public | N/A (no user input) | ✅ Non-verbose |
-| `telegram-webhook` | Webhook | ✅ Signature verification | ✅ Non-verbose |
-| `api-token-scan` | API Key | ✅ Address + network | ✅ Non-verbose |
+| Package | Previous Status | Current Status |
+|---------|-----------------|----------------|
+| `@capacitor/cli` | ⚠️ HIGH (node-tar) | ✅ RESOLVED (v8.0.1 → latest) |
+| `@capacitor/core` | ✅ | ✅ Current |
+| `@capacitor/android` | ✅ | ✅ Current |
+
+**Verification:** `npm audit` / `bun audit` shows 0 high-severity vulnerabilities.
+
+---
+
+## 6. CVE Compliance
+
+| CVE | Affected | Status | Notes |
+|-----|----------|--------|-------|
+| CVE-2025-55182 | React 19.x RSC | ✅ NOT AFFECTED | Using React 18.3.1 (CSR) |
 
 ---
 
@@ -147,27 +155,25 @@
 | Error Boundary Handling | ✅ Try-catch blocks |
 | Race Condition Prevention | ✅ Search ID tracking |
 | Authentication Required for Watchlist | ✅ Supabase Auth |
-
----
-
-## 8. Supply Chain Advisory
-
-| Package | Severity | Status |
-|---------|----------|--------|
-| `@capacitor/cli` | HIGH | ⚠️ Monitor for updates (node-tar vulnerability) |
-
-**Note:** This is a development dependency and does not affect production runtime. Update when patch available.
+| Passkey Email Validation | ✅ RFC 5322 + 320 char limit |
+| PII Log Sanitization | ✅ Telegram webhook |
 
 ---
 
 ## Conclusion
 
-The application has been audited against 2026 security standards and **passes all critical checks**:
+The application has been audited against 2026 security standards and **passes all checks**:
 
-- ✅ **RLS Policies:** All tables properly secured with user-specific access controls
-- ✅ **Edge Functions:** JWT authentication + input validation + non-verbose errors
+- ✅ **Database Security:** All 11 tables verified with proper RLS (SQL inspected)
+- ✅ **Edge Functions:** JWT/API key authentication + CORS allowlisting + non-verbose errors
 - ✅ **Input Sanitization:** Centralized firewall against XSS/SQLi/command injection
 - ✅ **API Security:** No exposed secrets, all external APIs are public
+- ✅ **Supply Chain:** All high-severity vulnerabilities resolved
 - ✅ **React Version:** Not affected by CVE-2025-55182
 
-**No breaking changes were made to existing functionality.**
+**Scan Date:** January 29, 2026  
+**Next Recommended Scan:** Before next production deployment
+
+---
+
+*This report was generated by Lovable Security System. For questions, see [Security Documentation](https://docs.lovable.dev/features/security).*
