@@ -603,6 +603,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     let tesseractSucceeded = false;
     let errorType: string | undefined;
     let errorMessage: string | undefined;
+    let rawTextLength = 0;
+    let charCount = 0;
+    let fixApplied = false;
     
     // Estimate image size from base64
     const imageSizeBytes = Math.round((imageData.length * 3) / 4);
@@ -628,6 +631,8 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           console.log("VLM extracted addresses:", vlmAddresses);
           addresses = vlmAddresses;
           vlmSucceeded = true;
+          // VLM returns validated addresses directly
+          charCount = addresses.join('').length;
         }
       } catch (vlmError) {
         console.error("VLM OCR failed, falling back to Tesseract:", vlmError);
@@ -654,10 +659,14 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         const { data: { text } } = await worker.recognize(processedImage);
         await worker.terminate();
         
+        rawTextLength = text.length;
         const correctedText = fixOcrMisreads(text);
+        // Track if any fixes were applied
+        fixApplied = correctedText !== text;
         console.log("Tesseract OCR Text (corrected):", correctedText);
         
         addresses = extractAddressesFromText(correctedText);
+        charCount = addresses.join('').length;
         
         // Try original image if processed didn't work
         if (addresses.length === 0) {
@@ -665,8 +674,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
           await fallbackWorker.terminate();
           
+          rawTextLength = fallbackText.length;
           const correctedFallback = fixOcrMisreads(fallbackText);
+          fixApplied = fixApplied || correctedFallback !== fallbackText;
           addresses = extractAddressesFromText(correctedFallback);
+          charCount = addresses.join('').length;
         }
         
         if (addresses.length > 0) {
@@ -677,9 +689,12 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       setExtractedAddresses(addresses);
       setOcrProgress(100);
       
-      // Log OCR analytics
+      // Log OCR analytics with enhanced metrics
       const processingTimeMs = Math.round(performance.now() - startTime);
       const method = vlmSucceeded ? 'vlm' : (tesseractSucceeded ? (vlmAttempted ? 'vlm_fallback_tesseract' : 'tesseract') : 'vlm');
+      
+      // Estimate confidence: VLM high (0.95), Tesseract with fixes lower (0.7), Tesseract clean (0.85)
+      const confidence = vlmSucceeded ? 0.95 : (tesseractSucceeded ? (fixApplied ? 0.7 : 0.85) : 0);
       
       logOCRAnalytics({
         method: method as 'vlm' | 'tesseract' | 'vlm_fallback_tesseract',
@@ -694,6 +709,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         extractedAddress: addresses[0], // Log first extracted address
         errorType,
         errorMessage,
+        // Enhanced metrics
+        confidence,
+        charCount,
+        rawTextLength: rawTextLength > 0 ? rawTextLength : undefined,
+        fixApplied,
       });
       
       if (addresses.length === 0) {
@@ -721,6 +741,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         imageSizeBytes,
         errorType: 'ocr_exception',
         errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        confidence: 0,
+        charCount: 0,
+        fixApplied: false,
       });
       
       return [];

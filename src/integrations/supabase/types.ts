@@ -184,16 +184,20 @@ export type Database = {
           addresses_found: number
           addresses_validated: number
           cer: number | null
+          char_count: number | null
+          confidence: number | null
           created_at: string
           error_message: string | null
           error_type: string | null
           exact_match: boolean | null
           extracted_address: string | null
+          fix_applied: boolean | null
           ground_truth_address: string | null
           id: string
           image_size_bytes: number | null
           method: string
           processing_time_ms: number | null
+          raw_text_length: number | null
           tesseract_attempted: boolean
           tesseract_succeeded: boolean
           vlm_attempted: boolean
@@ -204,16 +208,20 @@ export type Database = {
           addresses_found?: number
           addresses_validated?: number
           cer?: number | null
+          char_count?: number | null
+          confidence?: number | null
           created_at?: string
           error_message?: string | null
           error_type?: string | null
           exact_match?: boolean | null
           extracted_address?: string | null
+          fix_applied?: boolean | null
           ground_truth_address?: string | null
           id?: string
           image_size_bytes?: number | null
           method: string
           processing_time_ms?: number | null
+          raw_text_length?: number | null
           tesseract_attempted?: boolean
           tesseract_succeeded?: boolean
           vlm_attempted?: boolean
@@ -224,16 +232,20 @@ export type Database = {
           addresses_found?: number
           addresses_validated?: number
           cer?: number | null
+          char_count?: number | null
+          confidence?: number | null
           created_at?: string
           error_message?: string | null
           error_type?: string | null
           exact_match?: boolean | null
           extracted_address?: string | null
+          fix_applied?: boolean | null
           ground_truth_address?: string | null
           id?: string
           image_size_bytes?: number | null
           method?: string
           processing_time_ms?: number | null
+          raw_text_length?: number | null
           tesseract_attempted?: boolean
           tesseract_succeeded?: boolean
           vlm_attempted?: boolean
