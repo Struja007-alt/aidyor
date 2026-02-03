@@ -67,7 +67,7 @@ Deno Runtime - 17 Edge Functions
 ├── simulation-engine       → Pump/dump detection
 ├── whale-alerts            → Transaction monitoring (public)
 ├── security-alerts         → Live scam/hack news feed (public)
-├── ocr-extract             → VLM-based OCR
+├── ocr-extract             → VLM-based OCR + smart address correction
 ├── ocr-analytics           → OCR metrics logging (CER/WER/EMR)
 ├── telegram-webhook        → Telegram bot & payments
 ├── api-token-scan          → B2B API with key management
