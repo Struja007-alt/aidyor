@@ -156,6 +156,9 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 │   │   └── useWhaleAlerts.ts
 │   ├── lib/
 │   │   ├── api/             # External API clients
+│   │   ├── ocr/             # Smart OCR address correction
+│   │   │   ├── addressCorrector.ts # EIP-55 checksum validation + char fixes
+│   │   │   └── keccak256.ts        # Keccak-256 for checksums
 │   │   ├── security/        # Input sanitization (Zod + XSS firewall)
 │   │   └── constants/       # Known token networks
 │   └── pages/               # Route components

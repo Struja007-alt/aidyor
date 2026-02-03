@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { correctAddress, correctEthAddress } from "@/lib/ocr";
 import { 
   searchTokens, 
   getTokenByAddress, 
@@ -480,40 +481,56 @@ export const TokenScanner = () => {
     });
   };
 
-// Fix common OCR misreads in addresses
-  const fixOcrMisreads = (text: string): string => {
-    let fixed = text
-      // CRITICAL: Fix standalone "x" at word boundary that should be "0x"
-      // This handles when OCR misses the leading "0" entirely
-      .replace(/\bx([a-fA-F0-9]{38,42})/gi, '0x$1')
-      // Fix Ethereum addresses: Ox -> 0x (capital O to zero)
-      .replace(/Ox([a-fA-F0-9]{38,42})/g, '0x$1')
-      .replace(/0X([a-fA-F0-9]{38,42})/g, '0x$1')
-      // Fix partial matches where O appears at start
-      .replace(/\bOx([a-fA-F0-9])/g, '0x$1')
-      // Fix "Ox" anywhere
-      .replace(/Ox/g, '0x')
-      // Fix common letter/number confusions in hex
-      .replace(/0x([a-fA-F0-9]*[oO][a-fA-F0-9]*)/g, (_, group) => 
-        '0x' + group.replace(/[oO]/g, '0')
-      );
+// Fix common OCR misreads in addresses using smart correction with checksum validation
+  const fixOcrMisreads = (text: string): { text: string; corrections: number } => {
+    let totalCorrections = 0;
     
-    // Enhanced: Look for 0x followed by hex-like characters and clean them
-    // Fix l -> 1, I -> 1, O -> 0, ? -> 7, g -> 9, h -> b in hex contexts
-    fixed = fixed.replace(/0x([a-fA-F0-9lIoO?ghGH]{35,50})/gi, (match, group) => {
-      const cleaned = group
-        .replace(/[lI|]/g, '1')
-        .replace(/[oO]/g, '0')
-        .replace(/\?/g, '7')
-        .replace(/h/g, 'b')  // 'h' often misread from 'b'
-        .replace(/H/g, 'B')
-        .replace(/g/g, '9')  // 'g' can be misread from '9'
-        .replace(/G/g, '6')
-        .replace(/[^a-fA-F0-9]/g, ''); // Remove any non-hex chars
-      return '0x' + cleaned;
+    // Find all potential addresses and correct them
+    let fixed = text;
+    
+    // Process Ethereum-like addresses (0x prefix)
+    fixed = fixed.replace(/[0O]x[a-fA-F0-9lIoO?ghGH|!]{30,50}/gi, (match) => {
+      const result = correctEthAddress(match);
+      if (result.corrections.length > 0) {
+        totalCorrections += result.corrections.length;
+        console.log(`[OCR] Corrected ${match} -> ${result.corrected} (confidence: ${result.confidence.toFixed(2)})`);
+      }
+      return result.corrected;
     });
     
-    return fixed;
+    // Fix standalone "x" that should be "0x" (OCR missed leading zero)
+    fixed = fixed.replace(/\bx([a-fA-F0-9lIoO?ghGH|!]{38,50})/gi, (_, group) => {
+      const result = correctEthAddress('0x' + group);
+      totalCorrections++;
+      return result.corrected;
+    });
+    
+    // Process Solana addresses (Base58, 32-44 chars without 0/O/I/l)
+    fixed = fixed.replace(/\b[1-9A-HJ-NP-Za-km-z0OIl]{32,50}\b/g, (match) => {
+      // Only process if it looks like a corrupted Solana address
+      if (/[0OIl]/.test(match)) {
+        const result = correctAddress(match);
+        if (result.type === 'solana' && result.corrections.length > 0) {
+          totalCorrections += result.corrections.length;
+          console.log(`[OCR] Corrected Solana ${match} -> ${result.corrected}`);
+          return result.corrected;
+        }
+      }
+      return match;
+    });
+    
+    // Process Tron addresses (T prefix)
+    fixed = fixed.replace(/\b[Tt][A-Za-z0-9lIoO]{30,40}\b/g, (match) => {
+      const result = correctAddress(match);
+      if (result.type === 'tron' && result.corrections.length > 0) {
+        totalCorrections += result.corrections.length;
+        console.log(`[OCR] Corrected Tron ${match} -> ${result.corrected}`);
+        return result.corrected;
+      }
+      return match;
+    });
+    
+    return { text: fixed, corrections: totalCorrections };
   };
 
 // Extract the best valid address from corrupted OCR text
@@ -660,12 +677,12 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         await worker.terminate();
         
         rawTextLength = text.length;
-        const correctedText = fixOcrMisreads(text);
+        const correctionResult = fixOcrMisreads(text);
         // Track if any fixes were applied
-        fixApplied = correctedText !== text;
-        console.log("Tesseract OCR Text (corrected):", correctedText);
+        fixApplied = correctionResult.corrections > 0;
+        console.log("Tesseract OCR Text (corrected):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
         
-        addresses = extractAddressesFromText(correctedText);
+        addresses = extractAddressesFromText(correctionResult.text);
         charCount = addresses.join('').length;
         
         // Try original image if processed didn't work
@@ -675,9 +692,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           await fallbackWorker.terminate();
           
           rawTextLength = fallbackText.length;
-          const correctedFallback = fixOcrMisreads(fallbackText);
-          fixApplied = fixApplied || correctedFallback !== fallbackText;
-          addresses = extractAddressesFromText(correctedFallback);
+          const fallbackCorrectionResult = fixOcrMisreads(fallbackText);
+          fixApplied = fixApplied || fallbackCorrectionResult.corrections > 0;
+          addresses = extractAddressesFromText(fallbackCorrectionResult.text);
           charCount = addresses.join('').length;
         }
         
