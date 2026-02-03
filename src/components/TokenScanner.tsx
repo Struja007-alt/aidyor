@@ -915,15 +915,27 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       return;
     }
     
+    // Apply OCR correction for common character misreads (O->0, l->1, etc.)
+    const correctionResult = correctAddress(address);
+    const correctedAddress = correctionResult.confidence > 0.3 ? correctionResult.corrected : address;
+    
+    // Log OCR corrections for debugging
+    if (correctionResult.corrections.length > 0) {
+      console.log(`[OCR Correction] Applied: ${correctionResult.corrections.join(', ')}, confidence: ${correctionResult.confidence}`);
+      if (correctionResult.confidence >= 0.5) {
+        toast.info(`Auto-corrected address (${correctionResult.corrections.length} fix${correctionResult.corrections.length > 1 ? 'es' : ''} applied)`);
+      }
+    }
+    
     // Security: Validate and sanitize contract address input
-    const addressValidation = sanitizeContractAddress(address);
-    if (containsDangerousPatterns(address)) {
+    const addressValidation = sanitizeContractAddress(correctedAddress);
+    if (containsDangerousPatterns(correctedAddress)) {
       toast.error("Invalid input detected. Please enter a valid contract address.");
       return;
     }
     
     // Use the sanitized address for API calls
-    const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : address.trim();
+    const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : correctedAddress.trim();
     
     // Record the scan usage
     recordScan();
