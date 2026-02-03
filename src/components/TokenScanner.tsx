@@ -7,6 +7,7 @@ import { RiskGauge } from "./RiskGauge";
 import { RiskFactorTooltip } from "./RiskFactorTooltip";
 import { useCloudWatchlist } from "@/hooks/useCloudWatchlist";
 import { useScanUsage } from "@/hooks/useScanUsage";
+import { useOCRAnalytics } from "@/hooks/useOCRAnalytics";
 import { cn } from "@/lib/utils";
 import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
@@ -166,6 +167,7 @@ export const TokenScanner = () => {
   const searchIdRef = useRef(0);
   const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
   const { canScan, recordScan, remainingScans, scansUsedToday, dailyLimit, isPro } = useScanUsage();
+  const { logOCRAnalytics } = useOCRAnalytics();
 
   // Contract address patterns for OCR extraction
   const ADDRESS_PATTERNS = {
@@ -594,6 +596,17 @@ export const TokenScanner = () => {
   }, []);
 
 const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
+    const startTime = performance.now();
+    let vlmAttempted = false;
+    let vlmSucceeded = false;
+    let tesseractAttempted = false;
+    let tesseractSucceeded = false;
+    let errorType: string | undefined;
+    let errorMessage: string | undefined;
+    
+    // Estimate image size from base64
+    const imageSizeBytes = Math.round((imageData.length * 3) / 4);
+    
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
@@ -606,6 +619,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       let addresses: string[] = [];
       
       try {
+        vlmAttempted = true;
         setOcrProgress(30);
         const vlmAddresses = await performVLMOcr(imageData);
         setOcrProgress(70);
@@ -613,13 +627,17 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         if (vlmAddresses.length > 0) {
           console.log("VLM extracted addresses:", vlmAddresses);
           addresses = vlmAddresses;
+          vlmSucceeded = true;
         }
       } catch (vlmError) {
         console.error("VLM OCR failed, falling back to Tesseract:", vlmError);
+        errorType = 'vlm_error';
+        errorMessage = vlmError instanceof Error ? vlmError.message : 'VLM failed';
       }
       
       // FALLBACK: Use Tesseract if VLM failed or found nothing
       if (addresses.length === 0) {
+        tesseractAttempted = true;
         setOcrProgress(75);
         console.log("VLM found no addresses, trying Tesseract fallback...");
         
@@ -650,10 +668,33 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           const correctedFallback = fixOcrMisreads(fallbackText);
           addresses = extractAddressesFromText(correctedFallback);
         }
+        
+        if (addresses.length > 0) {
+          tesseractSucceeded = true;
+        }
       }
       
       setExtractedAddresses(addresses);
       setOcrProgress(100);
+      
+      // Log OCR analytics
+      const processingTimeMs = Math.round(performance.now() - startTime);
+      const method = vlmSucceeded ? 'vlm' : (tesseractSucceeded ? (vlmAttempted ? 'vlm_fallback_tesseract' : 'tesseract') : 'vlm');
+      
+      logOCRAnalytics({
+        method: method as 'vlm' | 'tesseract' | 'vlm_fallback_tesseract',
+        vlmAttempted,
+        vlmSucceeded,
+        tesseractAttempted,
+        tesseractSucceeded,
+        addressesFound: addresses.length,
+        addressesValidated: addresses.length, // All returned addresses pass validation
+        processingTimeMs,
+        imageSizeBytes,
+        extractedAddress: addresses[0], // Log first extracted address
+        errorType,
+        errorMessage,
+      });
       
       if (addresses.length === 0) {
         toast.warning("No contract addresses found in image");
@@ -665,11 +706,28 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     } catch (error) {
       console.error("OCR Error:", error);
       toast.error("Failed to process image");
+      
+      // Log error analytics
+      const processingTimeMs = Math.round(performance.now() - startTime);
+      logOCRAnalytics({
+        method: vlmAttempted ? 'vlm' : 'tesseract',
+        vlmAttempted,
+        vlmSucceeded,
+        tesseractAttempted,
+        tesseractSucceeded,
+        addressesFound: 0,
+        addressesValidated: 0,
+        processingTimeMs,
+        imageSizeBytes,
+        errorType: 'ocr_exception',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      });
+      
       return [];
     } finally {
       setIsOcrProcessing(false);
     }
-  }, [extractAddressesFromText, performVLMOcr]);
+  }, [extractAddressesFromText, performVLMOcr, logOCRAnalytics]);
 
   // Check if input looks like a contract address
   const isContractAddress = useCallback((query: string): boolean => {

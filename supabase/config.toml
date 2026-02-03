@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.ocr-extract]
 verify_jwt = false
 
+[functions.ocr-analytics]
+verify_jwt = false
+
 [functions.ai-risk-explain]
 verify_jwt = false
 

@@ -179,6 +179,69 @@ export type Database = {
           },
         ]
       }
+      ocr_analytics: {
+        Row: {
+          addresses_found: number
+          addresses_validated: number
+          cer: number | null
+          created_at: string
+          error_message: string | null
+          error_type: string | null
+          exact_match: boolean | null
+          extracted_address: string | null
+          ground_truth_address: string | null
+          id: string
+          image_size_bytes: number | null
+          method: string
+          processing_time_ms: number | null
+          tesseract_attempted: boolean
+          tesseract_succeeded: boolean
+          vlm_attempted: boolean
+          vlm_succeeded: boolean
+          wer: number | null
+        }
+        Insert: {
+          addresses_found?: number
+          addresses_validated?: number
+          cer?: number | null
+          created_at?: string
+          error_message?: string | null
+          error_type?: string | null
+          exact_match?: boolean | null
+          extracted_address?: string | null
+          ground_truth_address?: string | null
+          id?: string
+          image_size_bytes?: number | null
+          method: string
+          processing_time_ms?: number | null
+          tesseract_attempted?: boolean
+          tesseract_succeeded?: boolean
+          vlm_attempted?: boolean
+          vlm_succeeded?: boolean
+          wer?: number | null
+        }
+        Update: {
+          addresses_found?: number
+          addresses_validated?: number
+          cer?: number | null
+          created_at?: string
+          error_message?: string | null
+          error_type?: string | null
+          exact_match?: boolean | null
+          extracted_address?: string | null
+          ground_truth_address?: string | null
+          id?: string
+          image_size_bytes?: number | null
+          method?: string
+          processing_time_ms?: number | null
+          tesseract_attempted?: boolean
+          tesseract_succeeded?: boolean
+          vlm_attempted?: boolean
+          vlm_succeeded?: boolean
+          wer?: number | null
+        }
+        Relationships: []
+      }
       passkey_credentials: {
         Row: {
           counter: number
