@@ -58,7 +58,7 @@ React 18.3 + TypeScript + Vite
 
 ### Backend (Lovable Cloud / Supabase Edge Functions)
 ```
-Deno Runtime - 16 Edge Functions
+Deno Runtime - 17 Edge Functions
 ├── risk-orchestrator       → Central API gateway (JWT auth)
 ├── market-data-service     → DEXScreener integration
 ├── onchain-data-service    → GoPlus/RugCheck/BSCTrace
@@ -68,6 +68,7 @@ Deno Runtime - 16 Edge Functions
 ├── whale-alerts            → Transaction monitoring (public)
 ├── security-alerts         → Live scam/hack news feed (public)
 ├── ocr-extract             → VLM-based OCR
+├── ocr-analytics           → OCR metrics logging (CER/WER/EMR)
 ├── telegram-webhook        → Telegram bot & payments
 ├── api-token-scan          → B2B API with key management
 ├── stripe-checkout         → Stripe subscription checkout
