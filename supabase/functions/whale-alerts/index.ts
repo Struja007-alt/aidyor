@@ -4,14 +4,24 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Dynamic CORS - restrict to allowed origins
 const ALLOWED_ORIGINS = [
   'https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app',
+  'https://aidyor.lovable.app',
   'https://aidyor.app',
   'https://www.aidyor.app',
   'http://localhost:5173',
   'http://localhost:8080',
 ];
 
+// Allow Lovable preview domains dynamically
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  // Allow all lovableproject.com and lovable.app subdomains for previews
+  if (origin.endsWith('.lovableproject.com') || origin.endsWith('.lovable.app')) return true;
+  return false;
+}
+
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
