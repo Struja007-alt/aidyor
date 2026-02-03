@@ -22,6 +22,7 @@ import Glossary from "./pages/Glossary";
 import GlossaryTerm from "./pages/GlossaryTerm";
 import ApiDocs from "./pages/ApiDocs";
 import Subscription from "./pages/Subscription";
+import OCRDashboard from "./pages/OCRDashboard";
 
 /**
  * Optimized QueryClient configuration for better caching and performance
@@ -72,6 +73,7 @@ const App = () => (
             <Route path="/glossary/:slug" element={<GlossaryTerm />} />
             <Route path="/api-docs" element={<ApiDocs />} />
             <Route path="/subscription" element={<Subscription />} />
+            <Route path="/ocr-dashboard" element={<OCRDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
