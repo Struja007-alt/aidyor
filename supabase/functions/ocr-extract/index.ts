@@ -22,6 +22,226 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
 // Max image size: 10MB
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
+// ============================================
+// OCR Address Correction Logic (embedded)
+// ============================================
+
+// Character corrections for common OCR misreads
+const CHAR_CORRECTIONS: Record<string, string> = {
+  'O': '0', 'o': '0', 'Q': '0',
+  'l': '1', 'I': '1', 'i': '1', '|': '1', '!': '1',
+  'Z': '2', 'z': '2',
+  'S': '5', 's': '5',
+  'G': '6',
+  '?': '7', 'T': '7',
+  'g': '9', 'q': '9',
+  'h': 'b', 'H': 'B', 'R': 'B',
+  'P': 'F',
+};
+
+// Valid hex characters
+const HEX_CHARS = new Set('0123456789abcdefABCDEF');
+
+interface CorrectionResult {
+  corrected: string;
+  confidence: number;
+  corrections: string[];
+  type: 'ethereum' | 'solana' | 'tron' | 'unknown';
+}
+
+// Apply basic character corrections for hex addresses
+function applyBasicCorrections(text: string): string {
+  let result = '';
+  for (const char of text) {
+    if (HEX_CHARS.has(char)) {
+      result += char;
+    } else if (CHAR_CORRECTIONS[char]) {
+      result += CHAR_CORRECTIONS[char];
+    }
+    // Skip invalid characters entirely
+  }
+  return result;
+}
+
+// Count character differences between two strings
+function countDifferences(a: string, b: string): number {
+  const maxLen = Math.max(a.length, b.length);
+  let diff = Math.abs(a.length - b.length);
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i].toLowerCase() !== b[i].toLowerCase()) {
+      diff++;
+    }
+  }
+  return diff;
+}
+
+// Correct an Ethereum address
+function correctEthAddress(rawAddress: string): CorrectionResult {
+  const corrections: string[] = [];
+  
+  // Fix common prefix issues
+  let normalized = rawAddress
+    .replace(/^Ox/i, '0x')
+    .replace(/^\\bx(?=[a-fA-F0-9])/i, '0x');
+  
+  if (!normalized.startsWith('0x')) {
+    normalized = '0x' + normalized;
+  }
+  
+  const prefix = normalized.slice(0, 2);
+  const body = normalized.slice(2);
+  
+  // Quick path: if already valid
+  if (/^[a-fA-F0-9]{40}$/.test(body)) {
+    return {
+      corrected: prefix + body.toLowerCase(),
+      confidence: 1.0,
+      corrections: [],
+      type: 'ethereum'
+    };
+  }
+  
+  // Apply corrections
+  const correctedBody = applyBasicCorrections(body);
+  
+  if (correctedBody.length === 40 && /^[a-fA-F0-9]{40}$/.test(correctedBody)) {
+    const changesNeeded = countDifferences(body, correctedBody);
+    const confidence = Math.max(0.5, 1 - (changesNeeded * 0.1));
+    
+    if (changesNeeded > 0) {
+      corrections.push(`${changesNeeded} character(s) corrected`);
+    }
+    
+    return {
+      corrected: '0x' + correctedBody.toLowerCase(),
+      confidence,
+      corrections,
+      type: 'ethereum'
+    };
+  }
+  
+  // Fallback: pad or truncate
+  const finalAddress = correctedBody.slice(0, 40).padEnd(40, '0').toLowerCase();
+  return {
+    corrected: '0x' + finalAddress,
+    confidence: 0.3,
+    corrections: ['Multiple corrections applied, low confidence'],
+    type: 'ethereum'
+  };
+}
+
+// Correct a Solana address (Base58, no 0, O, I, l allowed)
+function correctSolanaAddress(rawAddress: string): CorrectionResult {
+  const corrections: string[] = [];
+  const BASE58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const BASE58_SET = new Set(BASE58_CHARS);
+  
+  const SOLANA_CORRECTIONS: Record<string, string> = {
+    '0': 'o', 'O': 'o', 'I': '1', 'l': '1',
+  };
+  
+  let corrected = '';
+  let changesCount = 0;
+  
+  for (const char of rawAddress) {
+    if (BASE58_SET.has(char)) {
+      corrected += char;
+    } else if (SOLANA_CORRECTIONS[char]) {
+      corrected += SOLANA_CORRECTIONS[char];
+      changesCount++;
+    }
+  }
+  
+  if (changesCount > 0) {
+    corrections.push(`${changesCount} invalid Base58 character(s) corrected`);
+  }
+  
+  const isValidLength = corrected.length >= 32 && corrected.length <= 44;
+  const confidence = isValidLength ? Math.max(0.5, 1 - (changesCount * 0.1)) : 0.2;
+  
+  return { corrected, confidence, corrections, type: 'solana' };
+}
+
+// Correct a Tron address (T + 33 alphanumeric)
+function correctTronAddress(rawAddress: string): CorrectionResult {
+  const corrections: string[] = [];
+  
+  let normalized = rawAddress;
+  if (!normalized.startsWith('T')) {
+    if (normalized.startsWith('t')) {
+      normalized = 'T' + normalized.slice(1);
+      corrections.push('Lowercase t corrected to T');
+    } else {
+      return {
+        corrected: rawAddress,
+        confidence: 0,
+        corrections: ['Invalid Tron address: must start with T'],
+        type: 'tron'
+      };
+    }
+  }
+  
+  const TRON_CORRECTIONS: Record<string, string> = {
+    '0': 'O', 'O': 'o', 'I': '1', 'l': '1',
+  };
+  
+  let corrected = 'T';
+  let changesCount = 0;
+  
+  for (let i = 1; i < normalized.length; i++) {
+    const char = normalized[i];
+    if (/[A-Za-z1-9]/.test(char)) {
+      corrected += char;
+    } else if (TRON_CORRECTIONS[char]) {
+      corrected += TRON_CORRECTIONS[char];
+      changesCount++;
+    }
+  }
+  
+  if (changesCount > 0) {
+    corrections.push(`${changesCount} character(s) corrected`);
+  }
+  
+  const isValidLength = corrected.length === 34;
+  const confidence = isValidLength ? Math.max(0.5, 1 - (changesCount * 0.1)) : 0.2;
+  
+  return { corrected, confidence, corrections, type: 'tron' };
+}
+
+// Auto-detect and correct address
+function correctAddress(rawAddress: string): CorrectionResult {
+  const trimmed = rawAddress.trim();
+  
+  // Ethereum: starts with 0x or Ox (OCR error)
+  if (/^[0O]x/i.test(trimmed)) {
+    return correctEthAddress(trimmed);
+  }
+  
+  // Tron: starts with T
+  if (trimmed.startsWith('T') || trimmed.startsWith('t')) {
+    return correctTronAddress(trimmed);
+  }
+  
+  // Solana: Base58, 32-44 chars
+  if (trimmed.length >= 32 && trimmed.length <= 50) {
+    const result = correctSolanaAddress(trimmed);
+    if (result.confidence > 0.3) {
+      return result;
+    }
+  }
+  
+  return {
+    type: 'unknown',
+    corrected: trimmed,
+    confidence: 0,
+    corrections: ['Unable to determine address type']
+  };
+}
+
+// ============================================
+// Main Edge Function
+// ============================================
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
@@ -100,7 +320,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
-messages: [
+        messages: [
           {
             role: "system",
             content: `You are a specialized blockchain contract address extractor with expert accuracy.
@@ -175,31 +395,76 @@ CRITICAL INSTRUCTIONS:
     const content = data.choices?.[0]?.message?.content || "";
     
     // Parse addresses from response
-    const addresses: string[] = [];
+    const rawAddresses: string[] = [];
     const lines = content.split("\n").map((l: string) => l.trim()).filter((l: string) => l && l !== "NONE");
     
     for (const line of lines) {
       // Clean up any markdown or extra characters
       const cleaned = line.replace(/[`*\[\]]/g, "").trim();
-      
-      // Validate Ethereum addresses
-      if (/^0x[a-fA-F0-9]{40}$/.test(cleaned)) {
-        addresses.push(cleaned.toLowerCase());
-      }
-      // Validate Solana addresses (Base58, 32-44 chars)
-      else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(cleaned)) {
-        addresses.push(cleaned);
-      }
-      // Validate Tron addresses
-      else if (/^T[A-Za-z1-9]{33}$/.test(cleaned)) {
-        addresses.push(cleaned);
+      if (cleaned.length >= 10) {
+        rawAddresses.push(cleaned);
       }
     }
 
-    console.log(`[ocr-extract] Extracted ${addresses.length} addresses`);
+    // Apply OCR corrections to each extracted address
+    interface ProcessedAddress {
+      original: string;
+      corrected: string;
+      type: string;
+      confidence: number;
+      corrections: string[];
+    }
+    
+    const processedAddresses: ProcessedAddress[] = [];
+    const validAddresses: string[] = [];
+    let totalCorrections = 0;
+    
+    for (const rawAddr of rawAddresses) {
+      const result = correctAddress(rawAddr);
+      
+      processedAddresses.push({
+        original: rawAddr,
+        corrected: result.corrected,
+        type: result.type,
+        confidence: result.confidence,
+        corrections: result.corrections
+      });
+      
+      // Only include addresses with reasonable confidence
+      if (result.confidence >= 0.5) {
+        // Final validation after correction
+        const corrected = result.corrected;
+        
+        // Validate Ethereum addresses
+        if (/^0x[a-fA-F0-9]{40}$/.test(corrected)) {
+          validAddresses.push(corrected.toLowerCase());
+          totalCorrections += result.corrections.length;
+        }
+        // Validate Solana addresses (Base58, 32-44 chars)
+        else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(corrected)) {
+          validAddresses.push(corrected);
+          totalCorrections += result.corrections.length;
+        }
+        // Validate Tron addresses
+        else if (/^T[A-Za-z1-9]{33}$/.test(corrected)) {
+          validAddresses.push(corrected);
+          totalCorrections += result.corrections.length;
+        }
+      }
+    }
+
+    console.log(`[ocr-extract] Extracted ${rawAddresses.length} raw, ${validAddresses.length} valid after correction, ${totalCorrections} corrections applied`);
 
     return new Response(
-      JSON.stringify({ addresses, raw: content }),
+      JSON.stringify({ 
+        addresses: validAddresses, 
+        raw: content,
+        corrections: {
+          applied: totalCorrections > 0,
+          count: totalCorrections,
+          details: processedAddresses
+        }
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
