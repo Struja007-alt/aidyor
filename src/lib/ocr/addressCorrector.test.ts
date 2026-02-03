@@ -138,4 +138,61 @@ describe('OCR Address Correction', () => {
       expect(checksummed).not.toBe(checksummed.toLowerCase());
     });
   });
+
+  describe('Full OCR Pipeline Simulation', () => {
+    it('should correct corrupted PEPE address from OCR output', () => {
+      // Simulated OCR output with common misreads
+      const ocrOutput = 'Ox6982508l45454Ce325dDbE47a25d4ec3d23ll933';
+      const result = correctEthAddress(ocrOutput);
+      
+      // Should correct O->0 at prefix, l->1 throughout
+      expect(result.corrected).toBe('0x6982508145454ce325ddbe47a25d4ec3d2311933');
+      expect(result.confidence).toBeGreaterThan(0.5);
+      expect(result.corrections.length).toBeGreaterThan(0);
+    });
+
+    it('should handle mixed corruptions in address', () => {
+      // Multiple character types corrupted
+      const ocrOutput = '0xdead8eefOOOOlllI5555SSSS';
+      const result = correctEthAddress(ocrOutput);
+      
+      // Should apply corrections
+      expect(result.corrected.startsWith('0x')).toBe(true);
+      expect(result.corrections.length).toBeGreaterThan(0);
+    });
+
+    it('should detect and correct Solana OCR errors', () => {
+      // Solana address with OCR errors (0, O, I, l not allowed in Base58)
+      const ocrOutput = 'S0111111I111111111l1111111111111l';
+      const result = correctSolanaAddress(ocrOutput);
+      
+      // Should correct 0->o, I->1, l->1
+      expect(result.corrected).not.toContain('0');
+      expect(result.corrected).not.toContain('O');
+      expect(result.corrected).not.toContain('I');
+      expect(result.corrected).not.toContain('l');
+      expect(result.corrections.length).toBeGreaterThan(0);
+    });
+
+    it('should auto-detect address type with OCR errors', () => {
+      // Ethereum with O prefix (common OCR error)
+      const ethResult = correctAddress('Ox1234567890abcdef1234567890abcdef12345678');
+      expect(ethResult.type).toBe('ethereum');
+      expect(ethResult.corrected.startsWith('0x')).toBe(true);
+      
+      // Tron with lowercase t
+      const tronResult = correctAddress('tJCyA6vQDaVRxB8CQRdjXq3dWpz1yDpEpj');
+      expect(tronResult.type).toBe('tron');
+      expect(tronResult.corrected.startsWith('T')).toBe(true);
+    });
+
+    it('should provide low confidence for heavily corrupted addresses', () => {
+      // Very corrupted address
+      const heavilyCorrupted = 'Ox!!!OOOO????IIII----llll@@@@';
+      const result = correctEthAddress(heavilyCorrupted);
+      
+      // Should still attempt correction but with low confidence
+      expect(result.confidence).toBeLessThan(0.5);
+    });
+  });
 });
