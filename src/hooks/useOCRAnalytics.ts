@@ -14,6 +14,11 @@ interface OCRAnalyticsData {
   extractedAddress?: string;
   errorType?: string;
   errorMessage?: string;
+  // Enhanced metrics
+  confidence?: number;
+  charCount?: number;
+  rawTextLength?: number;
+  fixApplied?: boolean;
 }
 
 export const useOCRAnalytics = () => {
@@ -40,6 +45,11 @@ export const useOCRAnalytics = () => {
           extracted_address: data.extractedAddress,
           error_type: data.errorType,
           error_message: data.errorMessage,
+          // Enhanced metrics
+          confidence: data.confidence,
+          char_count: data.charCount,
+          raw_text_length: data.rawTextLength,
+          fix_applied: data.fixApplied,
         }),
       }).catch((err) => {
         console.warn('[OCR Analytics] Failed to log:', err);

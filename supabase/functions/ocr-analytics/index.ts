@@ -20,6 +20,11 @@ interface OCRAnalyticsPayload {
   extracted_address?: string;
   error_type?: string;
   error_message?: string;
+  // Enhanced metrics
+  confidence?: number;
+  char_count?: number;
+  raw_text_length?: number;
+  fix_applied?: boolean;
 }
 
 // Calculate Levenshtein distance for CER
@@ -77,6 +82,8 @@ serve(async (req) => {
       method: payload.method,
       addresses_found: payload.addresses_found,
       processing_time_ms: payload.processing_time_ms,
+      confidence: payload.confidence,
+      fix_applied: payload.fix_applied,
     });
 
     // Calculate accuracy metrics if ground truth provided
@@ -114,6 +121,11 @@ serve(async (req) => {
       exact_match: exactMatch,
       error_type: payload.error_type || null,
       error_message: payload.error_message || null,
+      // Enhanced metrics
+      confidence: payload.confidence || null,
+      char_count: payload.char_count || null,
+      raw_text_length: payload.raw_text_length || null,
+      fix_applied: payload.fix_applied || false,
     });
 
     if (error) {
