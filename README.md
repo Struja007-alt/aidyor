@@ -58,23 +58,24 @@ React 18.3 + TypeScript + Vite
 
 ### Backend (Lovable Cloud / Supabase Edge Functions)
 ```
-Deno Runtime - 17 Edge Functions
-├── risk-orchestrator       → Central API gateway (JWT auth)
-├── market-data-service     → DEXScreener integration
-├── onchain-data-service    → GoPlus/RugCheck/BSCTrace
-├── ai-risk-engine          → AI explanations (Gemini 3)
-├── ai-risk-explain         → Natural language risk summaries
-├── simulation-engine       → Pump/dump detection
-├── whale-alerts            → Transaction monitoring (public)
-├── security-alerts         → Live scam/hack news feed (public)
-├── ocr-extract             → VLM-based OCR + smart address correction
-├── ocr-analytics           → OCR metrics logging (CER/WER/EMR)
-├── telegram-webhook        → Telegram bot & payments
-├── api-token-scan          → B2B API with key management
-├── stripe-checkout         → Stripe subscription checkout
+Deno Runtime - 18 Edge Functions
+├── risk-orchestrator        → Central API gateway (JWT auth)
+├── market-data-service      → DEXScreener integration
+├── onchain-data-service     → GoPlus/RugCheck/BSCTrace
+├── ai-risk-engine           → AI explanations (Gemini 3)
+├── ai-risk-explain          → Natural language risk summaries
+├── simulation-engine        → Pump/dump detection
+├── whale-alerts             → Transaction monitoring (public)
+├── security-alerts          → Live scam/hack news feed (public)
+├── ocr-extract              → VLM-based OCR + smart address correction
+├── ocr-analytics            → OCR metrics logging (CER/WER/EMR)
+├── ocr-analytics-dashboard  → Aggregated OCR analytics API
+├── telegram-webhook         → Telegram bot & payments
+├── api-token-scan           → B2B API with key management
+├── stripe-checkout          → Stripe subscription checkout
 ├── stripe-check-subscription → Verify active subscriptions
-├── stripe-customer-portal  → Manage billing via Stripe Portal
-└── passkey-*               → WebAuthn handlers (2 functions)
+├── stripe-customer-portal   → Manage billing via Stripe Portal
+└── passkey-*                → WebAuthn handlers (2 functions)
 ```
 
 ### Data Sources
@@ -249,7 +250,8 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 
 ## 📄 Legal & Documentation Pages
 
-- [API Documentation](/api-docs) ⭐ NEW
+- [API Documentation](/api-docs)
+- [OCR Analytics Dashboard](/ocr-dashboard) ⭐ NEW
 - [Privacy Policy](/privacy-policy)
 - [Terms of Service](/terms-of-service)
 - [Cookie Policy](/cookie-policy)
