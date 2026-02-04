@@ -3,9 +3,23 @@
  * 
  * Uses context-aware character substitution rules and checksum validation
  * to correct common OCR misreads in blockchain addresses.
+ * 
+ * Supports checksums for:
+ * - Ethereum/EVM chains (EIP-55)
+ * - Tron (Base58Check with double SHA-256)
+ * - Solana (Ed25519 public key format validation)
  */
 
-import { keccak256 } from './keccak256';
+import { 
+  toEIP55Checksum, 
+  isValidEIP55Checksum,
+  isValidTronChecksum,
+  isValidSolanaAddress,
+  normalizeSolanaAddress,
+  validateAndChecksum,
+  type ChecksumResult 
+} from './checksums';
+import { isValidBase58 } from './base58';
 
 // Character confusion matrix: what OCR commonly mistakes each character for
 const OCR_CONFUSION_MAP: Record<string, string[]> = {
