@@ -379,32 +379,55 @@ export function correctTronAddress(rawAddress: string): {
 
 /**
  * Auto-detect address type and apply appropriate corrections
+ * Now with checksum validation for all networks
  */
 export function correctAddress(rawAddress: string): {
   type: 'ethereum' | 'solana' | 'tron' | 'unknown';
   corrected: string;
   confidence: number;
   corrections: string[];
+  checksumValid?: boolean;
 } {
   const trimmed = rawAddress.trim();
   
   // Ethereum: starts with 0x or Ox (OCR error)
   if (/^[0O]x/i.test(trimmed)) {
     const result = correctEthAddress(trimmed);
-    return { type: 'ethereum', ...result };
+    // Validate checksum after correction
+    const checksumValid = isValidChecksumAddress(result.corrected);
+    if (checksumValid) {
+      result.corrections.push('EIP-55 checksum verified ✓');
+    }
+    return { 
+      type: 'ethereum', 
+      ...result,
+      checksumValid
+    };
   }
   
   // Tron: starts with T
   if (trimmed.startsWith('T') || trimmed.startsWith('t')) {
     const result = correctTronAddress(trimmed);
-    return { type: 'tron', ...result };
+    return { 
+      type: 'tron', 
+      corrected: result.corrected,
+      confidence: result.confidence,
+      corrections: result.corrections,
+      checksumValid: result.checksumValid
+    };
   }
   
   // Solana: Base58, 32-44 chars, no 0/O/I/l
   if (trimmed.length >= 32 && trimmed.length <= 50) {
     const result = correctSolanaAddress(trimmed);
     if (result.confidence > 0.3) {
-      return { type: 'solana', ...result };
+      return { 
+        type: 'solana', 
+        corrected: result.corrected,
+        confidence: result.confidence,
+        corrections: result.corrections,
+        checksumValid: result.checksumValid
+      };
     }
   }
   
@@ -412,7 +435,8 @@ export function correctAddress(rawAddress: string): {
     type: 'unknown',
     corrected: trimmed,
     confidence: 0,
-    corrections: ['Unable to determine address type']
+    corrections: ['Unable to determine address type'],
+    checksumValid: false
   };
 }
 
