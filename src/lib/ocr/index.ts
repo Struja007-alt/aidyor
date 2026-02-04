@@ -30,5 +30,3 @@ export {
 export { isValidBase58, base58Decode, base58Encode } from './base58';
 export { sha256, doubleSha256 } from './sha256';
 export { keccak256 } from './keccak256';
-
-export { keccak256 } from './keccak256';
