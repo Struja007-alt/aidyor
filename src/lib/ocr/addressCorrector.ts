@@ -297,11 +297,13 @@ export function correctSolanaAddress(rawAddress: string): {
 
 /**
  * Correct a Tron address (T + 33 alphanumeric)
+ * Now with proper Base58Check checksum validation
  */
 export function correctTronAddress(rawAddress: string): {
   corrected: string;
   confidence: number;
   corrections: string[];
+  checksumValid: boolean;
 } {
   const corrections: string[] = [];
   
@@ -315,17 +317,22 @@ export function correctTronAddress(rawAddress: string): {
       return {
         corrected: rawAddress,
         confidence: 0,
-        corrections: ['Invalid Tron address: must start with T']
+        corrections: ['Invalid Tron address: must start with T'],
+        checksumValid: false
       };
     }
   }
   
-  // Apply corrections similar to Base58 (Tron uses Base58Check)
+  // Base58 alphabet for Tron (no 0, O, I, l)
+  const BASE58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const BASE58_SET = new Set(BASE58_CHARS);
+  
+  // Apply corrections for invalid Base58 characters
   const TRON_CORRECTIONS: Record<string, string> = {
-    '0': 'O', // Context-dependent
-    'O': 'o',
-    'I': '1',
-    'l': '1',
+    '0': 'o', // 0 is not in Base58, o is
+    'O': 'o', // O is not in Base58, o is
+    'I': '1', // I is not in Base58, 1 is
+    'l': '1', // l is not in Base58, 1 is
   };
   
   let corrected = 'T';
@@ -333,27 +340,40 @@ export function correctTronAddress(rawAddress: string): {
   
   for (let i = 1; i < normalized.length; i++) {
     const char = normalized[i];
-    if (/[A-Za-z1-9]/.test(char)) {
+    if (BASE58_SET.has(char)) {
       corrected += char;
     } else if (TRON_CORRECTIONS[char]) {
       corrected += TRON_CORRECTIONS[char];
       changesCount++;
     }
+    // Skip completely invalid characters
   }
   
   if (changesCount > 0) {
     corrections.push(`${changesCount} character(s) corrected`);
   }
   
+  // Validate checksum
+  const checksumValid = isValidTronChecksum(corrected);
+  
+  if (checksumValid) {
+    corrections.push('Checksum verified ✓');
+  } else if (corrected.length === 34 && isValidBase58(corrected)) {
+    corrections.push('Checksum invalid - address may be corrupted');
+  }
+  
   const isValidLength = corrected.length === 34;
-  const confidence = isValidLength
-    ? Math.max(0.5, 1 - (changesCount * 0.1))
-    : 0.2;
+  const confidence = checksumValid
+    ? Math.max(0.9, 1 - (changesCount * 0.05))
+    : isValidLength && isValidBase58(corrected)
+      ? Math.max(0.5, 0.7 - (changesCount * 0.1))
+      : 0.2;
   
   return {
     corrected,
     confidence,
-    corrections
+    corrections,
+    checksumValid
   };
 }
 
