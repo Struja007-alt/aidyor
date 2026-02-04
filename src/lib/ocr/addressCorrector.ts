@@ -99,39 +99,20 @@ export function applyBasicCorrections(text: string): string {
 
 /**
  * Calculate EIP-55 checksum for an Ethereum address
+ * Re-exported from checksums module for backward compatibility
  */
-export function toChecksumAddress(address: string): string {
-  const addr = address.toLowerCase().replace('0x', '');
-  const hash = keccak256(addr);
-  
-  let checksummed = '0x';
-  for (let i = 0; i < addr.length; i++) {
-    const char = addr[i];
-    if (/[a-f]/.test(char)) {
-      // If the corresponding hash character is >= 8, uppercase the letter
-      checksummed += parseInt(hash[i], 16) >= 8 ? char.toUpperCase() : char;
-    } else {
-      checksummed += char;
-    }
-  }
-  return checksummed;
-}
+export const toChecksumAddress = toEIP55Checksum;
 
 /**
  * Validate if an address has a valid EIP-55 checksum
+ * Re-exported from checksums module for backward compatibility
  */
-export function isValidChecksumAddress(address: string): boolean {
-  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return false;
-  
-  const addr = address.replace('0x', '');
-  // All lowercase or all uppercase is valid (no checksum applied)
-  if (addr === addr.toLowerCase() || addr === addr.toUpperCase()) {
-    return true;
-  }
-  
-  // Mixed case must match checksum
-  return toChecksumAddress(address) === address;
-}
+export const isValidChecksumAddress = isValidEIP55Checksum;
+
+/**
+ * Validate checksum for any supported network
+ */
+export { validateAndChecksum, type ChecksumResult };
 
 /**
  * Generate possible corrections for an address by trying character substitutions
