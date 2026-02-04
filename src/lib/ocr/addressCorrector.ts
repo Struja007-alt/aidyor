@@ -3,9 +3,23 @@
  * 
  * Uses context-aware character substitution rules and checksum validation
  * to correct common OCR misreads in blockchain addresses.
+ * 
+ * Supports checksums for:
+ * - Ethereum/EVM chains (EIP-55)
+ * - Tron (Base58Check with double SHA-256)
+ * - Solana (Ed25519 public key format validation)
  */
 
-import { keccak256 } from './keccak256';
+import { 
+  toEIP55Checksum, 
+  isValidEIP55Checksum,
+  isValidTronChecksum,
+  isValidSolanaAddress,
+  normalizeSolanaAddress,
+  validateAndChecksum,
+  type ChecksumResult 
+} from './checksums';
+import { isValidBase58 } from './base58';
 
 // Character confusion matrix: what OCR commonly mistakes each character for
 const OCR_CONFUSION_MAP: Record<string, string[]> = {
@@ -85,39 +99,20 @@ export function applyBasicCorrections(text: string): string {
 
 /**
  * Calculate EIP-55 checksum for an Ethereum address
+ * Re-exported from checksums module for backward compatibility
  */
-export function toChecksumAddress(address: string): string {
-  const addr = address.toLowerCase().replace('0x', '');
-  const hash = keccak256(addr);
-  
-  let checksummed = '0x';
-  for (let i = 0; i < addr.length; i++) {
-    const char = addr[i];
-    if (/[a-f]/.test(char)) {
-      // If the corresponding hash character is >= 8, uppercase the letter
-      checksummed += parseInt(hash[i], 16) >= 8 ? char.toUpperCase() : char;
-    } else {
-      checksummed += char;
-    }
-  }
-  return checksummed;
-}
+export const toChecksumAddress = toEIP55Checksum;
 
 /**
  * Validate if an address has a valid EIP-55 checksum
+ * Re-exported from checksums module for backward compatibility
  */
-export function isValidChecksumAddress(address: string): boolean {
-  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return false;
-  
-  const addr = address.replace('0x', '');
-  // All lowercase or all uppercase is valid (no checksum applied)
-  if (addr === addr.toLowerCase() || addr === addr.toUpperCase()) {
-    return true;
-  }
-  
-  // Mixed case must match checksum
-  return toChecksumAddress(address) === address;
-}
+export const isValidChecksumAddress = isValidEIP55Checksum;
+
+/**
+ * Validate checksum for any supported network
+ */
+export { validateAndChecksum, type ChecksumResult };
 
 /**
  * Generate possible corrections for an address by trying character substitutions
@@ -238,11 +233,13 @@ export function correctEthAddress(rawAddress: string): {
 
 /**
  * Correct a Solana address (Base58, no 0, O, I, l allowed)
+ * Now with proper Ed25519 public key format validation
  */
 export function correctSolanaAddress(rawAddress: string): {
   corrected: string;
   confidence: number;
   corrections: string[];
+  checksumValid: boolean;
 } {
   const corrections: string[] = [];
   
@@ -275,26 +272,38 @@ export function correctSolanaAddress(rawAddress: string): {
     corrections.push(`${changesCount} invalid Base58 character(s) corrected`);
   }
   
-  // Validate length (32-44 chars)
-  const isValidLength = corrected.length >= 32 && corrected.length <= 44;
-  const confidence = isValidLength 
-    ? Math.max(0.5, 1 - (changesCount * 0.1))
-    : 0.2;
+  // Validate using proper Solana address validation
+  const isValid = isValidSolanaAddress(corrected);
+  const normalized = isValid ? normalizeSolanaAddress(corrected) : null;
+  
+  if (isValid && normalized && normalized !== corrected) {
+    corrections.push('Address normalized');
+    corrected = normalized;
+  }
+  
+  const confidence = isValid 
+    ? Math.max(0.7, 1 - (changesCount * 0.1))
+    : corrected.length >= 32 && corrected.length <= 44
+      ? Math.max(0.4, 0.6 - (changesCount * 0.1))
+      : 0.2;
   
   return {
     corrected,
     confidence,
-    corrections
+    corrections,
+    checksumValid: isValid
   };
 }
 
 /**
  * Correct a Tron address (T + 33 alphanumeric)
+ * Now with proper Base58Check checksum validation
  */
 export function correctTronAddress(rawAddress: string): {
   corrected: string;
   confidence: number;
   corrections: string[];
+  checksumValid: boolean;
 } {
   const corrections: string[] = [];
   
@@ -308,17 +317,22 @@ export function correctTronAddress(rawAddress: string): {
       return {
         corrected: rawAddress,
         confidence: 0,
-        corrections: ['Invalid Tron address: must start with T']
+        corrections: ['Invalid Tron address: must start with T'],
+        checksumValid: false
       };
     }
   }
   
-  // Apply corrections similar to Base58 (Tron uses Base58Check)
+  // Base58 alphabet for Tron (no 0, O, I, l)
+  const BASE58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const BASE58_SET = new Set(BASE58_CHARS);
+  
+  // Apply corrections for invalid Base58 characters
   const TRON_CORRECTIONS: Record<string, string> = {
-    '0': 'O', // Context-dependent
-    'O': 'o',
-    'I': '1',
-    'l': '1',
+    '0': 'o', // 0 is not in Base58, o is
+    'O': 'o', // O is not in Base58, o is
+    'I': '1', // I is not in Base58, 1 is
+    'l': '1', // l is not in Base58, 1 is
   };
   
   let corrected = 'T';
@@ -326,58 +340,94 @@ export function correctTronAddress(rawAddress: string): {
   
   for (let i = 1; i < normalized.length; i++) {
     const char = normalized[i];
-    if (/[A-Za-z1-9]/.test(char)) {
+    if (BASE58_SET.has(char)) {
       corrected += char;
     } else if (TRON_CORRECTIONS[char]) {
       corrected += TRON_CORRECTIONS[char];
       changesCount++;
     }
+    // Skip completely invalid characters
   }
   
   if (changesCount > 0) {
     corrections.push(`${changesCount} character(s) corrected`);
   }
   
+  // Validate checksum
+  const checksumValid = isValidTronChecksum(corrected);
+  
+  if (checksumValid) {
+    corrections.push('Checksum verified ✓');
+  } else if (corrected.length === 34 && isValidBase58(corrected)) {
+    corrections.push('Checksum invalid - address may be corrupted');
+  }
+  
   const isValidLength = corrected.length === 34;
-  const confidence = isValidLength
-    ? Math.max(0.5, 1 - (changesCount * 0.1))
-    : 0.2;
+  const confidence = checksumValid
+    ? Math.max(0.9, 1 - (changesCount * 0.05))
+    : isValidLength && isValidBase58(corrected)
+      ? Math.max(0.5, 0.7 - (changesCount * 0.1))
+      : 0.2;
   
   return {
     corrected,
     confidence,
-    corrections
+    corrections,
+    checksumValid
   };
 }
 
 /**
  * Auto-detect address type and apply appropriate corrections
+ * Now with checksum validation for all networks
  */
 export function correctAddress(rawAddress: string): {
   type: 'ethereum' | 'solana' | 'tron' | 'unknown';
   corrected: string;
   confidence: number;
   corrections: string[];
+  checksumValid?: boolean;
 } {
   const trimmed = rawAddress.trim();
   
   // Ethereum: starts with 0x or Ox (OCR error)
   if (/^[0O]x/i.test(trimmed)) {
     const result = correctEthAddress(trimmed);
-    return { type: 'ethereum', ...result };
+    // Validate checksum after correction
+    const checksumValid = isValidChecksumAddress(result.corrected);
+    if (checksumValid) {
+      result.corrections.push('EIP-55 checksum verified ✓');
+    }
+    return { 
+      type: 'ethereum', 
+      ...result,
+      checksumValid
+    };
   }
   
   // Tron: starts with T
   if (trimmed.startsWith('T') || trimmed.startsWith('t')) {
     const result = correctTronAddress(trimmed);
-    return { type: 'tron', ...result };
+    return { 
+      type: 'tron', 
+      corrected: result.corrected,
+      confidence: result.confidence,
+      corrections: result.corrections,
+      checksumValid: result.checksumValid
+    };
   }
   
   // Solana: Base58, 32-44 chars, no 0/O/I/l
   if (trimmed.length >= 32 && trimmed.length <= 50) {
     const result = correctSolanaAddress(trimmed);
     if (result.confidence > 0.3) {
-      return { type: 'solana', ...result };
+      return { 
+        type: 'solana', 
+        corrected: result.corrected,
+        confidence: result.confidence,
+        corrections: result.corrections,
+        checksumValid: result.checksumValid
+      };
     }
   }
   
@@ -385,7 +435,8 @@ export function correctAddress(rawAddress: string): {
     type: 'unknown',
     corrected: trimmed,
     confidence: 0,
-    corrections: ['Unable to determine address type']
+    corrections: ['Unable to determine address type'],
+    checksumValid: false
   };
 }
 
