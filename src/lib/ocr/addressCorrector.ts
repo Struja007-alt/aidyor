@@ -233,11 +233,13 @@ export function correctEthAddress(rawAddress: string): {
 
 /**
  * Correct a Solana address (Base58, no 0, O, I, l allowed)
+ * Now with proper Ed25519 public key format validation
  */
 export function correctSolanaAddress(rawAddress: string): {
   corrected: string;
   confidence: number;
   corrections: string[];
+  checksumValid: boolean;
 } {
   const corrections: string[] = [];
   
@@ -270,16 +272,26 @@ export function correctSolanaAddress(rawAddress: string): {
     corrections.push(`${changesCount} invalid Base58 character(s) corrected`);
   }
   
-  // Validate length (32-44 chars)
-  const isValidLength = corrected.length >= 32 && corrected.length <= 44;
-  const confidence = isValidLength 
-    ? Math.max(0.5, 1 - (changesCount * 0.1))
-    : 0.2;
+  // Validate using proper Solana address validation
+  const isValid = isValidSolanaAddress(corrected);
+  const normalized = isValid ? normalizeSolanaAddress(corrected) : null;
+  
+  if (isValid && normalized && normalized !== corrected) {
+    corrections.push('Address normalized');
+    corrected = normalized;
+  }
+  
+  const confidence = isValid 
+    ? Math.max(0.7, 1 - (changesCount * 0.1))
+    : corrected.length >= 32 && corrected.length <= 44
+      ? Math.max(0.4, 0.6 - (changesCount * 0.1))
+      : 0.2;
   
   return {
     corrected,
     confidence,
-    corrections
+    corrections,
+    checksumValid: isValid
   };
 }
 
