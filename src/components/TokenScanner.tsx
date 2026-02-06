@@ -647,19 +647,28 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       toast.info("Using AI vision for accuracy...", { duration: 2000 });
       
       let addresses: string[] = [];
+      let vlmTokenName: string | null = null;
+      let vlmTokenSymbol: string | null = null;
+      let vlmTruncatedAddresses: string[] | null = null;
       
       try {
         vlmAttempted = true;
         setOcrProgress(30);
-        const vlmAddresses = await performVLMOcr(imageData);
+        const vlmResult = await performVLMOcr(imageData);
         setOcrProgress(70);
         
-        if (vlmAddresses.length > 0) {
-          console.log("VLM extracted addresses:", vlmAddresses);
-          addresses = vlmAddresses;
+        vlmTokenName = vlmResult.tokenName;
+        vlmTokenSymbol = vlmResult.tokenSymbol;
+        vlmTruncatedAddresses = vlmResult.truncatedAddresses;
+        
+        if (vlmResult.addresses.length > 0) {
+          console.log("VLM extracted addresses:", vlmResult.addresses);
+          addresses = vlmResult.addresses;
           vlmSucceeded = true;
-          // VLM returns validated addresses directly
           charCount = addresses.join('').length;
+        } else if (vlmResult.tokenName || vlmResult.tokenSymbol) {
+          // No full addresses but we got token info - this means address was truncated
+          console.log(`VLM found truncated address. Token: ${vlmResult.tokenName}/${vlmResult.tokenSymbol}, fragments: ${vlmResult.truncatedAddresses?.join(', ')}`);
         }
       } catch (vlmError) {
         console.error("VLM OCR failed, falling back to Tesseract:", vlmError);
