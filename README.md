@@ -20,7 +20,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **📈 Market Data Dashboard** - Real-time price, liquidity, volume
 
 ### Advanced Features
-- **📸 OCR Screenshot Scanner** - Extract addresses from images using a **Triple-Pass AI Pipeline**: Gemini 2.5 Pro (primary) → Gemini 2.5 Flash (forensic) → Gemini 2.5 Pro pixel-level raw character extraction (last resort) + Tesseract.js fallback, with automatic retry, exponential backoff, aggressive address recovery, and token-name search for truncated addresses
+- **📸 OCR Screenshot Scanner** - Extract addresses from images using a **data-driven prioritized pipeline**: Tesseract.js (fastest, highest real-world success rate) → Triple-Pass AI fallback: Gemini 2.5 Pro (primary) → Gemini 2.5 Flash (forensic) → Gemini 2.5 Pro pixel-level raw character extraction (last resort), with automatic retry, exponential backoff, aggressive address recovery, and token-name search for truncated addresses
 - **🚨 Live Security Alerts** - Real-time crypto scam warnings and hack reports
 - **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k) - 5 free/hour
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
