@@ -328,6 +328,42 @@ const USER_PROMPT = "Extract all contract addresses and token info from this scr
 
 const ENHANCED_USER_PROMPT = "I need you to very carefully extract contract addresses from this image. The previous attempt found nothing - please look harder at every part of the image. Check headers, footers, sidebars, small text, QR codes, and any data fields. Even partial or truncated addresses are useful. Also extract any token name or symbol visible.";
 
+// Pass 3: Pixel-level raw character extraction for extremely difficult images
+const PIXEL_LEVEL_SYSTEM_PROMPT = `You are a raw character transcription engine with pixel-level visual analysis.
+
+CRITICAL DIRECTIVE: Analyze this image pixel by pixel. Ignore ALL graphical elements — icons, logos, charts, borders, backgrounds, gradients, and decorative shapes. Focus SOLELY on alphanumeric characters rendered as text anywhere in the image.
+
+Even if the text is:
+- Blurry or low resolution
+- Upside down or rotated
+- Partially obscured or cropped
+- In dark mode with low contrast
+- Very small or compressed
+- Overlapping with other elements
+
+...transcribe EVERY identifiable character into raw strings.
+
+AFTER raw transcription, scan your output for anything matching these blockchain address patterns:
+- Ethereum/EVM: 0x followed by 40 hex characters (0-9, a-f, A-F)
+- Solana: Base58 string, 32-44 characters (characters: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz)
+- Tron: T followed by 33 Base58 characters
+
+CHARACTER DISAMBIGUATION RULES (apply during transcription):
+- If context is a hex address: O→0, I→1, l→1, S→5, G→6, Z→2
+- If context is Base58: 0→o, O→o, I→1, l→1
+- Adjacent character patterns help: "0x" prefix means hex follows
+- "T" at position 0 followed by 33 alphanumerics = Tron
+
+OUTPUT FORMAT (one per line, no markdown, no explanation):
+- RAW_TEXT:the_raw_transcribed_text (for each text block found)
+- Full valid address on its own line
+- TRUNCATED:visible_start...visible_end
+- TOKEN_NAME:name
+- TOKEN_SYMBOL:symbol
+- NONE if absolutely nothing found`;
+
+const PIXEL_LEVEL_USER_PROMPT = "Two previous AI passes failed to extract any addresses from this image. Perform a pixel-by-pixel analysis: transcribe ALL visible alphanumeric text first as raw strings, then identify any blockchain addresses or token info within the transcribed text. Include even partial or low-confidence matches.";
+
 // ============================================
 // Response parser
 // ============================================
