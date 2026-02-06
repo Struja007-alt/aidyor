@@ -579,13 +579,21 @@ export const TokenScanner = () => {
   };
 
   // VLM-based OCR using Gemini Vision - returns addresses + token info
-  const performVLMOcr = useCallback(async (imageData: string): Promise<{
+  // Now with client-side retry for transient network failures
+  const performVLMOcr = useCallback(async (imageData: string, retryCount: number = 0): Promise<{
     addresses: string[];
     tokenName: string | null;
     tokenSymbol: string | null;
     truncatedAddresses: string[] | null;
+    metadata?: { model: string; passes: number };
   }> => {
+    const MAX_CLIENT_RETRIES = 2;
+    const RETRY_DELAYS = [1500, 3000];
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-extract`,
         {
@@ -595,16 +603,38 @@ export const TokenScanner = () => {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({ imageBase64: imageData }),
+          signal: controller.signal,
         }
       );
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        
+        // Don't retry on client errors (rate limit, payment, auth)
         if (response.status === 429) {
-          toast.error("AI rate limit reached. Try again later.");
-        } else if (response.status === 402) {
-          toast.error("AI credits exhausted.");
+          toast.error("AI rate limit reached. Try again in a minute.");
+          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
+        if (response.status === 402) {
+          toast.error("AI credits exhausted.");
+          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+        }
+        if (response.status === 401) {
+          toast.error("Authentication required. Please sign in.");
+          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+        }
+
+        // Retry on server errors
+        if (retryCount < MAX_CLIENT_RETRIES && response.status >= 500) {
+          const delay = RETRY_DELAYS[retryCount] || 3000;
+          console.warn(`[VLM OCR] Server error ${response.status}, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_CLIENT_RETRIES})`);
+          toast.info(`AI service busy, retrying...`, { duration: delay });
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return performVLMOcr(imageData, retryCount + 1);
+        }
+
         console.error("VLM OCR error:", response.status, errorData);
         return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
       }
@@ -615,9 +645,20 @@ export const TokenScanner = () => {
         tokenName: data.tokenName || null,
         tokenSymbol: data.tokenSymbol || null,
         truncatedAddresses: data.truncatedAddresses || null,
+        metadata: data.metadata || undefined,
       };
     } catch (error) {
-      console.error("VLM OCR fallback error:", error);
+      // Retry on network errors (timeout, connection refused, etc.)
+      if (retryCount < MAX_CLIENT_RETRIES) {
+        const isAbort = error instanceof DOMException && error.name === 'AbortError';
+        const delay = RETRY_DELAYS[retryCount] || 3000;
+        console.warn(`[VLM OCR] ${isAbort ? 'Timeout' : 'Network error'}, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_CLIENT_RETRIES})`);
+        toast.info(isAbort ? "Request timed out, retrying..." : "Connection issue, retrying...", { duration: delay });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return performVLMOcr(imageData, retryCount + 1);
+      }
+      
+      console.error("VLM OCR failed after retries:", error);
       return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
     }
   }, []);
@@ -682,12 +723,13 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         setOcrProgress(75);
         console.log("VLM found no addresses, trying Tesseract fallback...");
         
+        // Attempt 1: Preprocessed image with enhanced settings
         const processedImage = await preprocessImage(imageData);
         
         const worker = await createWorker('eng', 1, {
           logger: (m) => {
             if (m.status === 'recognizing text') {
-              setOcrProgress(75 + Math.round(m.progress * 20));
+              setOcrProgress(75 + Math.round(m.progress * 10));
             }
           },
         });
@@ -697,15 +739,17 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         
         rawTextLength = text.length;
         const correctionResult = fixOcrMisreads(text);
-        // Track if any fixes were applied
         fixApplied = correctionResult.corrections > 0;
-        console.log("Tesseract OCR Text (corrected):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
+        console.log("Tesseract OCR (preprocessed):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
         
         addresses = extractAddressesFromText(correctionResult.text);
         charCount = addresses.join('').length;
         
-        // Try original image if processed didn't work
+        // Attempt 2: Original image (no preprocessing) as fallback
         if (addresses.length === 0) {
+          setOcrProgress(88);
+          console.log("Preprocessed scan failed, trying original image...");
+          
           const fallbackWorker = await createWorker('eng', 1);
           const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
           await fallbackWorker.terminate();
@@ -715,6 +759,24 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           fixApplied = fixApplied || fallbackCorrectionResult.corrections > 0;
           addresses = extractAddressesFromText(fallbackCorrectionResult.text);
           charCount = addresses.join('').length;
+        }
+
+        // Attempt 3: Try extracting best ETH address from raw OCR text as last resort
+        if (addresses.length === 0) {
+          setOcrProgress(94);
+          console.log("Standard extraction failed, trying aggressive address recovery...");
+          
+          const aggressiveWorker = await createWorker('eng', 1);
+          const { data: { text: rawText } } = await aggressiveWorker.recognize(processedImage);
+          await aggressiveWorker.terminate();
+          
+          const bestAddress = extractBestEthAddress(rawText);
+          if (bestAddress) {
+            addresses = [bestAddress];
+            charCount = bestAddress.length;
+            fixApplied = true;
+            console.log("Aggressive recovery found:", bestAddress);
+          }
         }
         
         if (addresses.length > 0) {
