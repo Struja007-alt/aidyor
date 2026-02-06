@@ -579,13 +579,21 @@ export const TokenScanner = () => {
   };
 
   // VLM-based OCR using Gemini Vision - returns addresses + token info
-  const performVLMOcr = useCallback(async (imageData: string): Promise<{
+  // Now with client-side retry for transient network failures
+  const performVLMOcr = useCallback(async (imageData: string, retryCount: number = 0): Promise<{
     addresses: string[];
     tokenName: string | null;
     tokenSymbol: string | null;
     truncatedAddresses: string[] | null;
+    metadata?: { model: string; passes: number };
   }> => {
+    const MAX_CLIENT_RETRIES = 2;
+    const RETRY_DELAYS = [1500, 3000];
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-extract`,
         {
@@ -595,16 +603,38 @@ export const TokenScanner = () => {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({ imageBase64: imageData }),
+          signal: controller.signal,
         }
       );
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        
+        // Don't retry on client errors (rate limit, payment, auth)
         if (response.status === 429) {
-          toast.error("AI rate limit reached. Try again later.");
-        } else if (response.status === 402) {
-          toast.error("AI credits exhausted.");
+          toast.error("AI rate limit reached. Try again in a minute.");
+          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
+        if (response.status === 402) {
+          toast.error("AI credits exhausted.");
+          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+        }
+        if (response.status === 401) {
+          toast.error("Authentication required. Please sign in.");
+          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+        }
+
+        // Retry on server errors
+        if (retryCount < MAX_CLIENT_RETRIES && response.status >= 500) {
+          const delay = RETRY_DELAYS[retryCount] || 3000;
+          console.warn(`[VLM OCR] Server error ${response.status}, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_CLIENT_RETRIES})`);
+          toast.info(`AI service busy, retrying...`, { duration: delay });
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return performVLMOcr(imageData, retryCount + 1);
+        }
+
         console.error("VLM OCR error:", response.status, errorData);
         return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
       }
@@ -615,9 +645,20 @@ export const TokenScanner = () => {
         tokenName: data.tokenName || null,
         tokenSymbol: data.tokenSymbol || null,
         truncatedAddresses: data.truncatedAddresses || null,
+        metadata: data.metadata || undefined,
       };
     } catch (error) {
-      console.error("VLM OCR fallback error:", error);
+      // Retry on network errors (timeout, connection refused, etc.)
+      if (retryCount < MAX_CLIENT_RETRIES) {
+        const isAbort = error instanceof DOMException && error.name === 'AbortError';
+        const delay = RETRY_DELAYS[retryCount] || 3000;
+        console.warn(`[VLM OCR] ${isAbort ? 'Timeout' : 'Network error'}, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_CLIENT_RETRIES})`);
+        toast.info(isAbort ? "Request timed out, retrying..." : "Connection issue, retrying...", { duration: delay });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return performVLMOcr(imageData, retryCount + 1);
+      }
+      
+      console.error("VLM OCR failed after retries:", error);
       return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
     }
   }, []);
