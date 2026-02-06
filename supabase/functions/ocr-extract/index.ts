@@ -651,7 +651,61 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[ocr-extract] Final: ${validAddresses.length} valid addresses, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, pass2: ${pass2Attempted}`);
+    // ============================================
+    // PASS 3: Pixel-level raw character extraction as last resort
+    // ============================================
+    let pass3Attempted = false;
+    if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
+      pass3Attempted = true;
+      console.log("[ocr-extract] Pass 1+2 found nothing. Pass 3: Pixel-level raw character extraction with gemini-2.5-pro");
+
+      const pass3Result = await callAIGateway(
+        LOVABLE_API_KEY,
+        "google/gemini-2.5-pro",
+        [
+          { role: "system", content: PIXEL_LEVEL_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: PIXEL_LEVEL_USER_PROMPT },
+              { type: "image_url", image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        1000, // Higher token limit for raw transcription
+        0.3   // Higher temperature for aggressive character interpretation
+      );
+
+      if (pass3Result.ok) {
+        const pass3Content = pass3Result.data?.choices?.[0]?.message?.content || "";
+        console.log(`[ocr-extract] Pass 3 raw response: ${pass3Content}`);
+
+        const pass3Parsed = parseVLMResponse(pass3Content);
+        const pass3Processed = processAddresses(pass3Parsed.rawAddresses);
+
+        if (pass3Processed.validAddresses.length > 0) {
+          validAddresses = pass3Processed.validAddresses;
+          processedAddresses = pass3Processed.processedAddresses;
+          totalCorrections = pass3Processed.totalCorrections;
+          content = pass3Content;
+        }
+
+        if (!parsed.tokenName && pass3Parsed.tokenName) parsed.tokenName = pass3Parsed.tokenName;
+        if (!parsed.tokenSymbol && pass3Parsed.tokenSymbol) parsed.tokenSymbol = pass3Parsed.tokenSymbol;
+        if (parsed.truncatedFragments.length === 0 && pass3Parsed.truncatedFragments.length > 0) {
+          parsed.truncatedFragments = pass3Parsed.truncatedFragments;
+        }
+      } else {
+        console.warn(`[ocr-extract] Pass 3 failed with status ${pass3Result.status}`);
+      }
+    }
+
+    const passCount = pass3Attempted ? 3 : (pass2Attempted ? 2 : 1);
+    const modelUsed = pass3Attempted 
+      ? "gemini-2.5-pro+gemini-2.5-flash+gemini-2.5-pro-pixel" 
+      : (pass2Attempted ? "gemini-2.5-pro+gemini-2.5-flash" : "gemini-2.5-pro");
+
+    console.log(`[ocr-extract] Final: ${validAddresses.length} valid addresses, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, passes: ${passCount}`);
 
     return new Response(
       JSON.stringify({ 
@@ -666,8 +720,8 @@ serve(async (req) => {
           details: processedAddresses
         },
         metadata: {
-          model: pass2Attempted ? "gemini-2.5-pro+gemini-2.5-flash" : "gemini-2.5-pro",
-          passes: pass2Attempted ? 2 : 1,
+          model: modelUsed,
+          passes: passCount,
         }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
