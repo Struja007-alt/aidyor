@@ -375,6 +375,20 @@ interface ParsedVLMResponse {
   tokenSymbol: string | null;
 }
 
+function extractAddressesFromRawText(text: string): string[] {
+  const found: string[] = [];
+  // Ethereum pattern
+  const ethMatches = text.match(/0x[a-fA-F0-9]{40}/g);
+  if (ethMatches) found.push(...ethMatches);
+  // Solana pattern (Base58, 32-44 chars)
+  const solMatches = text.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g);
+  if (solMatches) found.push(...solMatches.filter(m => !m.startsWith('0x')));
+  // Tron pattern
+  const tronMatches = text.match(/T[A-Za-z1-9]{33}/g);
+  if (tronMatches) found.push(...tronMatches);
+  return found;
+}
+
 function parseVLMResponse(content: string): ParsedVLMResponse {
   const lines = content.split("\n").map((l: string) => l.trim()).filter((l: string) => l && l !== "NONE");
   
@@ -401,6 +415,14 @@ function parseVLMResponse(content: string): ParsedVLMResponse {
       if (fragment.length >= 5) {
         truncatedFragments.push(fragment);
       }
+      continue;
+    }
+    
+    // Handle RAW_TEXT: lines from pixel-level pass — mine addresses from raw transcription
+    if (cleaned.startsWith("RAW_TEXT:")) {
+      const rawText = cleaned.replace("RAW_TEXT:", "").trim();
+      const extracted = extractAddressesFromRawText(rawText);
+      rawAddresses.push(...extracted);
       continue;
     }
     
