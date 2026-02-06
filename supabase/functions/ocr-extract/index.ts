@@ -67,7 +67,6 @@ function applyBasicCorrections(text: string): string {
     } else if (CHAR_CORRECTIONS[char]) {
       result += CHAR_CORRECTIONS[char];
     }
-    // Skip invalid characters entirely
   }
   return result;
 }
@@ -87,11 +86,9 @@ function countDifferences(a: string, b: string): number {
 // Correct an Ethereum address
 function correctEthAddress(rawAddress: string): CorrectionResult {
   const corrections: string[] = [];
-  
-  // Fix common prefix issues
   let normalized = rawAddress
     .replace(/^Ox/i, '0x')
-    .replace(/^\\bx(?=[a-fA-F0-9])/i, '0x');
+    .replace(/^\bx(?=[a-fA-F0-9])/i, '0x');
   
   if (!normalized.startsWith('0x')) {
     normalized = '0x' + normalized;
@@ -100,7 +97,6 @@ function correctEthAddress(rawAddress: string): CorrectionResult {
   const prefix = normalized.slice(0, 2);
   const body = normalized.slice(2);
   
-  // Quick path: if already valid
   if (/^[a-fA-F0-9]{40}$/.test(body)) {
     return {
       corrected: prefix + body.toLowerCase(),
@@ -110,17 +106,14 @@ function correctEthAddress(rawAddress: string): CorrectionResult {
     };
   }
   
-  // Apply corrections
   const correctedBody = applyBasicCorrections(body);
   
   if (correctedBody.length === 40 && /^[a-fA-F0-9]{40}$/.test(correctedBody)) {
     const changesNeeded = countDifferences(body, correctedBody);
     const confidence = Math.max(0.5, 1 - (changesNeeded * 0.1));
-    
     if (changesNeeded > 0) {
       corrections.push(`${changesNeeded} character(s) corrected`);
     }
-    
     return {
       corrected: '0x' + correctedBody.toLowerCase(),
       confidence,
@@ -129,7 +122,6 @@ function correctEthAddress(rawAddress: string): CorrectionResult {
     };
   }
   
-  // Fallback: pad or truncate
   const finalAddress = correctedBody.slice(0, 40).padEnd(40, '0').toLowerCase();
   return {
     corrected: '0x' + finalAddress,
@@ -144,14 +136,12 @@ function correctSolanaAddress(rawAddress: string): CorrectionResult {
   const corrections: string[] = [];
   const BASE58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   const BASE58_SET = new Set(BASE58_CHARS);
-  
   const SOLANA_CORRECTIONS: Record<string, string> = {
     '0': 'o', 'O': 'o', 'I': '1', 'l': '1',
   };
   
   let corrected = '';
   let changesCount = 0;
-  
   for (const char of rawAddress) {
     if (BASE58_SET.has(char)) {
       corrected += char;
@@ -167,36 +157,25 @@ function correctSolanaAddress(rawAddress: string): CorrectionResult {
   
   const isValidLength = corrected.length >= 32 && corrected.length <= 44;
   const confidence = isValidLength ? Math.max(0.5, 1 - (changesCount * 0.1)) : 0.2;
-  
   return { corrected, confidence, corrections, type: 'solana' };
 }
 
 // Correct a Tron address (T + 33 alphanumeric)
 function correctTronAddress(rawAddress: string): CorrectionResult {
   const corrections: string[] = [];
-  
   let normalized = rawAddress;
   if (!normalized.startsWith('T')) {
     if (normalized.startsWith('t')) {
       normalized = 'T' + normalized.slice(1);
       corrections.push('Lowercase t corrected to T');
     } else {
-      return {
-        corrected: rawAddress,
-        confidence: 0,
-        corrections: ['Invalid Tron address: must start with T'],
-        type: 'tron'
-      };
+      return { corrected: rawAddress, confidence: 0, corrections: ['Invalid Tron address'], type: 'tron' };
     }
   }
   
-  const TRON_CORRECTIONS: Record<string, string> = {
-    '0': 'O', 'O': 'o', 'I': '1', 'l': '1',
-  };
-  
+  const TRON_CORRECTIONS: Record<string, string> = { '0': 'O', 'O': 'o', 'I': '1', 'l': '1' };
   let corrected = 'T';
   let changesCount = 0;
-  
   for (let i = 1; i < normalized.length; i++) {
     const char = normalized[i];
     if (/[A-Za-z1-9]/.test(char)) {
@@ -213,38 +192,19 @@ function correctTronAddress(rawAddress: string): CorrectionResult {
   
   const isValidLength = corrected.length === 34;
   const confidence = isValidLength ? Math.max(0.5, 1 - (changesCount * 0.1)) : 0.2;
-  
   return { corrected, confidence, corrections, type: 'tron' };
 }
 
 // Auto-detect and correct address
 function correctAddress(rawAddress: string): CorrectionResult {
   const trimmed = rawAddress.trim();
-  
-  // Ethereum: starts with 0x or Ox (OCR error)
-  if (/^[0O]x/i.test(trimmed)) {
-    return correctEthAddress(trimmed);
-  }
-  
-  // Tron: starts with T
-  if (trimmed.startsWith('T') || trimmed.startsWith('t')) {
-    return correctTronAddress(trimmed);
-  }
-  
-  // Solana: Base58, 32-44 chars
+  if (/^[0O]x/i.test(trimmed)) return correctEthAddress(trimmed);
+  if (trimmed.startsWith('T') || trimmed.startsWith('t')) return correctTronAddress(trimmed);
   if (trimmed.length >= 32 && trimmed.length <= 50) {
     const result = correctSolanaAddress(trimmed);
-    if (result.confidence > 0.3) {
-      return result;
-    }
+    if (result.confidence > 0.3) return result;
   }
-  
-  return {
-    type: 'unknown',
-    corrected: trimmed,
-    confidence: 0,
-    corrections: ['Unable to determine address type']
-  };
+  return { type: 'unknown', corrected: trimmed, confidence: 0, corrections: ['Unable to determine address type'] };
 }
 
 // ============================================
@@ -295,7 +255,6 @@ serve(async (req) => {
       );
     }
 
-    // Validate image size
     if (imageBase64.length > MAX_IMAGE_SIZE) {
       return new Response(
         JSON.stringify({ error: "Image too large. Maximum size is 10MB." }),
@@ -303,7 +262,6 @@ serve(async (req) => {
       );
     }
 
-    // Validate image format
     if (!imageBase64.startsWith("data:image/") && !/^[A-Za-z0-9+/=]+$/.test(imageBase64)) {
       return new Response(
         JSON.stringify({ error: "Invalid image format" }),
@@ -332,9 +290,9 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a specialized blockchain contract address extractor with expert accuracy.
+            content: `You are a specialized blockchain contract address and token info extractor.
 
-SUPPORTED FORMATS:
+SUPPORTED ADDRESS FORMATS:
 - Ethereum/EVM: 0x followed by EXACTLY 40 hex characters (0-9, a-f, A-F)
   Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
 - Solana: Base58 encoded, 32-44 characters (no 0, O, I, l)
@@ -352,17 +310,31 @@ CRITICAL INSTRUCTIONS:
    - 6 (six) vs G (letter G) vs b (letter b)
    - 2 (two) vs Z (letter Z)
 3. The address MUST be exactly the right length (40 hex chars for ETH after 0x)
-4. Return ONLY the addresses, one per line
+4. Return results in this EXACT format (one item per line):
+   - Full valid addresses: just the address on its own line
+   - If an address is TRUNCATED (shows "..." or "…" or only shows start and end), output: TRUNCATED:visible_start...visible_end
+   - Token name if visible: TOKEN_NAME:the_token_name
+   - Token symbol if visible: TOKEN_SYMBOL:the_symbol
 5. If you see "contract:" or similar labels, the address follows it
-6. If no valid addresses found, return "NONE"
-7. Do NOT include explanations, markdown, or formatting - just raw addresses`
+6. If no addresses AND no token info found, return "NONE"
+7. Do NOT include explanations, markdown, or formatting
+
+EXAMPLE OUTPUT for a screenshot showing "SUBHUB" token with truncated address "0x9efd...25068c":
+TOKEN_NAME:SUBHUB
+TOKEN_SYMBOL:SUBHUB
+TRUNCATED:0x9efd...25068c
+
+EXAMPLE OUTPUT for a full address with token info:
+TOKEN_NAME:Pepe
+TOKEN_SYMBOL:PEPE
+0x6982508145454Ce325dDbE47a25d4ec3d2311933`
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Extract all contract addresses from this screenshot. Return only the addresses, one per line."
+                text: "Extract all contract addresses and token info from this screenshot. Include full addresses, truncated address fragments (with TRUNCATED: prefix), and any visible token name (TOKEN_NAME:) and symbol (TOKEN_SYMBOL:)."
               },
               {
                 type: "image_url",
@@ -403,19 +375,49 @@ CRITICAL INSTRUCTIONS:
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || "";
     
-    // Parse addresses from response
-    const rawAddresses: string[] = [];
+    console.log(`[ocr-extract] Raw VLM response: ${content}`);
+
+    // Parse response lines
     const lines = content.split("\n").map((l: string) => l.trim()).filter((l: string) => l && l !== "NONE");
     
+    const rawAddresses: string[] = [];
+    const truncatedFragments: string[] = [];
+    let tokenName: string | null = null;
+    let tokenSymbol: string | null = null;
+    
     for (const line of lines) {
-      // Clean up any markdown or extra characters
       const cleaned = line.replace(/[`*\[\]]/g, "").trim();
+      
+      // Parse TOKEN_NAME
+      if (cleaned.startsWith("TOKEN_NAME:")) {
+        tokenName = cleaned.replace("TOKEN_NAME:", "").trim();
+        continue;
+      }
+      
+      // Parse TOKEN_SYMBOL
+      if (cleaned.startsWith("TOKEN_SYMBOL:")) {
+        tokenSymbol = cleaned.replace("TOKEN_SYMBOL:", "").trim();
+        continue;
+      }
+      
+      // Parse TRUNCATED address fragments
+      if (cleaned.startsWith("TRUNCATED:")) {
+        const fragment = cleaned.replace("TRUNCATED:", "").trim();
+        if (fragment.length >= 5) {
+          truncatedFragments.push(fragment);
+        }
+        continue;
+      }
+      
+      // Regular full address
       if (cleaned.length >= 10) {
         rawAddresses.push(cleaned);
       }
     }
 
-    // Apply OCR corrections to each extracted address
+    console.log(`[ocr-extract] Parsed: ${rawAddresses.length} full addresses, ${truncatedFragments.length} truncated, token: ${tokenName || 'none'} (${tokenSymbol || 'none'})`);
+
+    // Apply OCR corrections to full addresses
     interface ProcessedAddress {
       original: string;
       corrected: string;
@@ -439,35 +441,30 @@ CRITICAL INSTRUCTIONS:
         corrections: result.corrections
       });
       
-      // Only include addresses with reasonable confidence
       if (result.confidence >= 0.5) {
-        // Final validation after correction
         const corrected = result.corrected;
-        
-        // Validate Ethereum addresses
         if (/^0x[a-fA-F0-9]{40}$/.test(corrected)) {
           validAddresses.push(corrected.toLowerCase());
           totalCorrections += result.corrections.length;
-        }
-        // Validate Solana addresses (Base58, 32-44 chars)
-        else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(corrected)) {
+        } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(corrected)) {
           validAddresses.push(corrected);
           totalCorrections += result.corrections.length;
-        }
-        // Validate Tron addresses
-        else if (/^T[A-Za-z1-9]{33}$/.test(corrected)) {
+        } else if (/^T[A-Za-z1-9]{33}$/.test(corrected)) {
           validAddresses.push(corrected);
           totalCorrections += result.corrections.length;
         }
       }
     }
 
-    console.log(`[ocr-extract] Extracted ${rawAddresses.length} raw, ${validAddresses.length} valid after correction, ${totalCorrections} corrections applied`);
+    console.log(`[ocr-extract] Extracted ${rawAddresses.length} raw, ${validAddresses.length} valid, ${truncatedFragments.length} truncated, token: ${tokenName}/${tokenSymbol}`);
 
     return new Response(
       JSON.stringify({ 
         addresses: validAddresses, 
         raw: content,
+        tokenName: tokenName || null,
+        tokenSymbol: tokenSymbol || null,
+        truncatedAddresses: truncatedFragments.length > 0 ? truncatedFragments : null,
         corrections: {
           applied: totalCorrections > 0,
           count: totalCorrections,
