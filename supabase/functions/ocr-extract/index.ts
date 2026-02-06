@@ -11,7 +11,6 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8080',
 ];
 
-// Allow Lovable preview domains dynamically
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
@@ -31,11 +30,14 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
 // Max image size: 10MB
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
+// Retry configuration
+const MAX_RETRIES = 2;
+const RETRY_DELAYS = [1000, 2500]; // ms between retries
+
 // ============================================
 // OCR Address Correction Logic (embedded)
 // ============================================
 
-// Character corrections for common OCR misreads
 const CHAR_CORRECTIONS: Record<string, string> = {
   'O': '0', 'o': '0', 'Q': '0',
   'l': '1', 'I': '1', 'i': '1', '|': '1', '!': '1',
@@ -48,7 +50,6 @@ const CHAR_CORRECTIONS: Record<string, string> = {
   'P': 'F',
 };
 
-// Valid hex characters
 const HEX_CHARS = new Set('0123456789abcdefABCDEF');
 
 interface CorrectionResult {
@@ -58,7 +59,6 @@ interface CorrectionResult {
   type: 'ethereum' | 'solana' | 'tron' | 'unknown';
 }
 
-// Apply basic character corrections for hex addresses
 function applyBasicCorrections(text: string): string {
   let result = '';
   for (const char of text) {
@@ -71,7 +71,6 @@ function applyBasicCorrections(text: string): string {
   return result;
 }
 
-// Count character differences between two strings
 function countDifferences(a: string, b: string): number {
   const maxLen = Math.max(a.length, b.length);
   let diff = Math.abs(a.length - b.length);
@@ -83,7 +82,6 @@ function countDifferences(a: string, b: string): number {
   return diff;
 }
 
-// Correct an Ethereum address
 function correctEthAddress(rawAddress: string): CorrectionResult {
   const corrections: string[] = [];
   let normalized = rawAddress
@@ -98,12 +96,7 @@ function correctEthAddress(rawAddress: string): CorrectionResult {
   const body = normalized.slice(2);
   
   if (/^[a-fA-F0-9]{40}$/.test(body)) {
-    return {
-      corrected: prefix + body.toLowerCase(),
-      confidence: 1.0,
-      corrections: [],
-      type: 'ethereum'
-    };
+    return { corrected: prefix + body.toLowerCase(), confidence: 1.0, corrections: [], type: 'ethereum' };
   }
   
   const correctedBody = applyBasicCorrections(body);
@@ -114,12 +107,7 @@ function correctEthAddress(rawAddress: string): CorrectionResult {
     if (changesNeeded > 0) {
       corrections.push(`${changesNeeded} character(s) corrected`);
     }
-    return {
-      corrected: '0x' + correctedBody.toLowerCase(),
-      confidence,
-      corrections,
-      type: 'ethereum'
-    };
+    return { corrected: '0x' + correctedBody.toLowerCase(), confidence, corrections, type: 'ethereum' };
   }
   
   const finalAddress = correctedBody.slice(0, 40).padEnd(40, '0').toLowerCase();
@@ -131,7 +119,6 @@ function correctEthAddress(rawAddress: string): CorrectionResult {
   };
 }
 
-// Correct a Solana address (Base58, no 0, O, I, l allowed)
 function correctSolanaAddress(rawAddress: string): CorrectionResult {
   const corrections: string[] = [];
   const BASE58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -160,7 +147,6 @@ function correctSolanaAddress(rawAddress: string): CorrectionResult {
   return { corrected, confidence, corrections, type: 'solana' };
 }
 
-// Correct a Tron address (T + 33 alphanumeric)
 function correctTronAddress(rawAddress: string): CorrectionResult {
   const corrections: string[] = [];
   let normalized = rawAddress;
@@ -195,7 +181,6 @@ function correctTronAddress(rawAddress: string): CorrectionResult {
   return { corrected, confidence, corrections, type: 'tron' };
 }
 
-// Auto-detect and correct address
 function correctAddress(rawAddress: string): CorrectionResult {
   const trimmed = rawAddress.trim();
   if (/^[0O]x/i.test(trimmed)) return correctEthAddress(trimmed);
@@ -205,6 +190,240 @@ function correctAddress(rawAddress: string): CorrectionResult {
     if (result.confidence > 0.3) return result;
   }
   return { type: 'unknown', corrected: trimmed, confidence: 0, corrections: ['Unable to determine address type'] };
+}
+
+// ============================================
+// AI Gateway call with retry + exponential backoff
+// ============================================
+
+async function callAIGateway(
+  apiKey: string,
+  model: string,
+  messages: any[],
+  maxTokens: number,
+  temperature: number,
+  attempt: number = 0
+): Promise<{ ok: boolean; status: number; data?: any; error?: string }> {
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return { ok: true, status: response.status, data };
+    }
+
+    // Don't retry on rate limits or payment errors
+    if (response.status === 429 || response.status === 402) {
+      return { ok: false, status: response.status, error: `Status ${response.status}` };
+    }
+
+    // Retry on transient server errors (500, 502, 503, 504)
+    if (attempt < MAX_RETRIES && response.status >= 500) {
+      const delay = RETRY_DELAYS[attempt] || 2500;
+      console.log(`[ocr-extract] AI gateway returned ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callAIGateway(apiKey, model, messages, maxTokens, temperature, attempt + 1);
+    }
+
+    const errorText = await response.text().catch(() => 'Unknown error');
+    console.error(`[ocr-extract] AI gateway error: ${response.status} - ${errorText}`);
+    return { ok: false, status: response.status, error: errorText };
+  } catch (err) {
+    // Retry on network errors
+    if (attempt < MAX_RETRIES) {
+      const delay = RETRY_DELAYS[attempt] || 2500;
+      console.log(`[ocr-extract] Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callAIGateway(apiKey, model, messages, maxTokens, temperature, attempt + 1);
+    }
+    return { ok: false, status: 0, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+// ============================================
+// Prompt definitions
+// ============================================
+
+const PRIMARY_SYSTEM_PROMPT = `You are a specialized blockchain contract address and token info extractor.
+
+SUPPORTED ADDRESS FORMATS:
+- Ethereum/EVM: 0x followed by EXACTLY 40 hex characters (0-9, a-f, A-F)
+  Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
+- Solana: Base58 encoded, 32-44 characters (no 0, O, I, l)
+  Example: So11111111111111111111111111111112
+- Tron: T followed by 33 alphanumeric characters
+  Example: T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
+
+CRITICAL INSTRUCTIONS:
+1. Read the contract address VERY CAREFULLY character by character
+2. Pay special attention to similar-looking characters:
+   - 0 (zero) vs O (letter O) vs o (lowercase o)
+   - 1 (one) vs l (lowercase L) vs I (uppercase i)
+   - 8 (eight) vs B (letter B)
+   - 5 (five) vs S (letter S)
+   - 6 (six) vs G (letter G) vs b (letter b)
+   - 2 (two) vs Z (letter Z)
+3. The address MUST be exactly the right length (40 hex chars for ETH after 0x)
+4. Return results in this EXACT format (one item per line):
+   - Full valid addresses: just the address on its own line
+   - If an address is TRUNCATED (shows "..." or "…" or only shows start and end), output: TRUNCATED:visible_start...visible_end
+   - Token name if visible: TOKEN_NAME:the_token_name
+   - Token symbol if visible: TOKEN_SYMBOL:the_symbol
+5. If you see "contract:" or similar labels, the address follows it
+6. If no addresses AND no token info found, return "NONE"
+7. Do NOT include explanations, markdown, or formatting
+
+EXAMPLE OUTPUT for a screenshot showing "SUBHUB" token with truncated address "0x9efd...25068c":
+TOKEN_NAME:SUBHUB
+TOKEN_SYMBOL:SUBHUB
+TRUNCATED:0x9efd...25068c
+
+EXAMPLE OUTPUT for a full address with token info:
+TOKEN_NAME:Pepe
+TOKEN_SYMBOL:PEPE
+0x6982508145454Ce325dDbE47a25d4ec3d2311933`;
+
+const ENHANCED_SYSTEM_PROMPT = `You are an expert blockchain address reader with forensic-level visual analysis skills.
+
+Your task: Extract ALL contract addresses from this cryptocurrency screenshot. Focus on accuracy above all else.
+
+STEP-BY-STEP APPROACH:
+1. First scan the ENTIRE image for any text that looks like a blockchain address
+2. Look for common UI patterns: "Contract:", "Token Address:", "CA:", copy buttons next to addresses
+3. Read each character individually - zoom into the address mentally
+4. Cross-check ambiguous characters using context (hex addresses only use 0-9 and a-f)
+5. Verify the address length is correct before outputting
+
+SUPPORTED FORMATS:
+- Ethereum/EVM: 0x + exactly 40 hex chars → Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
+- Solana: Base58, 32-44 chars (excludes 0, O, I, l) → Example: So11111111111111111111111111111112
+- Tron: T + 33 Base58 chars → Example: T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
+
+COMMON OCR TRAPS TO AVOID:
+- "rn" can look like "m" → read carefully
+- "cl" can look like "d" → verify
+- Dark mode screenshots may have inverted contrast
+- Small/low-res text needs extra care on hex chars
+
+OUTPUT FORMAT (one per line, no markdown, no explanation):
+- Full address: the address itself
+- Truncated: TRUNCATED:visible_start...visible_end
+- Token name: TOKEN_NAME:name
+- Token symbol: TOKEN_SYMBOL:symbol
+- Nothing found: NONE`;
+
+const USER_PROMPT = "Extract all contract addresses and token info from this screenshot. Include full addresses, truncated address fragments (with TRUNCATED: prefix), and any visible token name (TOKEN_NAME:) and symbol (TOKEN_SYMBOL:).";
+
+const ENHANCED_USER_PROMPT = "I need you to very carefully extract contract addresses from this image. The previous attempt found nothing - please look harder at every part of the image. Check headers, footers, sidebars, small text, QR codes, and any data fields. Even partial or truncated addresses are useful. Also extract any token name or symbol visible.";
+
+// ============================================
+// Response parser
+// ============================================
+
+interface ParsedVLMResponse {
+  rawAddresses: string[];
+  truncatedFragments: string[];
+  tokenName: string | null;
+  tokenSymbol: string | null;
+}
+
+function parseVLMResponse(content: string): ParsedVLMResponse {
+  const lines = content.split("\n").map((l: string) => l.trim()).filter((l: string) => l && l !== "NONE");
+  
+  const rawAddresses: string[] = [];
+  const truncatedFragments: string[] = [];
+  let tokenName: string | null = null;
+  let tokenSymbol: string | null = null;
+  
+  for (const line of lines) {
+    const cleaned = line.replace(/[`*\[\]]/g, "").trim();
+    
+    if (cleaned.startsWith("TOKEN_NAME:")) {
+      tokenName = cleaned.replace("TOKEN_NAME:", "").trim();
+      continue;
+    }
+    
+    if (cleaned.startsWith("TOKEN_SYMBOL:")) {
+      tokenSymbol = cleaned.replace("TOKEN_SYMBOL:", "").trim();
+      continue;
+    }
+    
+    if (cleaned.startsWith("TRUNCATED:")) {
+      const fragment = cleaned.replace("TRUNCATED:", "").trim();
+      if (fragment.length >= 5) {
+        truncatedFragments.push(fragment);
+      }
+      continue;
+    }
+    
+    if (cleaned.length >= 10) {
+      rawAddresses.push(cleaned);
+    }
+  }
+  
+  return { rawAddresses, truncatedFragments, tokenName, tokenSymbol };
+}
+
+// ============================================
+// Address validation + correction
+// ============================================
+
+interface ProcessedAddress {
+  original: string;
+  corrected: string;
+  type: string;
+  confidence: number;
+  corrections: string[];
+}
+
+function processAddresses(rawAddresses: string[]): {
+  validAddresses: string[];
+  processedAddresses: ProcessedAddress[];
+  totalCorrections: number;
+} {
+  const processedAddresses: ProcessedAddress[] = [];
+  const validAddresses: string[] = [];
+  let totalCorrections = 0;
+  
+  for (const rawAddr of rawAddresses) {
+    const result = correctAddress(rawAddr);
+    
+    processedAddresses.push({
+      original: rawAddr,
+      corrected: result.corrected,
+      type: result.type,
+      confidence: result.confidence,
+      corrections: result.corrections
+    });
+    
+    if (result.confidence >= 0.5) {
+      const corrected = result.corrected;
+      if (/^0x[a-fA-F0-9]{40}$/.test(corrected)) {
+        validAddresses.push(corrected.toLowerCase());
+        totalCorrections += result.corrections.length;
+      } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(corrected)) {
+        validAddresses.push(corrected);
+        totalCorrections += result.corrections.length;
+      } else if (/^T[A-Za-z1-9]{33}$/.test(corrected)) {
+        validAddresses.push(corrected);
+        totalCorrections += result.corrections.length;
+      }
+    }
+  }
+  
+  return { validAddresses, processedAddresses, totalCorrections };
 }
 
 // ============================================
@@ -278,197 +497,119 @@ serve(async (req) => {
       );
     }
 
-    // Use Gemini Flash for fast vision-based OCR
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: `You are a specialized blockchain contract address and token info extractor.
+    const imageUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/png;base64,${imageBase64}`;
 
-SUPPORTED ADDRESS FORMATS:
-- Ethereum/EVM: 0x followed by EXACTLY 40 hex characters (0-9, a-f, A-F)
-  Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
-- Solana: Base58 encoded, 32-44 characters (no 0, O, I, l)
-  Example: So11111111111111111111111111111112
-- Tron: T followed by 33 alphanumeric characters
-  Example: T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
+    // ============================================
+    // PASS 1: Primary extraction with Gemini 2.5 Pro
+    // ============================================
+    console.log("[ocr-extract] Pass 1: Primary extraction with gemini-2.5-pro");
 
-CRITICAL INSTRUCTIONS:
-1. Read the contract address VERY CAREFULLY character by character
-2. Pay special attention to similar-looking characters:
-   - 0 (zero) vs O (letter O) vs o (lowercase o)
-   - 1 (one) vs l (lowercase L) vs I (uppercase i)
-   - 8 (eight) vs B (letter B)
-   - 5 (five) vs S (letter S)
-   - 6 (six) vs G (letter G) vs b (letter b)
-   - 2 (two) vs Z (letter Z)
-3. The address MUST be exactly the right length (40 hex chars for ETH after 0x)
-4. Return results in this EXACT format (one item per line):
-   - Full valid addresses: just the address on its own line
-   - If an address is TRUNCATED (shows "..." or "…" or only shows start and end), output: TRUNCATED:visible_start...visible_end
-   - Token name if visible: TOKEN_NAME:the_token_name
-   - Token symbol if visible: TOKEN_SYMBOL:the_symbol
-5. If you see "contract:" or similar labels, the address follows it
-6. If no addresses AND no token info found, return "NONE"
-7. Do NOT include explanations, markdown, or formatting
+    const pass1Result = await callAIGateway(
+      LOVABLE_API_KEY,
+      "google/gemini-2.5-pro",
+      [
+        { role: "system", content: PRIMARY_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: USER_PROMPT },
+            { type: "image_url", image_url: { url: imageUrl } }
+          ]
+        }
+      ],
+      500,
+      0.1
+    );
 
-EXAMPLE OUTPUT for a screenshot showing "SUBHUB" token with truncated address "0x9efd...25068c":
-TOKEN_NAME:SUBHUB
-TOKEN_SYMBOL:SUBHUB
-TRUNCATED:0x9efd...25068c
-
-EXAMPLE OUTPUT for a full address with token info:
-TOKEN_NAME:Pepe
-TOKEN_SYMBOL:PEPE
-0x6982508145454Ce325dDbE47a25d4ec3d2311933`
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Extract all contract addresses and token info from this screenshot. Include full addresses, truncated address fragments (with TRUNCATED: prefix), and any visible token name (TOKEN_NAME:) and symbol (TOKEN_SYMBOL:)."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/png;base64,${imageBase64}`
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 500,
-        temperature: 0.1
-      }),
-    });
-
-    if (!response.ok) {
-      const status = response.status;
-      console.error(`[ocr-extract] AI gateway error: ${status}`);
-      
-      if (status === 429) {
+    if (!pass1Result.ok) {
+      if (pass1Result.status === 429) {
         return new Response(
           JSON.stringify({ error: "Too many requests. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (status === 402) {
+      if (pass1Result.status === 402) {
         return new Response(
           JSON.stringify({ error: "Service temporarily unavailable." }),
           { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      return new Response(
-        JSON.stringify({ error: "Service temporarily unavailable" }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    }
+
+    let content = pass1Result.data?.choices?.[0]?.message?.content || "";
+    console.log(`[ocr-extract] Pass 1 raw response: ${content}`);
+
+    let parsed = parseVLMResponse(content);
+    let { validAddresses, processedAddresses, totalCorrections } = processAddresses(parsed.rawAddresses);
+
+    // ============================================
+    // PASS 2: Enhanced re-extraction if Pass 1 found nothing
+    // ============================================
+    let pass2Attempted = false;
+    if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
+      pass2Attempted = true;
+      console.log("[ocr-extract] Pass 1 found nothing. Pass 2: Enhanced re-extraction with gemini-2.5-flash");
+
+      const pass2Result = await callAIGateway(
+        LOVABLE_API_KEY,
+        "google/gemini-2.5-flash",
+        [
+          { role: "system", content: ENHANCED_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: ENHANCED_USER_PROMPT },
+              { type: "image_url", image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        600,
+        0.2 // Slightly higher temperature for creative interpretation
       );
-    }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    
-    console.log(`[ocr-extract] Raw VLM response: ${content}`);
+      if (pass2Result.ok) {
+        const pass2Content = pass2Result.data?.choices?.[0]?.message?.content || "";
+        console.log(`[ocr-extract] Pass 2 raw response: ${pass2Content}`);
 
-    // Parse response lines
-    const lines = content.split("\n").map((l: string) => l.trim()).filter((l: string) => l && l !== "NONE");
-    
-    const rawAddresses: string[] = [];
-    const truncatedFragments: string[] = [];
-    let tokenName: string | null = null;
-    let tokenSymbol: string | null = null;
-    
-    for (const line of lines) {
-      const cleaned = line.replace(/[`*\[\]]/g, "").trim();
-      
-      // Parse TOKEN_NAME
-      if (cleaned.startsWith("TOKEN_NAME:")) {
-        tokenName = cleaned.replace("TOKEN_NAME:", "").trim();
-        continue;
-      }
-      
-      // Parse TOKEN_SYMBOL
-      if (cleaned.startsWith("TOKEN_SYMBOL:")) {
-        tokenSymbol = cleaned.replace("TOKEN_SYMBOL:", "").trim();
-        continue;
-      }
-      
-      // Parse TRUNCATED address fragments
-      if (cleaned.startsWith("TRUNCATED:")) {
-        const fragment = cleaned.replace("TRUNCATED:", "").trim();
-        if (fragment.length >= 5) {
-          truncatedFragments.push(fragment);
+        const pass2Parsed = parseVLMResponse(pass2Content);
+        const pass2Processed = processAddresses(pass2Parsed.rawAddresses);
+
+        // Merge results - Pass 2 supplements Pass 1
+        if (pass2Processed.validAddresses.length > 0) {
+          validAddresses = pass2Processed.validAddresses;
+          processedAddresses = pass2Processed.processedAddresses;
+          totalCorrections = pass2Processed.totalCorrections;
+          content = pass2Content;
         }
-        continue;
-      }
-      
-      // Regular full address
-      if (cleaned.length >= 10) {
-        rawAddresses.push(cleaned);
-      }
-    }
-
-    console.log(`[ocr-extract] Parsed: ${rawAddresses.length} full addresses, ${truncatedFragments.length} truncated, token: ${tokenName || 'none'} (${tokenSymbol || 'none'})`);
-
-    // Apply OCR corrections to full addresses
-    interface ProcessedAddress {
-      original: string;
-      corrected: string;
-      type: string;
-      confidence: number;
-      corrections: string[];
-    }
-    
-    const processedAddresses: ProcessedAddress[] = [];
-    const validAddresses: string[] = [];
-    let totalCorrections = 0;
-    
-    for (const rawAddr of rawAddresses) {
-      const result = correctAddress(rawAddr);
-      
-      processedAddresses.push({
-        original: rawAddr,
-        corrected: result.corrected,
-        type: result.type,
-        confidence: result.confidence,
-        corrections: result.corrections
-      });
-      
-      if (result.confidence >= 0.5) {
-        const corrected = result.corrected;
-        if (/^0x[a-fA-F0-9]{40}$/.test(corrected)) {
-          validAddresses.push(corrected.toLowerCase());
-          totalCorrections += result.corrections.length;
-        } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(corrected)) {
-          validAddresses.push(corrected);
-          totalCorrections += result.corrections.length;
-        } else if (/^T[A-Za-z1-9]{33}$/.test(corrected)) {
-          validAddresses.push(corrected);
-          totalCorrections += result.corrections.length;
+        
+        // Also merge token info and truncated fragments
+        if (!parsed.tokenName && pass2Parsed.tokenName) parsed.tokenName = pass2Parsed.tokenName;
+        if (!parsed.tokenSymbol && pass2Parsed.tokenSymbol) parsed.tokenSymbol = pass2Parsed.tokenSymbol;
+        if (parsed.truncatedFragments.length === 0 && pass2Parsed.truncatedFragments.length > 0) {
+          parsed.truncatedFragments = pass2Parsed.truncatedFragments;
         }
+      } else {
+        console.warn(`[ocr-extract] Pass 2 failed with status ${pass2Result.status}`);
       }
     }
 
-    console.log(`[ocr-extract] Extracted ${rawAddresses.length} raw, ${validAddresses.length} valid, ${truncatedFragments.length} truncated, token: ${tokenName}/${tokenSymbol}`);
+    console.log(`[ocr-extract] Final: ${validAddresses.length} valid addresses, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, pass2: ${pass2Attempted}`);
 
     return new Response(
       JSON.stringify({ 
         addresses: validAddresses, 
         raw: content,
-        tokenName: tokenName || null,
-        tokenSymbol: tokenSymbol || null,
-        truncatedAddresses: truncatedFragments.length > 0 ? truncatedFragments : null,
+        tokenName: parsed.tokenName || null,
+        tokenSymbol: parsed.tokenSymbol || null,
+        truncatedAddresses: parsed.truncatedFragments.length > 0 ? parsed.truncatedFragments : null,
         corrections: {
           applied: totalCorrections > 0,
           count: totalCorrections,
           details: processedAddresses
+        },
+        metadata: {
+          model: pass2Attempted ? "gemini-2.5-pro+gemini-2.5-flash" : "gemini-2.5-pro",
+          passes: pass2Attempted ? 2 : 1,
         }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
