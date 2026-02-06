@@ -728,8 +728,6 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       // Log OCR analytics with enhanced metrics
       const processingTimeMs = Math.round(performance.now() - startTime);
       const method = vlmSucceeded ? 'vlm' : (tesseractSucceeded ? (vlmAttempted ? 'vlm_fallback_tesseract' : 'tesseract') : 'vlm');
-      
-      // Estimate confidence: VLM high (0.95), Tesseract with fixes lower (0.7), Tesseract clean (0.85)
       const confidence = vlmSucceeded ? 0.95 : (tesseractSucceeded ? (fixApplied ? 0.7 : 0.85) : 0);
       
       logOCRAnalytics({
@@ -739,21 +737,39 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         tesseractAttempted,
         tesseractSucceeded,
         addressesFound: addresses.length,
-        addressesValidated: addresses.length, // All returned addresses pass validation
+        addressesValidated: addresses.length,
         processingTimeMs,
         imageSizeBytes,
-        extractedAddress: addresses[0], // Log first extracted address
+        extractedAddress: addresses[0],
         errorType,
         errorMessage,
-        // Enhanced metrics
         confidence,
         charCount,
         rawTextLength: rawTextLength > 0 ? rawTextLength : undefined,
         fixApplied,
       });
       
+      // If no full addresses found but we have token name/symbol, use it as a search fallback
+      if (addresses.length === 0 && (vlmTokenName || vlmTokenSymbol)) {
+        const searchTerm = vlmTokenSymbol || vlmTokenName || '';
+        const truncatedInfo = vlmTruncatedAddresses?.join(', ') || '';
+        
+        toast.info(
+          `Address appears truncated${truncatedInfo ? ` (${truncatedInfo})` : ''}. Searching by token name "${searchTerm}"...`,
+          { duration: 4000 }
+        );
+        
+        // Switch to address mode and trigger a name-based search
+        setScanMode("address");
+        setTokenQuery(searchTerm);
+        setUploadedImage(null);
+        setIsOcrProcessing(false);
+        
+        return [];
+      }
+      
       if (addresses.length === 0) {
-        toast.warning("No contract addresses found in image");
+        toast.warning("No contract addresses found in image. Try a screenshot with a full (non-truncated) address.");
       } else {
         toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}`);
       }
