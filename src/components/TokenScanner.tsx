@@ -578,8 +578,13 @@ export const TokenScanner = () => {
     return null;
   };
 
-  // VLM-based OCR fallback using Gemini Vision
-  const performVLMOcr = useCallback(async (imageData: string): Promise<string[]> => {
+  // VLM-based OCR using Gemini Vision - returns addresses + token info
+  const performVLMOcr = useCallback(async (imageData: string): Promise<{
+    addresses: string[];
+    tokenName: string | null;
+    tokenSymbol: string | null;
+    truncatedAddresses: string[] | null;
+  }> => {
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-extract`,
@@ -601,14 +606,19 @@ export const TokenScanner = () => {
           toast.error("AI credits exhausted.");
         }
         console.error("VLM OCR error:", response.status, errorData);
-        return [];
+        return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
       }
 
       const data = await response.json();
-      return data.addresses || [];
+      return {
+        addresses: data.addresses || [],
+        tokenName: data.tokenName || null,
+        tokenSymbol: data.tokenSymbol || null,
+        truncatedAddresses: data.truncatedAddresses || null,
+      };
     } catch (error) {
       console.error("VLM OCR fallback error:", error);
-      return [];
+      return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
     }
   }, []);
 
