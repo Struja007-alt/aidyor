@@ -328,6 +328,42 @@ const USER_PROMPT = "Extract all contract addresses and token info from this scr
 
 const ENHANCED_USER_PROMPT = "I need you to very carefully extract contract addresses from this image. The previous attempt found nothing - please look harder at every part of the image. Check headers, footers, sidebars, small text, QR codes, and any data fields. Even partial or truncated addresses are useful. Also extract any token name or symbol visible.";
 
+// Pass 3: Pixel-level raw character extraction for extremely difficult images
+const PIXEL_LEVEL_SYSTEM_PROMPT = `You are a raw character transcription engine with pixel-level visual analysis.
+
+CRITICAL DIRECTIVE: Analyze this image pixel by pixel. Ignore ALL graphical elements — icons, logos, charts, borders, backgrounds, gradients, and decorative shapes. Focus SOLELY on alphanumeric characters rendered as text anywhere in the image.
+
+Even if the text is:
+- Blurry or low resolution
+- Upside down or rotated
+- Partially obscured or cropped
+- In dark mode with low contrast
+- Very small or compressed
+- Overlapping with other elements
+
+...transcribe EVERY identifiable character into raw strings.
+
+AFTER raw transcription, scan your output for anything matching these blockchain address patterns:
+- Ethereum/EVM: 0x followed by 40 hex characters (0-9, a-f, A-F)
+- Solana: Base58 string, 32-44 characters (characters: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz)
+- Tron: T followed by 33 Base58 characters
+
+CHARACTER DISAMBIGUATION RULES (apply during transcription):
+- If context is a hex address: O→0, I→1, l→1, S→5, G→6, Z→2
+- If context is Base58: 0→o, O→o, I→1, l→1
+- Adjacent character patterns help: "0x" prefix means hex follows
+- "T" at position 0 followed by 33 alphanumerics = Tron
+
+OUTPUT FORMAT (one per line, no markdown, no explanation):
+- RAW_TEXT:the_raw_transcribed_text (for each text block found)
+- Full valid address on its own line
+- TRUNCATED:visible_start...visible_end
+- TOKEN_NAME:name
+- TOKEN_SYMBOL:symbol
+- NONE if absolutely nothing found`;
+
+const PIXEL_LEVEL_USER_PROMPT = "Two previous AI passes failed to extract any addresses from this image. Perform a pixel-by-pixel analysis: transcribe ALL visible alphanumeric text first as raw strings, then identify any blockchain addresses or token info within the transcribed text. Include even partial or low-confidence matches.";
+
 // ============================================
 // Response parser
 // ============================================
@@ -337,6 +373,20 @@ interface ParsedVLMResponse {
   truncatedFragments: string[];
   tokenName: string | null;
   tokenSymbol: string | null;
+}
+
+function extractAddressesFromRawText(text: string): string[] {
+  const found: string[] = [];
+  // Ethereum pattern
+  const ethMatches = text.match(/0x[a-fA-F0-9]{40}/g);
+  if (ethMatches) found.push(...ethMatches);
+  // Solana pattern (Base58, 32-44 chars)
+  const solMatches = text.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g);
+  if (solMatches) found.push(...solMatches.filter(m => !m.startsWith('0x')));
+  // Tron pattern
+  const tronMatches = text.match(/T[A-Za-z1-9]{33}/g);
+  if (tronMatches) found.push(...tronMatches);
+  return found;
 }
 
 function parseVLMResponse(content: string): ParsedVLMResponse {
@@ -365,6 +415,14 @@ function parseVLMResponse(content: string): ParsedVLMResponse {
       if (fragment.length >= 5) {
         truncatedFragments.push(fragment);
       }
+      continue;
+    }
+    
+    // Handle RAW_TEXT: lines from pixel-level pass — mine addresses from raw transcription
+    if (cleaned.startsWith("RAW_TEXT:")) {
+      const rawText = cleaned.replace("RAW_TEXT:", "").trim();
+      const extracted = extractAddressesFromRawText(rawText);
+      rawAddresses.push(...extracted);
       continue;
     }
     
@@ -593,7 +651,61 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[ocr-extract] Final: ${validAddresses.length} valid addresses, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, pass2: ${pass2Attempted}`);
+    // ============================================
+    // PASS 3: Pixel-level raw character extraction as last resort
+    // ============================================
+    let pass3Attempted = false;
+    if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
+      pass3Attempted = true;
+      console.log("[ocr-extract] Pass 1+2 found nothing. Pass 3: Pixel-level raw character extraction with gemini-2.5-pro");
+
+      const pass3Result = await callAIGateway(
+        LOVABLE_API_KEY,
+        "google/gemini-2.5-pro",
+        [
+          { role: "system", content: PIXEL_LEVEL_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: PIXEL_LEVEL_USER_PROMPT },
+              { type: "image_url", image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        1000, // Higher token limit for raw transcription
+        0.3   // Higher temperature for aggressive character interpretation
+      );
+
+      if (pass3Result.ok) {
+        const pass3Content = pass3Result.data?.choices?.[0]?.message?.content || "";
+        console.log(`[ocr-extract] Pass 3 raw response: ${pass3Content}`);
+
+        const pass3Parsed = parseVLMResponse(pass3Content);
+        const pass3Processed = processAddresses(pass3Parsed.rawAddresses);
+
+        if (pass3Processed.validAddresses.length > 0) {
+          validAddresses = pass3Processed.validAddresses;
+          processedAddresses = pass3Processed.processedAddresses;
+          totalCorrections = pass3Processed.totalCorrections;
+          content = pass3Content;
+        }
+
+        if (!parsed.tokenName && pass3Parsed.tokenName) parsed.tokenName = pass3Parsed.tokenName;
+        if (!parsed.tokenSymbol && pass3Parsed.tokenSymbol) parsed.tokenSymbol = pass3Parsed.tokenSymbol;
+        if (parsed.truncatedFragments.length === 0 && pass3Parsed.truncatedFragments.length > 0) {
+          parsed.truncatedFragments = pass3Parsed.truncatedFragments;
+        }
+      } else {
+        console.warn(`[ocr-extract] Pass 3 failed with status ${pass3Result.status}`);
+      }
+    }
+
+    const passCount = pass3Attempted ? 3 : (pass2Attempted ? 2 : 1);
+    const modelUsed = pass3Attempted 
+      ? "gemini-2.5-pro+gemini-2.5-flash+gemini-2.5-pro-pixel" 
+      : (pass2Attempted ? "gemini-2.5-pro+gemini-2.5-flash" : "gemini-2.5-pro");
+
+    console.log(`[ocr-extract] Final: ${validAddresses.length} valid addresses, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, passes: ${passCount}`);
 
     return new Response(
       JSON.stringify({ 
@@ -608,8 +720,8 @@ serve(async (req) => {
           details: processedAddresses
         },
         metadata: {
-          model: pass2Attempted ? "gemini-2.5-pro+gemini-2.5-flash" : "gemini-2.5-pro",
-          passes: pass2Attempted ? 2 : 1,
+          model: modelUsed,
+          passes: passCount,
         }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
