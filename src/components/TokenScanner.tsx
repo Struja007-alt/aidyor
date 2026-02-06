@@ -675,61 +675,32 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     let charCount = 0;
     let fixApplied = false;
     
-    // Estimate image size from base64
     const imageSizeBytes = Math.round((imageData.length * 3) / 4);
     
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
       
-      // PRIMARY: Use AI Vision (VLM) for accurate address extraction
-      // VLM is much more reliable for crypto addresses than traditional OCR
-      setOcrProgress(10);
-      toast.info("Using AI vision for accuracy...", { duration: 2000 });
-      
       let addresses: string[] = [];
       let vlmTokenName: string | null = null;
       let vlmTokenSymbol: string | null = null;
       let vlmTruncatedAddresses: string[] | null = null;
       
-      try {
-        vlmAttempted = true;
-        setOcrProgress(30);
-        const vlmResult = await performVLMOcr(imageData);
-        setOcrProgress(70);
-        
-        vlmTokenName = vlmResult.tokenName;
-        vlmTokenSymbol = vlmResult.tokenSymbol;
-        vlmTruncatedAddresses = vlmResult.truncatedAddresses;
-        
-        if (vlmResult.addresses.length > 0) {
-          console.log("VLM extracted addresses:", vlmResult.addresses);
-          addresses = vlmResult.addresses;
-          vlmSucceeded = true;
-          charCount = addresses.join('').length;
-        } else if (vlmResult.tokenName || vlmResult.tokenSymbol) {
-          // No full addresses but we got token info - this means address was truncated
-          console.log(`VLM found truncated address. Token: ${vlmResult.tokenName}/${vlmResult.tokenSymbol}, fragments: ${vlmResult.truncatedAddresses?.join(', ')}`);
-        }
-      } catch (vlmError) {
-        console.error("VLM OCR failed, falling back to Tesseract:", vlmError);
-        errorType = 'vlm_error';
-        errorMessage = vlmError instanceof Error ? vlmError.message : 'VLM failed';
-      }
+      // ============================================
+      // PRIORITY 1: Tesseract (fastest, proven highest success rate)
+      // ============================================
+      tesseractAttempted = true;
+      setOcrProgress(5);
+      toast.info("Scanning with fast OCR engine...", { duration: 2000 });
       
-      // FALLBACK: Use Tesseract if VLM failed or found nothing
-      if (addresses.length === 0) {
-        tesseractAttempted = true;
-        setOcrProgress(75);
-        console.log("VLM found no addresses, trying Tesseract fallback...");
-        
+      try {
         // Attempt 1: Preprocessed image with enhanced settings
         const processedImage = await preprocessImage(imageData);
         
         const worker = await createWorker('eng', 1, {
           logger: (m) => {
             if (m.status === 'recognizing text') {
-              setOcrProgress(75 + Math.round(m.progress * 10));
+              setOcrProgress(5 + Math.round(m.progress * 15));
             }
           },
         });
@@ -747,7 +718,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         
         // Attempt 2: Original image (no preprocessing) as fallback
         if (addresses.length === 0) {
-          setOcrProgress(88);
+          setOcrProgress(25);
           console.log("Preprocessed scan failed, trying original image...");
           
           const fallbackWorker = await createWorker('eng', 1);
@@ -761,9 +732,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           charCount = addresses.join('').length;
         }
 
-        // Attempt 3: Try extracting best ETH address from raw OCR text as last resort
+        // Attempt 3: Aggressive ETH address recovery
         if (addresses.length === 0) {
-          setOcrProgress(94);
+          setOcrProgress(30);
           console.log("Standard extraction failed, trying aggressive address recovery...");
           
           const aggressiveWorker = await createWorker('eng', 1);
@@ -781,16 +752,56 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         
         if (addresses.length > 0) {
           tesseractSucceeded = true;
+          console.log("Tesseract extracted addresses:", addresses);
+        }
+      } catch (tesseractError) {
+        console.error("Tesseract OCR failed:", tesseractError);
+        errorType = 'tesseract_error';
+        errorMessage = tesseractError instanceof Error ? tesseractError.message : 'Tesseract failed';
+      }
+      
+      // ============================================
+      // PRIORITY 2: AI Vision (VLM) if Tesseract found nothing
+      // Triple-pass pipeline: Gemini 2.5 Pro → Flash forensic → Pro pixel-level
+      // ============================================
+      if (addresses.length === 0) {
+        vlmAttempted = true;
+        setOcrProgress(40);
+        toast.info("AI vision scanning for deeper analysis...", { duration: 3000 });
+        
+        try {
+          setOcrProgress(50);
+          const vlmResult = await performVLMOcr(imageData);
+          setOcrProgress(85);
+          
+          vlmTokenName = vlmResult.tokenName;
+          vlmTokenSymbol = vlmResult.tokenSymbol;
+          vlmTruncatedAddresses = vlmResult.truncatedAddresses;
+          
+          if (vlmResult.addresses.length > 0) {
+            console.log("VLM extracted addresses:", vlmResult.addresses);
+            addresses = vlmResult.addresses;
+            vlmSucceeded = true;
+            charCount = addresses.join('').length;
+          } else if (vlmResult.tokenName || vlmResult.tokenSymbol) {
+            console.log(`VLM found truncated address. Token: ${vlmResult.tokenName}/${vlmResult.tokenSymbol}, fragments: ${vlmResult.truncatedAddresses?.join(', ')}`);
+          }
+        } catch (vlmError) {
+          console.error("VLM OCR also failed:", vlmError);
+          if (!errorType) {
+            errorType = 'vlm_error';
+            errorMessage = vlmError instanceof Error ? vlmError.message : 'VLM failed';
+          }
         }
       }
       
       setExtractedAddresses(addresses);
       setOcrProgress(100);
       
-      // Log OCR analytics with enhanced metrics
+      // Log OCR analytics
       const processingTimeMs = Math.round(performance.now() - startTime);
-      const method = vlmSucceeded ? 'vlm' : (tesseractSucceeded ? (vlmAttempted ? 'vlm_fallback_tesseract' : 'tesseract') : 'vlm');
-      const confidence = vlmSucceeded ? 0.95 : (tesseractSucceeded ? (fixApplied ? 0.7 : 0.85) : 0);
+      const method = tesseractSucceeded ? (vlmAttempted ? 'vlm_fallback_tesseract' : 'tesseract') : (vlmSucceeded ? 'vlm' : (tesseractAttempted ? 'tesseract' : 'vlm'));
+      const confidence = tesseractSucceeded ? (fixApplied ? 0.7 : 0.85) : (vlmSucceeded ? 0.95 : 0);
       
       logOCRAnalytics({
         method: method as 'vlm' | 'tesseract' | 'vlm_fallback_tesseract',
@@ -821,7 +832,6 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           { duration: 4000 }
         );
         
-        // Switch to address mode and trigger a name-based search
         setScanMode("address");
         setTokenQuery(searchTerm);
         setUploadedImage(null);
@@ -833,7 +843,8 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       if (addresses.length === 0) {
         toast.warning("No contract addresses found in image. Try a screenshot with a full (non-truncated) address.");
       } else {
-        toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}`);
+        const source = tesseractSucceeded ? "Fast OCR" : "AI Vision";
+        toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''} via ${source}`);
       }
       
       return addresses;
@@ -841,7 +852,6 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       console.error("OCR Error:", error);
       toast.error("Failed to process image");
       
-      // Log error analytics
       const processingTimeMs = Math.round(performance.now() - startTime);
       logOCRAnalytics({
         method: vlmAttempted ? 'vlm' : 'tesseract',
