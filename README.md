@@ -53,7 +53,7 @@ React 18.3 + TypeScript + Vite
 ├── Routing: React Router v6
 ├── Forms: React Hook Form + Zod validation
 ├── Mobile: Capacitor (Android/iOS ready)
-└── OCR: Tesseract.js + Gemini Vision
+└── OCR: Tesseract.js + Gemini 2.5 Pro/Flash (dual-pass)
 ```
 
 ### Backend (Lovable Cloud / Supabase Edge Functions)
