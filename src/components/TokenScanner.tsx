@@ -723,12 +723,13 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         setOcrProgress(75);
         console.log("VLM found no addresses, trying Tesseract fallback...");
         
+        // Attempt 1: Preprocessed image with enhanced settings
         const processedImage = await preprocessImage(imageData);
         
         const worker = await createWorker('eng', 1, {
           logger: (m) => {
             if (m.status === 'recognizing text') {
-              setOcrProgress(75 + Math.round(m.progress * 20));
+              setOcrProgress(75 + Math.round(m.progress * 10));
             }
           },
         });
@@ -738,15 +739,17 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         
         rawTextLength = text.length;
         const correctionResult = fixOcrMisreads(text);
-        // Track if any fixes were applied
         fixApplied = correctionResult.corrections > 0;
-        console.log("Tesseract OCR Text (corrected):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
+        console.log("Tesseract OCR (preprocessed):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
         
         addresses = extractAddressesFromText(correctionResult.text);
         charCount = addresses.join('').length;
         
-        // Try original image if processed didn't work
+        // Attempt 2: Original image (no preprocessing) as fallback
         if (addresses.length === 0) {
+          setOcrProgress(88);
+          console.log("Preprocessed scan failed, trying original image...");
+          
           const fallbackWorker = await createWorker('eng', 1);
           const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
           await fallbackWorker.terminate();
@@ -756,6 +759,24 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           fixApplied = fixApplied || fallbackCorrectionResult.corrections > 0;
           addresses = extractAddressesFromText(fallbackCorrectionResult.text);
           charCount = addresses.join('').length;
+        }
+
+        // Attempt 3: Try extracting best ETH address from raw OCR text as last resort
+        if (addresses.length === 0) {
+          setOcrProgress(94);
+          console.log("Standard extraction failed, trying aggressive address recovery...");
+          
+          const aggressiveWorker = await createWorker('eng', 1);
+          const { data: { text: rawText } } = await aggressiveWorker.recognize(processedImage);
+          await aggressiveWorker.terminate();
+          
+          const bestAddress = extractBestEthAddress(rawText);
+          if (bestAddress) {
+            addresses = [bestAddress];
+            charCount = bestAddress.length;
+            fixApplied = true;
+            console.log("Aggressive recovery found:", bestAddress);
+          }
         }
         
         if (addresses.length > 0) {
