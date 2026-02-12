@@ -58,7 +58,7 @@ React 18.3 + TypeScript + Vite
 
 ### Backend (Lovable Cloud / Supabase Edge Functions)
 ```
-Deno Runtime - 18 Edge Functions
+Deno Runtime - 19 Edge Functions
 ├── risk-orchestrator        → Central API gateway (JWT auth)
 ├── market-data-service      → DEXScreener integration
 ├── onchain-data-service     → GoPlus/RugCheck/BSCTrace
@@ -75,6 +75,7 @@ Deno Runtime - 18 Edge Functions
 ├── stripe-checkout          → Stripe subscription checkout
 ├── stripe-check-subscription → Verify active subscriptions
 ├── stripe-customer-portal   → Manage billing via Stripe Portal
+├── stripe-webhook           → Stripe event handler (cancellations, failures, renewals)
 └── passkey-*                → WebAuthn handlers (2 functions)
 ```
 
