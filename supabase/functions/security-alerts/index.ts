@@ -56,7 +56,7 @@ async function fetchCryptoCompareNews(): Promise<SecurityAlert[]> {
     }
     
     const data = await response.json();
-    const articles = data.Data || [];
+    const articles = Array.isArray(data?.Data) ? data.Data : [];
     
     // Filter and map to security alerts
     const securityKeywords = [
