@@ -3,7 +3,7 @@
  * Provides navigation and branding for the app
  */
 
-import { Shield, Menu, Crown } from "lucide-react";
+import { Shield, Menu, Crown, Mail } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,14 @@ export const Header = () => {
             <a href="#watchlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Watchlist
             </a>
+            <a
+              href="mailto:aidyor.app@gmail.com"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+              aria-label="Email AIDYOR support at aidyor.app@gmail.com"
+            >
+              <Mail className="w-4 h-4" />
+              Contact
+            </a>
             <Link 
               to="/subscription" 
               className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors font-medium"
@@ -80,6 +88,14 @@ export const Header = () => {
             </a>
             <a href="#watchlist" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
               Watchlist
+            </a>
+            <a
+              href="mailto:aidyor.app@gmail.com"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+              aria-label="Email AIDYOR support at aidyor.app@gmail.com"
+            >
+              <Mail className="w-4 h-4" />
+              Contact
             </a>
             <Link 
               to="/subscription" 

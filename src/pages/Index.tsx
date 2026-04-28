@@ -4,7 +4,7 @@ import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info, Mail } from "lucide-react";
+import { Shield, Zap, Eye, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -124,14 +124,6 @@ const Index = () => {
                 Always DYOR. This tool provides analysis but not financial advice.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-4">
-                <a
-                  href="mailto:aidyor.app@gmail.com"
-                  className="flex items-center gap-1.5 text-sm text-primary hover:underline"
-                  aria-label="Email AIDYOR support at aidyor.app@gmail.com"
-                >
-                  <Mail className="w-4 h-4" />
-                  Contact
-                </a>
                 <a 
                   href="/privacy-policy" 
                   className="text-sm text-primary hover:underline"
