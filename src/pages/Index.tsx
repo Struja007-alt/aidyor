@@ -112,7 +112,6 @@ const Index = () => {
         </section>
 
 
-        {/* Footer */}
         {/* Contact Section */}
         <section id="contact" className="scroll-mt-20">
           <div className="glass-card p-6 max-w-2xl mx-auto text-center space-y-4">
@@ -143,6 +142,7 @@ const Index = () => {
           </div>
         </section>
 
+        {/* Footer */}
         <footer className="border-t border-border/50 pt-8 pb-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
