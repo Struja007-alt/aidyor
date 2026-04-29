@@ -155,6 +155,8 @@ export const TokenScanner = () => {
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [extractedAddresses, setExtractedAddresses] = useState<string[]>([]);
+  const [extractedConfidences, setExtractedConfidences] = useState<number[]>([]);
+  const [ocrStage, setOcrStage] = useState<string>("");
 
   // Structured JSON security data state
   const [structuredSecurityResult, setStructuredSecurityResult] = useState<ParsedSecurityResult | null>(null);
