@@ -20,13 +20,31 @@ const Index = () => {
       
       <main className="container mx-auto px-4 py-8 space-y-12">
         {/* Hero Section */}
-        <section className="text-center py-8 md:py-12">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 text-primary text-sm font-medium mb-6">
+        <section className="relative text-center py-10 md:py-16 overflow-hidden">
+          {/* Ambient neon glows */}
+          <div className="pointer-events-none absolute inset-0 -z-10">
+            <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary/15 rounded-full blur-3xl animate-pulse" />
+            <div className="absolute top-10 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
+            <div
+              className="absolute inset-0 opacity-[0.04]"
+              style={{
+                backgroundImage:
+                  'linear-gradient(hsl(var(--primary)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary)) 1px, transparent 1px)',
+                backgroundSize: '48px 48px',
+              }}
+            />
+          </div>
+
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 text-primary text-sm font-medium mb-6 backdrop-blur-sm shadow-lg shadow-primary/10">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
             <Zap className="w-4 h-4" />
             Real-time Token Analysis
           </div>
-          <h1 className="font-display text-4xl md:text-6xl font-bold text-foreground mb-4 tracking-tight inline-flex items-center justify-center gap-2 flex-wrap">
-            Protect Your <span className="text-gradient-safe">Crypto</span>
+          <h1 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-4 tracking-tight inline-flex items-center justify-center gap-3 flex-wrap">
+            Protect Your <span className="text-gradient-safe drop-shadow-[0_0_25px_hsl(var(--primary)/0.35)]">Crypto</span>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -38,24 +56,28 @@ const Index = () => {
               </Tooltip>
             </TooltipProvider>
           </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
-            Advanced token scanner with risk analysis and screenshot-based token detection.
+          <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
+            Advanced multi-chain token scanner. Paste a contract, search by name, or drop a screenshot — we surface the risk in seconds.
           </p>
           
           {/* Feature Highlights */}
-          <div className="flex flex-wrap justify-center gap-4 text-sm">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/30">
-              <span>🔐</span>
-              <span className="text-muted-foreground">No wallet connection required</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/30">
-              <span>📡</span>
-              <span className="text-muted-foreground">Real-time blockchain data</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/30">
-              <span>🛡️</span>
-              <span className="text-muted-foreground">Scam pattern detection</span>
-            </div>
+          <div className="flex flex-wrap justify-center gap-2 md:gap-3 text-sm">
+            {[
+              { icon: '🔐', label: 'No wallet connection required' },
+              { icon: '📡', label: 'Real-time blockchain data' },
+              { icon: '🛡️', label: 'Scam pattern detection' },
+              { icon: '⚡', label: 'AI-powered OCR' },
+            ].map((chip) => (
+              <div
+                key={chip.label}
+                className="group flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/40 border border-border/40 hover:border-primary/40 hover:bg-secondary/60 transition-colors"
+              >
+                <span>{chip.icon}</span>
+                <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+                  {chip.label}
+                </span>
+              </div>
+            ))}
           </div>
         </section>
 
