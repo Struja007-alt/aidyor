@@ -584,6 +584,7 @@ export const TokenScanner = () => {
   // Now with client-side retry for transient network failures
   const performVLMOcr = useCallback(async (imageData: string, retryCount: number = 0): Promise<{
     addresses: string[];
+    addressConfidences: number[];
     tokenName: string | null;
     tokenSymbol: string | null;
     truncatedAddresses: string[] | null;
@@ -617,15 +618,15 @@ export const TokenScanner = () => {
         // Don't retry on client errors (rate limit, payment, auth)
         if (response.status === 429) {
           toast.error("AI rate limit reached. Try again in a minute.");
-          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+          return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
         if (response.status === 402) {
           toast.error("AI credits exhausted.");
-          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+          return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
         if (response.status === 401) {
           toast.error("Authentication required. Please sign in.");
-          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+          return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
 
         // Retry on server errors
@@ -638,12 +639,13 @@ export const TokenScanner = () => {
         }
 
         console.error("VLM OCR error:", response.status, errorData);
-        return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+        return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
       }
 
       const data = await response.json();
       return {
         addresses: data.addresses || [],
+        addressConfidences: data.addressConfidences || [],
         tokenName: data.tokenName || null,
         tokenSymbol: data.tokenSymbol || null,
         truncatedAddresses: data.truncatedAddresses || null,
@@ -661,7 +663,7 @@ export const TokenScanner = () => {
       }
       
       console.error("VLM OCR failed after retries:", error);
-      return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+      return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
     }
   }, []);
 
