@@ -2338,6 +2338,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     <h4 className="font-display text-sm text-primary uppercase">
                       Extracted Addresses ({extractedAddresses.length})
                     </h4>
+                    {extractedAddresses.length > 1 && (
+                      <span className="ml-auto text-[10px] uppercase tracking-wider text-accent bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full">
+                        Multi-token
+                      </span>
+                    )}
                   </div>
                   
                   {/* OCR Warning */}
@@ -2349,7 +2354,13 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </div>
                   
                   <div className="space-y-2">
-                    {extractedAddresses.map((address, i) => (
+                    {extractedAddresses.map((address, i) => {
+                      const conf = extractedConfidences[i] ?? 80;
+                      const confTone =
+                        conf >= 85 ? "bg-safe/15 text-safe border-safe/30"
+                        : conf >= 65 ? "bg-warning/15 text-warning border-warning/30"
+                        : "bg-danger/15 text-danger border-danger/30";
+                      return (
                       <button
                         key={i}
                         onClick={() => {
@@ -2362,14 +2373,23 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                           tokenQuery === address && "border-primary bg-primary/10"
                         )}
                       >
-                        <code className="text-xs text-foreground font-mono truncate flex-1">
-                          {address}
-                        </code>
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className={cn(
+                            "text-[10px] font-display px-1.5 py-0.5 rounded border shrink-0",
+                            confTone
+                          )}>
+                            {conf}%
+                          </span>
+                          <code className="text-xs text-foreground font-mono truncate flex-1">
+                            {address}
+                          </code>
+                        </div>
                         <span className="text-xs text-primary shrink-0">
-                          {tokenQuery === address ? "Selected" : "Tap to scan"}
+                          {tokenQuery === address ? "Selected" : "Scan"}
                         </span>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
