@@ -2126,11 +2126,21 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                 
                 {/* OCR Processing Overlay */}
                 {isOcrProcessing && (
-                  <div className="absolute inset-0 bg-background/80 backdrop-blur flex flex-col items-center justify-center">
+                  <div className="absolute inset-0 bg-background/85 backdrop-blur-md flex flex-col items-center justify-center px-4">
                     <div className="scan-line" />
-                    <Loader2 className="w-12 h-12 text-primary animate-spin mb-2" />
-                    <p className="font-display text-primary text-sm">OCR PROCESSING... {ocrProgress}%</p>
-                    <p className="text-xs text-muted-foreground mt-1">Extracting contract addresses</p>
+                    <Loader2 className="w-12 h-12 text-primary animate-spin mb-3" />
+                    <p className="font-display text-primary text-sm tracking-wider mb-1">
+                      OCR PROCESSING — {ocrProgress}%
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3 text-center">
+                      {ocrStage || "Extracting contract addresses…"}
+                    </p>
+                    <div className="w-full max-w-xs h-1.5 rounded-full bg-secondary/60 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary via-accent to-primary transition-all duration-300"
+                        style={{ width: `${ocrProgress}%` }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
