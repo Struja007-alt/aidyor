@@ -1473,6 +1473,8 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       const imageData = e.target?.result as string;
       setUploadedImage(imageData);
       setExtractedAddresses([]);
+      setExtractedConfidences([]);
+      setOcrStage("");
       
       // Auto-run OCR to extract addresses
       toast.info("Analyzing screenshot for contract addresses...");
@@ -1524,6 +1526,8 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     setDisplayAddress("");
     setTokenQuery("");
     setExtractedAddresses([]);
+    setExtractedConfidences([]);
+    setOcrStage("");
     setOcrProgress(0);
   };
 
