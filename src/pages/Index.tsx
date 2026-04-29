@@ -4,7 +4,7 @@ import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info } from "lucide-react";
+import { Shield, Zap, Eye, Info, Mail, Twitter } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -111,6 +111,36 @@ const Index = () => {
           <Watchlist />
         </section>
 
+
+        {/* Contact Section */}
+        <section id="contact" className="scroll-mt-20">
+          <div className="glass-card p-6 max-w-2xl mx-auto text-center space-y-4">
+            <h2 className="font-display text-xl font-bold text-foreground">Get in Touch</h2>
+            <p className="text-sm text-muted-foreground">
+              Questions, feedback, or partnership inquiries? Reach out below.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="mailto:aidyor.app@gmail.com"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-colors text-sm font-medium"
+                aria-label="Email AIDYOR support"
+              >
+                <Mail className="w-4 h-4" />
+                aidyor.app@gmail.com
+              </a>
+              <a
+                href="https://x.com/aidyor33641"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary/50 border border-border/50 text-foreground hover:bg-secondary transition-colors text-sm font-medium"
+                aria-label="Follow AIDYOR on X"
+              >
+                <Twitter className="w-4 h-4" />
+                @aidyor33641
+              </a>
+            </div>
+          </div>
+        </section>
 
         {/* Footer */}
         <footer className="border-t border-border/50 pt-8 pb-4">
