@@ -1832,10 +1832,12 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     <div className="space-y-6">
       {/* Unified Token Search & Scan */}
       {scanMode === "address" ? (
-        <div className="glass-card p-8 animate-fade-in relative overflow-hidden">
+        <div className="glass-card p-6 md:p-8 animate-fade-in relative overflow-hidden border border-primary/10 hover:border-primary/20 transition-colors">
           {/* Decorative elements */}
-          <div className="absolute top-0 left-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
-          <div className="absolute bottom-0 right-0 w-40 h-40 bg-accent/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          <div className="absolute top-0 left-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute bottom-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          {/* Top neon accent line */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
           
           <div className="relative space-y-6">
             {/* Header */}
