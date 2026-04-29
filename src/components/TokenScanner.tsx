@@ -684,8 +684,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
+      setOcrStage("Preprocessing image…");
+      setExtractedConfidences([]);
       
       let addresses: string[] = [];
+      let confidences: number[] = [];
       let vlmTokenName: string | null = null;
       let vlmTokenSymbol: string | null = null;
       let vlmTruncatedAddresses: string[] | null = null;
@@ -695,6 +698,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       // ============================================
       tesseractAttempted = true;
       setOcrProgress(5);
+      setOcrStage("Fast OCR engine (Tesseract)…");
       toast.info("Scanning with fast OCR engine...", { duration: 2000 });
       
       try {
@@ -718,11 +722,14 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         console.log("Tesseract OCR (preprocessed):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
         
         addresses = extractAddressesFromText(correctionResult.text);
+        // Tesseract baseline confidence (lower if we had to correct chars)
+        confidences = addresses.map(() => fixApplied ? 70 : 88);
         charCount = addresses.join('').length;
         
         // Attempt 2: Original image (no preprocessing) as fallback
         if (addresses.length === 0) {
           setOcrProgress(25);
+          setOcrStage("Retrying with original image…");
           console.log("Preprocessed scan failed, trying original image...");
           
           const fallbackWorker = await createWorker('eng', 1);
@@ -733,12 +740,14 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           const fallbackCorrectionResult = fixOcrMisreads(fallbackText);
           fixApplied = fixApplied || fallbackCorrectionResult.corrections > 0;
           addresses = extractAddressesFromText(fallbackCorrectionResult.text);
+          confidences = addresses.map(() => fixApplied ? 65 : 82);
           charCount = addresses.join('').length;
         }
 
         // Attempt 3: Aggressive ETH address recovery
         if (addresses.length === 0) {
           setOcrProgress(30);
+          setOcrStage("Aggressive character recovery…");
           console.log("Standard extraction failed, trying aggressive address recovery...");
           
           const aggressiveWorker = await createWorker('eng', 1);
@@ -748,6 +757,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           const bestAddress = extractBestEthAddress(rawText);
           if (bestAddress) {
             addresses = [bestAddress];
+            confidences = [55];
             charCount = bestAddress.length;
             fixApplied = true;
             console.log("Aggressive recovery found:", bestAddress);
@@ -766,17 +776,19 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       
       // ============================================
       // PRIORITY 2: AI Vision (VLM) if Tesseract found nothing
-      // Triple-pass pipeline: Gemini 2.5 Pro → Flash forensic → Pro pixel-level
+      // Parallel Pass 1 (Pro + Flash) → forensic → pixel-level
       // ============================================
       if (addresses.length === 0) {
         vlmAttempted = true;
         setOcrProgress(40);
+        setOcrStage("AI vision scanning (parallel Pro + Flash)…");
         toast.info("AI vision scanning for deeper analysis...", { duration: 3000 });
         
         try {
           setOcrProgress(50);
           const vlmResult = await performVLMOcr(imageData);
           setOcrProgress(85);
+          setOcrStage("Validating extracted addresses…");
           
           vlmTokenName = vlmResult.tokenName;
           vlmTokenSymbol = vlmResult.tokenSymbol;
@@ -785,6 +797,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           if (vlmResult.addresses.length > 0) {
             console.log("VLM extracted addresses:", vlmResult.addresses);
             addresses = vlmResult.addresses;
+            confidences = vlmResult.addressConfidences && vlmResult.addressConfidences.length === addresses.length
+              ? vlmResult.addressConfidences
+              : addresses.map(() => 90);
             vlmSucceeded = true;
             charCount = addresses.join('').length;
           } else if (vlmResult.tokenName || vlmResult.tokenSymbol) {
@@ -800,7 +815,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       }
       
       setExtractedAddresses(addresses);
+      setExtractedConfidences(confidences);
       setOcrProgress(100);
+      setOcrStage(addresses.length > 0 ? "Done" : "");
       
       // Log OCR analytics
       const processingTimeMs = Math.round(performance.now() - startTime);
