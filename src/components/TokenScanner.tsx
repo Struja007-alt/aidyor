@@ -155,6 +155,8 @@ export const TokenScanner = () => {
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [extractedAddresses, setExtractedAddresses] = useState<string[]>([]);
+  const [extractedConfidences, setExtractedConfidences] = useState<number[]>([]);
+  const [ocrStage, setOcrStage] = useState<string>("");
 
   // Structured JSON security data state
   const [structuredSecurityResult, setStructuredSecurityResult] = useState<ParsedSecurityResult | null>(null);
@@ -582,6 +584,7 @@ export const TokenScanner = () => {
   // Now with client-side retry for transient network failures
   const performVLMOcr = useCallback(async (imageData: string, retryCount: number = 0): Promise<{
     addresses: string[];
+    addressConfidences: number[];
     tokenName: string | null;
     tokenSymbol: string | null;
     truncatedAddresses: string[] | null;
@@ -615,15 +618,15 @@ export const TokenScanner = () => {
         // Don't retry on client errors (rate limit, payment, auth)
         if (response.status === 429) {
           toast.error("AI rate limit reached. Try again in a minute.");
-          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+          return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
         if (response.status === 402) {
           toast.error("AI credits exhausted.");
-          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+          return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
         if (response.status === 401) {
           toast.error("Authentication required. Please sign in.");
-          return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+          return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
         }
 
         // Retry on server errors
@@ -636,12 +639,13 @@ export const TokenScanner = () => {
         }
 
         console.error("VLM OCR error:", response.status, errorData);
-        return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+        return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
       }
 
       const data = await response.json();
       return {
         addresses: data.addresses || [],
+        addressConfidences: data.addressConfidences || [],
         tokenName: data.tokenName || null,
         tokenSymbol: data.tokenSymbol || null,
         truncatedAddresses: data.truncatedAddresses || null,
@@ -659,7 +663,7 @@ export const TokenScanner = () => {
       }
       
       console.error("VLM OCR failed after retries:", error);
-      return { addresses: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
+      return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
     }
   }, []);
 
@@ -680,8 +684,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
+      setOcrStage("Preprocessing image…");
+      setExtractedConfidences([]);
       
       let addresses: string[] = [];
+      let confidences: number[] = [];
       let vlmTokenName: string | null = null;
       let vlmTokenSymbol: string | null = null;
       let vlmTruncatedAddresses: string[] | null = null;
@@ -691,6 +698,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       // ============================================
       tesseractAttempted = true;
       setOcrProgress(5);
+      setOcrStage("Fast OCR engine (Tesseract)…");
       toast.info("Scanning with fast OCR engine...", { duration: 2000 });
       
       try {
@@ -714,11 +722,14 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         console.log("Tesseract OCR (preprocessed):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
         
         addresses = extractAddressesFromText(correctionResult.text);
+        // Tesseract baseline confidence (lower if we had to correct chars)
+        confidences = addresses.map(() => fixApplied ? 70 : 88);
         charCount = addresses.join('').length;
         
         // Attempt 2: Original image (no preprocessing) as fallback
         if (addresses.length === 0) {
           setOcrProgress(25);
+          setOcrStage("Retrying with original image…");
           console.log("Preprocessed scan failed, trying original image...");
           
           const fallbackWorker = await createWorker('eng', 1);
@@ -729,12 +740,14 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           const fallbackCorrectionResult = fixOcrMisreads(fallbackText);
           fixApplied = fixApplied || fallbackCorrectionResult.corrections > 0;
           addresses = extractAddressesFromText(fallbackCorrectionResult.text);
+          confidences = addresses.map(() => fixApplied ? 65 : 82);
           charCount = addresses.join('').length;
         }
 
         // Attempt 3: Aggressive ETH address recovery
         if (addresses.length === 0) {
           setOcrProgress(30);
+          setOcrStage("Aggressive character recovery…");
           console.log("Standard extraction failed, trying aggressive address recovery...");
           
           const aggressiveWorker = await createWorker('eng', 1);
@@ -744,6 +757,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           const bestAddress = extractBestEthAddress(rawText);
           if (bestAddress) {
             addresses = [bestAddress];
+            confidences = [55];
             charCount = bestAddress.length;
             fixApplied = true;
             console.log("Aggressive recovery found:", bestAddress);
@@ -762,17 +776,19 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       
       // ============================================
       // PRIORITY 2: AI Vision (VLM) if Tesseract found nothing
-      // Triple-pass pipeline: Gemini 2.5 Pro → Flash forensic → Pro pixel-level
+      // Parallel Pass 1 (Pro + Flash) → forensic → pixel-level
       // ============================================
       if (addresses.length === 0) {
         vlmAttempted = true;
         setOcrProgress(40);
+        setOcrStage("AI vision scanning (parallel Pro + Flash)…");
         toast.info("AI vision scanning for deeper analysis...", { duration: 3000 });
         
         try {
           setOcrProgress(50);
           const vlmResult = await performVLMOcr(imageData);
           setOcrProgress(85);
+          setOcrStage("Validating extracted addresses…");
           
           vlmTokenName = vlmResult.tokenName;
           vlmTokenSymbol = vlmResult.tokenSymbol;
@@ -781,6 +797,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           if (vlmResult.addresses.length > 0) {
             console.log("VLM extracted addresses:", vlmResult.addresses);
             addresses = vlmResult.addresses;
+            confidences = vlmResult.addressConfidences && vlmResult.addressConfidences.length === addresses.length
+              ? vlmResult.addressConfidences
+              : addresses.map(() => 90);
             vlmSucceeded = true;
             charCount = addresses.join('').length;
           } else if (vlmResult.tokenName || vlmResult.tokenSymbol) {
@@ -796,7 +815,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       }
       
       setExtractedAddresses(addresses);
+      setExtractedConfidences(confidences);
       setOcrProgress(100);
+      setOcrStage(addresses.length > 0 ? "Done" : "");
       
       // Log OCR analytics
       const processingTimeMs = Math.round(performance.now() - startTime);
@@ -1452,6 +1473,8 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       const imageData = e.target?.result as string;
       setUploadedImage(imageData);
       setExtractedAddresses([]);
+      setExtractedConfidences([]);
+      setOcrStage("");
       
       // Auto-run OCR to extract addresses
       toast.info("Analyzing screenshot for contract addresses...");
@@ -1503,6 +1526,8 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     setDisplayAddress("");
     setTokenQuery("");
     setExtractedAddresses([]);
+    setExtractedConfidences([]);
+    setOcrStage("");
     setOcrProgress(0);
   };
 
@@ -1807,10 +1832,12 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     <div className="space-y-6">
       {/* Unified Token Search & Scan */}
       {scanMode === "address" ? (
-        <div className="glass-card p-8 animate-fade-in relative overflow-hidden">
+        <div className="glass-card p-6 md:p-8 animate-fade-in relative overflow-hidden border border-primary/10 hover:border-primary/20 transition-colors">
           {/* Decorative elements */}
-          <div className="absolute top-0 left-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
-          <div className="absolute bottom-0 right-0 w-40 h-40 bg-accent/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          <div className="absolute top-0 left-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute bottom-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          {/* Top neon accent line */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
           
           <div className="relative space-y-6">
             {/* Header */}
@@ -2101,11 +2128,21 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                 
                 {/* OCR Processing Overlay */}
                 {isOcrProcessing && (
-                  <div className="absolute inset-0 bg-background/80 backdrop-blur flex flex-col items-center justify-center">
+                  <div className="absolute inset-0 bg-background/85 backdrop-blur-md flex flex-col items-center justify-center px-4">
                     <div className="scan-line" />
-                    <Loader2 className="w-12 h-12 text-primary animate-spin mb-2" />
-                    <p className="font-display text-primary text-sm">OCR PROCESSING... {ocrProgress}%</p>
-                    <p className="text-xs text-muted-foreground mt-1">Extracting contract addresses</p>
+                    <Loader2 className="w-12 h-12 text-primary animate-spin mb-3" />
+                    <p className="font-display text-primary text-sm tracking-wider mb-1">
+                      OCR PROCESSING — {ocrProgress}%
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3 text-center">
+                      {ocrStage || "Extracting contract addresses…"}
+                    </p>
+                    <div className="w-full max-w-xs h-1.5 rounded-full bg-secondary/60 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary via-accent to-primary transition-all duration-300"
+                        style={{ width: `${ocrProgress}%` }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -2303,6 +2340,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     <h4 className="font-display text-sm text-primary uppercase">
                       Extracted Addresses ({extractedAddresses.length})
                     </h4>
+                    {extractedAddresses.length > 1 && (
+                      <span className="ml-auto text-[10px] uppercase tracking-wider text-accent bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full">
+                        Multi-token
+                      </span>
+                    )}
                   </div>
                   
                   {/* OCR Warning */}
@@ -2314,7 +2356,13 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </div>
                   
                   <div className="space-y-2">
-                    {extractedAddresses.map((address, i) => (
+                    {extractedAddresses.map((address, i) => {
+                      const conf = extractedConfidences[i] ?? 80;
+                      const confTone =
+                        conf >= 85 ? "bg-safe/15 text-safe border-safe/30"
+                        : conf >= 65 ? "bg-warning/15 text-warning border-warning/30"
+                        : "bg-danger/15 text-danger border-danger/30";
+                      return (
                       <button
                         key={i}
                         onClick={() => {
@@ -2327,14 +2375,23 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                           tokenQuery === address && "border-primary bg-primary/10"
                         )}
                       >
-                        <code className="text-xs text-foreground font-mono truncate flex-1">
-                          {address}
-                        </code>
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className={cn(
+                            "text-[10px] font-display px-1.5 py-0.5 rounded border shrink-0",
+                            confTone
+                          )}>
+                            {conf}%
+                          </span>
+                          <code className="text-xs text-foreground font-mono truncate flex-1">
+                            {address}
+                          </code>
+                        </div>
                         <span className="text-xs text-primary shrink-0">
-                          {tokenQuery === address ? "Selected" : "Tap to scan"}
+                          {tokenQuery === address ? "Selected" : "Scan"}
                         </span>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
