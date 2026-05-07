@@ -79,6 +79,24 @@ const Index = () => {
               </div>
             ))}
           </div>
+
+          {/* JunkStartups Badge */}
+          <div className="mt-6 flex justify-center">
+            <a
+              href="https://junkstartups.com/api/go/aidyor-ai-crypto-scanner"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Featured on JunkStartups"
+            >
+              <img
+                src="https://junkstartups.com/api/badge/aidyor-ai-crypto-scanner?theme=dark"
+                alt="Featured on JunkStartups"
+                width={250}
+                height={44}
+                loading="lazy"
+              />
+            </a>
+          </div>
         </section>
 
         {/* Feature Stats */}
