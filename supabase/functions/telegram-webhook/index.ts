@@ -41,6 +41,29 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
+/**
+ * Derive a stable webhook secret from the bot token.
+ * Telegram echoes this value in the `X-Telegram-Bot-Api-Secret-Token` header
+ * for every update when set via setWebhook. We use it to authenticate that
+ * incoming Telegram updates (messages, pre_checkout_query, successful_payment)
+ * actually originated from Telegram and are not spoofed by an attacker.
+ */
+async function getWebhookSecret(): Promise<string> {
+  const data = new TextEncoder().encode(`telegram-webhook:${TELEGRAM_BOT_TOKEN}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function safeEqual(a: string | null, b: string): boolean {
+  if (!a || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 // Subscription config
 const PREMIUM_PRICE_CENTS = 999; // $9.99
 const PREMIUM_DURATION_DAYS = 30;
