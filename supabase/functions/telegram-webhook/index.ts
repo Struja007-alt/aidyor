@@ -934,10 +934,15 @@ async function getWebhookInfo(): Promise<Response> {
  */
 async function setWebhook(url: string): Promise<Response> {
   try {
+    const secretToken = await getWebhookSecret();
     const response = await fetch(`${TELEGRAM_API}/setWebhook`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({
+        url,
+        secret_token: secretToken,
+        allowed_updates: ["message", "edited_message", "pre_checkout_query"],
+      }),
     });
     const data = await response.json();
     console.log("[Telegram] Webhook set response:", data);
