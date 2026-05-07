@@ -976,6 +976,27 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
+
+    // Detect Telegram-originated updates (messages, payments, pre-checkout).
+    // These MUST be authenticated via the secret token header set during
+    // setWebhook, otherwise an attacker could POST a fake `successful_payment`
+    // to grant themselves a premium subscription.
+    const isTelegramUpdate =
+      typeof body.update_id === "number" &&
+      (body.message || body.edited_message || body.pre_checkout_query);
+
+    if (isTelegramUpdate) {
+      const expected = await getWebhookSecret();
+      const provided = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
+      if (!safeEqual(provided, expected)) {
+        console.warn("[Telegram] Rejected unauthenticated webhook update");
+        return new Response(
+          JSON.stringify({ success: false, error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Log request type only - do NOT log sensitive payment data or PII
     const logSafeType = body.pre_checkout_query ? 'pre_checkout_query' : 
                         body.message?.successful_payment ? 'successful_payment' :
