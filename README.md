@@ -20,7 +20,9 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **📈 Market Data Dashboard** - Real-time price, liquidity, volume
 
 ### Advanced Features
-- **📸 OCR Screenshot Scanner** - Extract addresses from images using a **data-driven prioritized pipeline**: Tesseract.js (fastest, highest real-world success rate) → Triple-Pass AI fallback: Gemini 2.5 Pro (primary) → Gemini 2.5 Flash (forensic) → Gemini 2.5 Pro pixel-level raw character extraction (last resort), with automatic retry, exponential backoff, aggressive address recovery, and token-name search for truncated addresses
+- **📸 OCR Screenshot Scanner** - Extract addresses from images using a **data-driven prioritized pipeline**: Tesseract.js (fastest, highest real-world success rate) → **Parallel AI fallback**: Gemini 2.5 Pro and Gemini 2.5 Flash run **concurrently** via `Promise.all`, results unioned by address with highest-confidence wins. Includes multi-token detection, per-address confidence scoring, automatic retry, exponential backoff, and token-name search for truncated addresses
+- **🎨 Refined Cyberpunk Hero** - Ambient neon glows, animated grid pattern, pulsing live indicator, feature chips, and JunkStartups featured badge
+- **📊 Live Scanner Feedback** - Animated gradient progress bar with OCR stage tracking ("AI Vision", "Validating") and color-coded confidence badges per extracted address
 - **🚨 Live Security Alerts** - Real-time crypto scam warnings and hack reports
 - **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k) - 5 free/hour
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
@@ -29,6 +31,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **💳 Stripe Payments** - Web-based subscription checkout + customer portal
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
 - **📱 Push Notifications** - Browser alerts for whale activity
+- **✉️ Contact & Social** - Email + X (@aidyor33641) links in dedicated Contact section
 
 ### Security Analysis
 - Honeypot detection (GoPlus, BSCTrace)
@@ -192,6 +195,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - ✅ **Input validation** - Email RFC 5322 regex, address format validation
 - ✅ **Generic error responses** - No implementation details leaked to clients
 - ✅ **Sanitized logging** - Sensitive payment/PII data excluded from logs
+- ✅ **Telegram webhook secret** - `X-Telegram-Bot-Api-Secret-Token` header verified on every update; spoofed `successful_payment` events rejected with 401
 
 ### Frontend Security
 - ✅ **Input sanitization** via Zod schemas (`src/lib/security/inputSanitizer.ts`)
