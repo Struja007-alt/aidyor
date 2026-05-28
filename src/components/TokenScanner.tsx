@@ -315,8 +315,10 @@ export const TokenScanner = () => {
           return;
         }
 
-        // Upscale image for better OCR (2x if small)
-        const scale = Math.max(1, Math.min(2, 1500 / Math.max(img.width, img.height)));
+        // Upscale image for better OCR. Push small/low-res screenshots up
+        // to ~1800px on the longest edge (max 3x) so Tesseract has enough
+        // pixels per character, while leaving already-large images alone.
+        const scale = Math.max(1, Math.min(3, 1800 / Math.max(img.width, img.height)));
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
 

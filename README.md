@@ -70,7 +70,7 @@ Deno Runtime - 19 Edge Functions
 ├── simulation-engine        → Pump/dump detection
 ├── whale-alerts             → Transaction monitoring (public)
 ├── security-alerts          → Live scam/hack news feed (public)
-├── ocr-extract              → Dual-pass VLM OCR (Gemini 2.5 Pro + Flash) + retry + address correction
+├── ocr-extract              → Triple-pass VLM OCR (Gemini 3.1 Pro Preview + 3.5 Flash parallel, 3.1 Pro forensic + pixel-level fallback) + retry + address correction
 ├── ocr-analytics            → OCR metrics logging (CER/WER/EMR)
 ├── ocr-analytics-dashboard  → Aggregated OCR analytics API
 ├── telegram-webhook         → Telegram bot & payments
