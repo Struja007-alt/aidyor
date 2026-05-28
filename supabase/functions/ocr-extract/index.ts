@@ -565,11 +565,14 @@ serve(async (req) => {
     // valid addresses first to cut latency roughly in half on common
     // screenshots, while keeping Pro accuracy as a fallback.
     // ============================================
-    console.log("[ocr-extract] Pass 1 (parallel): gemini-2.5-pro + gemini-2.5-flash");
+    // Upgraded to the newest free Gemini 3.x preview models for higher
+    // accuracy + lower latency than 2.5. Pro-preview = forensic accuracy,
+    // 3.5-flash = fast confirmation pass.
+    console.log("[ocr-extract] Pass 1 (parallel): gemini-3.1-pro-preview + gemini-3.5-flash");
 
     const proCall = callAIGateway(
       LOVABLE_API_KEY,
-      "google/gemini-2.5-pro",
+      "google/gemini-3.1-pro-preview",
       [
         { role: "system", content: PRIMARY_SYSTEM_PROMPT },
         {
@@ -586,7 +589,7 @@ serve(async (req) => {
 
     const flashCall = callAIGateway(
       LOVABLE_API_KEY,
-      "google/gemini-2.5-flash",
+      "google/gemini-3.5-flash",
       [
         { role: "system", content: PRIMARY_SYSTEM_PROMPT },
         {
@@ -664,11 +667,11 @@ serve(async (req) => {
     let pass2Attempted = false;
     if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
       pass2Attempted = true;
-      console.log("[ocr-extract] Pass 1 (parallel) found nothing. Pass 2: Enhanced re-extraction with gemini-2.5-pro forensic prompt");
+      console.log("[ocr-extract] Pass 1 (parallel) found nothing. Pass 2: Enhanced re-extraction with gemini-3.1-pro-preview forensic prompt");
 
       const pass2Result = await callAIGateway(
         LOVABLE_API_KEY,
-        "google/gemini-2.5-pro",
+        "google/gemini-3.1-pro-preview",
         [
           { role: "system", content: ENHANCED_SYSTEM_PROMPT },
           {
@@ -722,11 +725,11 @@ serve(async (req) => {
     let pass3Attempted = false;
     if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
       pass3Attempted = true;
-      console.log("[ocr-extract] Pass 1+2 found nothing. Pass 3: Pixel-level raw character extraction with gemini-2.5-pro");
+      console.log("[ocr-extract] Pass 1+2 found nothing. Pass 3: Pixel-level raw character extraction with gemini-3.1-pro-preview");
 
       const pass3Result = await callAIGateway(
         LOVABLE_API_KEY,
-        "google/gemini-2.5-pro",
+        "google/gemini-3.1-pro-preview",
         [
           { role: "system", content: PIXEL_LEVEL_SYSTEM_PROMPT },
           {
@@ -773,9 +776,11 @@ serve(async (req) => {
     }
 
     const passCount = pass3Attempted ? 3 : (pass2Attempted ? 2 : 1);
-    const modelUsed = pass3Attempted 
-      ? "pro+flash(parallel)+pro-forensic+pro-pixel"
-      : (pass2Attempted ? "pro+flash(parallel)+pro-forensic" : "pro+flash(parallel)");
+    const modelUsed = pass3Attempted
+      ? "gemini-3.1-pro+3.5-flash(parallel)+3.1-pro-forensic+3.1-pro-pixel"
+      : (pass2Attempted
+        ? "gemini-3.1-pro+3.5-flash(parallel)+3.1-pro-forensic"
+        : "gemini-3.1-pro+3.5-flash(parallel)");
 
     console.log(`[ocr-extract] Final: ${validAddresses.length} valid addresses, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, passes: ${passCount}`);
 
