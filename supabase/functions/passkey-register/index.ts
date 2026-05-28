@@ -166,12 +166,11 @@ serve(async (req) => {
     );
 
   } catch (error: unknown) {
-    console.error('Error in passkey-register:', error);
+    console.error('[passkey-register] Internal error:', error);
     const origin = req.headers.get('origin');
     const corsHeaders = getCorsHeaders(origin);
-    const message = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: 'Registration failed. Please try again.' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
