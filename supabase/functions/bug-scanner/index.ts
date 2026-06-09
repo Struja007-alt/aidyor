@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
+
+const PRODUCT_IDS = {
+  pro: "prod_TsmarvHsLfmOgX",
+  whale_pro: "prod_TsmahG5mQUlguv",
+} as const;
 
 // ---------- CORS ----------
 const ALLOWED_ORIGINS = [
@@ -291,17 +297,27 @@ serve(async (req) => {
     }
     const userId = userData.user.id;
 
-    // ----- Pro gate: must have active Pro OR Whale Pro -----
-    const { data: sub } = await supabase
-      .from('premium_subscriptions')
-      .select('tier, status, current_period_end')
-      .eq('user_id', userId)
-      .in('status', ['active', 'trialing'])
-      .maybeSingle();
-
-    const now = new Date();
-    const active = sub && (!sub.current_period_end || new Date(sub.current_period_end) > now);
-    if (!active) {
+    // ----- Pro gate: must have active Pro OR Whale Pro via Stripe -----
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    let hasPro = false;
+    if (stripeKey && userData.user.email) {
+      try {
+        const stripe = new Stripe(stripeKey, { apiVersion: '2025-08-27.basil' });
+        const customers = await stripe.customers.list({ email: userData.user.email, limit: 1 });
+        if (customers.data.length > 0) {
+          const subs = await stripe.subscriptions.list({ customer: customers.data[0].id, status: 'active' });
+          for (const s of subs.data) {
+            for (const item of s.items.data) {
+              const pid = item.price.product as string;
+              if (pid === PRODUCT_IDS.pro || pid === PRODUCT_IDS.whale_pro) hasPro = true;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[bug-scanner] Stripe check failed:', e);
+      }
+    }
+    if (!hasPro) {
       return new Response(JSON.stringify({
         error: 'PRO_REQUIRED',
         message: 'Smart Contract Bug Scanner is a Pro feature. Upgrade to unlock unlimited audits.',
