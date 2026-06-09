@@ -318,6 +318,7 @@ impact on your exit strategy.
 - [ ] Browser extension (Chrome/Firefox)
 - [ ] Push notification alerts
 - [ ] Premium tier rate limiting (free vs Pro scans)
+- [x] **Smart Contract Bug Scanner (Pro)** — Pre-audit scanner that fetches verified Solidity source via Etherscan V2 multichain API and runs a dual-engine review: 12 static vulnerability patterns (reentrancy, tx.origin auth, delegatecall abuse, selfdestruct, weak randomness, mintable supply, mutable buy/sell tax, blacklists, unprotected initializers, floating pragma, outdated Solidity, low-level call) + AI deep audit (Gemini 3.1 Pro) producing severity-rated findings, A–F security grade, and remediation guidance. Supports 8 EVM chains (Ethereum, BNB Chain, Polygon, Arbitrum, Base, Avalanche, Optimism, Fantom); Solana shown as limited-analysis fallback.
 
 ### Phase 3: Scale (Q3-Q4 2026)
 - [ ] Mobile app (iOS/Android)

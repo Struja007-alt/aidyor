@@ -28,6 +28,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
 - **🤖 Telegram Bot** - Scan tokens and receive alerts via @aidyor_bot
 - **💎 Premium Subscriptions** - Pro $9.99/mo (unlimited scans) + Whale Pro $49/mo add-on
+- **🐛 Smart Contract Bug Scanner (Pro)** - Pre-audit scanner for verified Solidity contracts on 8 EVM chains. Dual engine: 12 static vulnerability patterns (reentrancy, tx.origin, delegatecall, selfdestruct, weak randomness, mintable supply, mutable tax, blacklist, unprotected initializer, etc.) + AI deep audit via Gemini 3.1 Pro. Returns severity-rated findings, A–F security grade, and remediation steps.
 - **💳 Stripe Payments** - Web-based subscription checkout + customer portal
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
 - **📱 Push Notifications** - Browser alerts for whale activity
@@ -231,6 +232,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Token standard detection (BEP, ERC, SPL)
 - [x] Comprehensive security audit (0 critical issues)
 - [x] Edge function hardening (JWT, CORS, input validation)
+- [x] Smart Contract Bug Scanner (Pro, dual-engine static + AI)
 
 ### In Progress
 - [ ] Mobile app (Capacitor configured, ready for build)

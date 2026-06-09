@@ -1,5 +1,6 @@
 import { Header } from "@/components/Header";
 import { TokenScanner } from "@/components/TokenScanner";
+import { BugScanner } from "@/components/BugScanner";
 import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
@@ -123,6 +124,15 @@ const Index = () => {
           <TokenScanner />
         </section>
 
+        {/* Bug Scanner Section */}
+        <section id="bug-scanner" className="scroll-mt-20">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-1 h-8 bg-accent rounded-full" />
+            <h2 className="font-display text-2xl font-bold text-foreground">Smart Contract Bug Scanner</h2>
+            <span className="text-[10px] uppercase tracking-widest text-primary border border-primary/40 px-2 py-0.5 rounded-full">Pro</span>
+          </div>
+          <BugScanner />
+        </section>
 
         {/* Security News Section */}
         <section id="security-news" className="scroll-mt-20">
