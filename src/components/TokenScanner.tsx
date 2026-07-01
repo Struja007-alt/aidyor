@@ -874,6 +874,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     } catch (error) {
       console.error("OCR Error:", error);
       toast.error("Failed to process image");
+      (window as any).gtag?.('event', 'screenshot_upload_fail', {
+        reason: 'processing_error',
+      });
       
       const processingTimeMs = Math.round(performance.now() - startTime);
       logOCRAnalytics({
