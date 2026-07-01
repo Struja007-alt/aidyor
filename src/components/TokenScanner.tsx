@@ -1506,6 +1506,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     };
     reader.onerror = () => {
       toast.error("Failed to read image file");
+      (window as any).gtag?.('event', 'screenshot_upload_fail', {
+        reason: 'file_read_error',
+      });
     };
     reader.readAsDataURL(file);
   }, [performOCR]);
