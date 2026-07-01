@@ -145,31 +145,33 @@ export function BugScanner() {
       </div>
 
       {/* Form */}
-      <div className="flex flex-col md:flex-row gap-2">
-        <Select value={chain} onValueChange={setChain} disabled={loading || !hasAccess}>
-          <SelectTrigger className="md:w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CHAINS.map((c) => (
-              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          placeholder="0x… contract address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          disabled={loading || !hasAccess}
-          className="font-mono"
-        />
-        <Button onClick={runScan} disabled={loading || !hasAccess} className="md:w-40">
-          {loading ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Auditing…</>
-          ) : (
-            <><Bug className="w-4 h-4" /> Run Audit</>
-          )}
-        </Button>
+      <div className={!hasAccess ? "opacity-50 pointer-events-none" : undefined}>
+        <div className="flex flex-col md:flex-row gap-2">
+          <Select value={chain} onValueChange={setChain} disabled={loading || !hasAccess}>
+            <SelectTrigger className="md:w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CHAINS.map((c) => (
+                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="0x… contract address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            disabled={loading || !hasAccess}
+            className="font-mono"
+          />
+          <Button onClick={runScan} disabled={loading || !hasAccess} className="md:w-40">
+            {loading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Auditing…</>
+            ) : (
+              <><Bug className="w-4 h-4" /> Run Audit</>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Locked preview */}
