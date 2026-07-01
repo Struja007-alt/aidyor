@@ -176,7 +176,7 @@ export function analyzeTokenRisk(pairs: DexPair[]): {
   // Liquidity check
   const liquidity = mainPair.liquidity?.usd || 0;
   if (liquidity >= 100000) {
-    factors.push({ name: 'Liquidity', status: 'safe', description: `$${(liquidity / 1000).toFixed(0)}K locked liquidity` });
+    factors.push({ name: 'Liquidity', status: 'safe', description: `$${(liquidity / 1000).toFixed(0)}K liquidity` });
     score += 15;
   } else if (liquidity >= 10000) {
     factors.push({ name: 'Liquidity', status: 'warning', description: `$${(liquidity / 1000).toFixed(0)}K liquidity - moderate` });
