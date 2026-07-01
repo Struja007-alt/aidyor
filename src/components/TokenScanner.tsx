@@ -874,6 +874,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     } catch (error) {
       console.error("OCR Error:", error);
       toast.error("Failed to process image");
+      (window as any).gtag?.('event', 'screenshot_upload_fail', {
+        reason: 'processing_error',
+      });
       
       const processingTimeMs = Math.round(performance.now() - startTime);
       logOCRAnalytics({
@@ -1480,6 +1483,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       
       // Auto-run OCR to extract addresses
       toast.info("Analyzing screenshot for contract addresses...");
+      (window as any).gtag?.('event', 'screenshot_upload_start');
       const addresses = await performOCR(imageData);
       
       if (addresses.length > 0) {
@@ -1487,15 +1491,24 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         setTokenQuery(firstAddress);
         setDisplayAddress(firstAddress);
         toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}! Auto-scanning first one...`);
+        (window as any).gtag?.('event', 'screenshot_upload_success', {
+          address_count: addresses.length,
+        });
         
         // Auto-trigger scan with the first extracted address
         handleScanWithAddress(firstAddress);
       } else {
         toast.warning("No contract addresses found. Try pasting manually.");
+        (window as any).gtag?.('event', 'screenshot_upload_fail', {
+          reason: 'no_addresses_found',
+        });
       }
     };
     reader.onerror = () => {
       toast.error("Failed to read image file");
+      (window as any).gtag?.('event', 'screenshot_upload_fail', {
+        reason: 'file_read_error',
+      });
     };
     reader.readAsDataURL(file);
   }, [performOCR]);
