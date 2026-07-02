@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { useOCRDashboard } from '@/hooks/useOCRDashboard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,9 @@ import {
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))'];
 
 const OCRDashboard = () => {
+  useEffect(() => {
+    document.title = "OCR Analytics Dashboard | AIDYOR";
+  }, []);
   const [days, setDays] = useState(30);
   const { data, isLoading, error } = useOCRDashboard(days);
 

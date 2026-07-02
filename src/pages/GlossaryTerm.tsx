@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useParams, Navigate } from "react-router-dom";
 import { ArrowLeft, BookOpen, AlertTriangle, TrendingUp, Coins, Landmark, Info } from "lucide-react";
 
@@ -397,6 +398,10 @@ const categoryColors: Record<string, string> = {
 const GlossaryTerm = () => {
   const { slug } = useParams<{ slug: string }>();
   const term = slug ? termDetails[slug] : null;
+
+  useEffect(() => {
+    document.title = term ? `${term.term} | AIDYOR Glossary` : "Glossary | AIDYOR";
+  }, [term]);
 
   if (!term) {
     return <Navigate to="/glossary" replace />;

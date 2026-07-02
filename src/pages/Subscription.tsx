@@ -10,6 +10,9 @@ import { Check, Crown, Zap, Anchor, RefreshCw, ExternalLink, ArrowLeft, Send, Lo
 import { toast } from 'sonner';
 
 export default function Subscription() {
+  useEffect(() => {
+    document.title = "Subscription Plans | AIDYOR";
+  }, []);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();

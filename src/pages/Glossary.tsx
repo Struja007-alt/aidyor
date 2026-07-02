@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft, BookOpen, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 interface GlossaryTerm {
   term: string;
@@ -52,6 +52,9 @@ const categoryColors: Record<string, string> = {
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 const Glossary = () => {
+  useEffect(() => {
+    document.title = "Glossary | AIDYOR";
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
 

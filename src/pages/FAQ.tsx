@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, HelpCircle, AlertTriangle, Shield, Search, Coins, Lock, Users } from "lucide-react";
 import {
@@ -8,6 +9,9 @@ import {
 } from "@/components/ui/accordion";
 
 const FAQ = () => {
+  useEffect(() => {
+    document.title = "FAQ | AIDYOR";
+  }, []);
   const faqCategories = [
     {
       icon: AlertTriangle,

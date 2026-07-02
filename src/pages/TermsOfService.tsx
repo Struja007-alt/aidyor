@@ -1,7 +1,11 @@
+import { useEffect } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const TermsOfService = () => {
+  useEffect(() => {
+    document.title = "Terms of Service | AIDYOR";
+  }, []);
   return (
     <div className="min-h-screen bg-background text-foreground py-12 px-4">
       <div className="max-w-4xl mx-auto">
