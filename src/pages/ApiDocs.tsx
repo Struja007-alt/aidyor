@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Code, Key, Zap, BarChart3, Copy, Check, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,9 @@ import { Separator } from "@/components/ui/separator";
  * API Documentation page with interactive code examples
  */
 const ApiDocs = () => {
+  useEffect(() => {
+    document.title = "API Documentation | AIDYOR";
+  }, []);
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {

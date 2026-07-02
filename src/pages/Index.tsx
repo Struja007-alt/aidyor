@@ -84,16 +84,16 @@ const Index = () => {
         </section>
 
         {/* Feature Stats */}
-        <section className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
+        <section className="grid grid-cols-3 gap-2 sm:gap-4 max-w-3xl mx-auto">
           {[
             { icon: Shield, label: "Tokens Scanned", value: "2.4M+" },
             { icon: Eye, label: "Scams Detected", value: "128K" },
             { icon: Zap, label: "Networks", value: "9" },
           ].map((stat, i) => (
-            <div key={i} className="glass-card p-4 text-center">
+            <div key={i} className="glass-card p-3 sm:p-4 text-center">
               <stat.icon className="w-6 h-6 text-primary mx-auto mb-2" />
-              <p className="font-display text-2xl font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
+              <p className="font-display text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">{stat.label}</p>
             </div>
           ))}
         </section>

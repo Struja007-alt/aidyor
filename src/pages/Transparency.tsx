@@ -1,7 +1,11 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Shield, AlertTriangle, Info, Calculator, Eye, EyeOff, Zap, Search, CheckCircle, XCircle } from "lucide-react";
 
 const Transparency = () => {
+  useEffect(() => {
+    document.title = "Transparency | AIDYOR";
+  }, []);
   return (
     <div className="min-h-screen bg-background py-12 px-4">
       <div className="max-w-4xl mx-auto">

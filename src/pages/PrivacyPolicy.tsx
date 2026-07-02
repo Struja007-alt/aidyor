@@ -1,7 +1,11 @@
+import { useEffect } from "react";
 import { ArrowLeft, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const PrivacyPolicy = () => {
+  useEffect(() => {
+    document.title = "Privacy Policy | AIDYOR";
+  }, []);
   return (
     <div className="min-h-screen bg-background text-foreground py-12 px-4">
       <div className="max-w-4xl mx-auto">
