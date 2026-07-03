@@ -9,20 +9,21 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { prefetchCoinGeckoTokens } from "@/lib/api/coingecko";
+import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import NotFound from "./pages/NotFound";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import TermsOfService from "./pages/TermsOfService";
-import CookiePolicy from "./pages/CookiePolicy";
-import Disclaimer from "./pages/Disclaimer";
-import Transparency from "./pages/Transparency";
-import FAQ from "./pages/FAQ";
-import Glossary from "./pages/Glossary";
-import GlossaryTerm from "./pages/GlossaryTerm";
-import ApiDocs from "./pages/ApiDocs";
-import Subscription from "./pages/Subscription";
-import OCRDashboard from "./pages/OCRDashboard";
+const Auth = lazy(() => import("./pages/Auth"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./pages/TermsOfService"));
+const CookiePolicy = lazy(() => import("./pages/CookiePolicy"));
+const Disclaimer = lazy(() => import("./pages/Disclaimer"));
+const Transparency = lazy(() => import("./pages/Transparency"));
+const FAQ = lazy(() => import("./pages/FAQ"));
+const Glossary = lazy(() => import("./pages/Glossary"));
+const GlossaryTerm = lazy(() => import("./pages/GlossaryTerm"));
+const ApiDocs = lazy(() => import("./pages/ApiDocs"));
+const Subscription = lazy(() => import("./pages/Subscription"));
+const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
 
 /**
  * Optimized QueryClient configuration for better caching and performance
@@ -60,7 +61,8 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
+          <Suspense fallback={<div className="min-h-screen bg-background" />}>
+            <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
@@ -76,7 +78,8 @@ const App = () => (
             <Route path="/ocr-dashboard" element={<OCRDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>
