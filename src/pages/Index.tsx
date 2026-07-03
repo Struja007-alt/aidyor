@@ -19,9 +19,9 @@ const Index = () => {
       <DisclaimerDialog />
       <Header />
       
-      <main className="container mx-auto px-4 py-8 space-y-12">
+      <main className="container mx-auto px-4 py-8 space-y-8 md:space-y-12">
         {/* Hero Section */}
-        <section className="relative text-center py-10 md:py-16 overflow-hidden">
+        <section className="relative text-center py-6 md:py-16 overflow-hidden">
           {/* Ambient neon glows */}
           <div className="pointer-events-none absolute inset-0 -z-10">
             <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary/15 rounded-full blur-3xl animate-pulse" />
