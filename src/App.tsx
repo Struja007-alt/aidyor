@@ -25,6 +25,8 @@ const GlossaryTerm = lazy(() => import("./pages/GlossaryTerm"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const Subscription = lazy(() => import("./pages/Subscription"));
 const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
+const Blog = lazy(() => import("./pages/Blog"));
+const BlogPost = lazy(() => import("./pages/BlogPost"));
 
 /**
  * Optimized QueryClient configuration for better caching and performance
@@ -78,6 +80,8 @@ const App = () => (
             <Route path="/api-docs" element={<ApiDocs />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="/ocr-dashboard" element={<OCRDashboard />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
             </Routes>
