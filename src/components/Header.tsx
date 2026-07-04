@@ -49,6 +49,9 @@ export const Header = () => {
             <a href="#watchlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Watchlist
             </a>
+            <Link to="/blog" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+              Blog
+            </Link>
             <a
               href="mailto:aidyor.app@gmail.com"
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
@@ -89,6 +92,13 @@ export const Header = () => {
             <a href="#watchlist" className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors">
               Watchlist
             </a>
+            <Link
+              to="/blog"
+              onClick={() => setMobileMenuOpen(false)}
+              className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              Blog
+            </Link>
             <a
               href="mailto:aidyor.app@gmail.com"
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
