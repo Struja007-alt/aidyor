@@ -91,6 +91,7 @@ const App = () => (
       </TooltipProvider>
     </AuthProvider>
     </QueryClientProvider>
+    <InstallBanner />
   </ErrorBoundary>
 );
 
