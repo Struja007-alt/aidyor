@@ -5,7 +5,7 @@ import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info, Mail } from "lucide-react";
+import { Shield, Zap, Eye, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
