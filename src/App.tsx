@@ -11,6 +11,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { prefetchCoinGeckoTokens } from "@/lib/api/coingecko";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
+import { InstallBanner } from "@/components/InstallBanner";
 import Index from "./pages/Index";
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -90,6 +91,7 @@ const App = () => (
       </TooltipProvider>
     </AuthProvider>
     </QueryClientProvider>
+    <InstallBanner />
   </ErrorBoundary>
 );
 
