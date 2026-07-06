@@ -1,11 +1,12 @@
 import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 import { TokenScanner } from "@/components/TokenScanner";
 import { BugScanner } from "@/components/BugScanner";
 import { Watchlist } from "@/components/Watchlist";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
-import { Shield, Zap, Eye, Info, Mail } from "lucide-react";
+import { Shield, Zap, Eye, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -144,95 +145,8 @@ const Index = () => {
         </section>
 
 
-        {/* Contact Section */}
-        <section id="contact" className="scroll-mt-20">
-          <div className="glass-card p-6 max-w-2xl mx-auto text-center space-y-4">
-            <h2 className="font-display text-xl font-bold text-foreground">Get in Touch</h2>
-            <p className="text-sm text-muted-foreground">
-              Questions, feedback, or partnership inquiries? Reach out below.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <a
-                href="mailto:aidyor.app@gmail.com"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-colors text-sm font-medium"
-                aria-label="Email AIDYOR support"
-              >
-                <Mail className="w-4 h-4" />
-                aidyor.app@gmail.com
-              </a>
-              <a
-                href="https://x.com/aidyor33641"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary/50 border border-border/50 text-foreground hover:bg-secondary transition-colors text-sm font-medium"
-                aria-label="Follow AIDYOR on X"
-              >
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                @aidyor33641
-              </a>
-            </div>
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="border-t border-border/50 pt-8 pb-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-primary" />
-              <span className="font-display text-foreground">AIDYOR</span>
-            </div>
-            <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4">
-              <p className="text-sm text-muted-foreground text-center">
-                Always DYOR. This tool provides analysis but not financial advice.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-4">
-                <a 
-                  href="/privacy-policy" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Privacy Policy
-                </a>
-                <a 
-                  href="/terms-of-service" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Terms of Service
-                </a>
-                <a 
-                  href="/cookie-policy" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Cookie Policy
-                </a>
-                <a 
-                  href="/disclaimer" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Disclaimer
-                </a>
-                <a 
-                  href="/transparency" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Transparency
-                </a>
-                <a 
-                  href="/faq" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  FAQ
-                </a>
-                <a 
-                  href="/glossary" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Glossary
-                </a>
-              </div>
-            </div>
-          </div>
-        </footer>
       </main>
+      <Footer />
     </div>
   );
 };
