@@ -147,6 +147,7 @@ const BlogPost = () => {
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
       `}</style>
+      <Footer />
     </div>
   );
 };
