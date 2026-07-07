@@ -2237,6 +2237,19 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                         {getTokenStatusBadge(selectedResult.tokenStatus)}
                       </div>
                     </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(window.location.href);
+                        toast("Link copied!", {
+                          description: "Anyone with this link can view this scan result.",
+                        });
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors shrink-0"
+                      aria-label="Share scan result link"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      Share
+                    </button>
                   </div>
 
                   {/* Risk Score Display */}

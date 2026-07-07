@@ -233,6 +233,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Comprehensive security audit (0 critical issues)
 - [x] Edge function hardening (JWT, CORS, input validation)
 - [x] Smart Contract Bug Scanner (Pro, dual-engine static + AI)
+- [x] Shareable scan result links with auto-trigger and one-click Share button
 
 ### In Progress
 - [ ] Mobile app (Capacitor configured, ready for build)
