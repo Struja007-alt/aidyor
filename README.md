@@ -23,7 +23,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **📸 OCR Screenshot Scanner** - Extract addresses from images using a **data-driven prioritized pipeline**: Tesseract.js (fastest, highest real-world success rate) → **Parallel AI fallback**: Gemini 2.5 Pro and Gemini 2.5 Flash run **concurrently** via `Promise.all`, results unioned by address with highest-confidence wins. Includes multi-token detection, per-address confidence scoring, automatic retry, exponential backoff, and token-name search for truncated addresses
 - **🎨 Refined Cyberpunk Hero** - Ambient neon glows, animated grid pattern, pulsing live indicator, feature chips, and JunkStartups featured badge
 - **📊 Live Scanner Feedback** - Animated gradient progress bar with OCR stage tracking ("AI Vision", "Validating") and color-coded confidence badges per extracted address
-- **🚨 Live Security Alerts** - Real-time crypto scam warnings and hack reports
+- **🔗 Shareable Scan Links** - Copy a link like `aidyor.app/?address=0x...&chain=eth` after any scan; opening it auto-runs the same scan and pre-selects the requested chain
 - **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k) - 5 free/hour
 - **⭐ Cloud Watchlist** - Synced favorites with risk tracking
 - **🤖 Telegram Bot** - Scan tokens and receive alerts via @aidyor_bot
