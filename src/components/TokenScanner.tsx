@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
-import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain, GitMerge, Crown, Lock } from "lucide-react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain, GitMerge, Crown, Lock, Share2 } from "lucide-react";
 import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { useOCRAnalytics } from "@/hooks/useOCRAnalytics";
 import { cn } from "@/lib/utils";
 import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { correctAddress, correctEthAddress } from "@/lib/ocr";
 import { 
   searchTokens, 
@@ -165,6 +165,40 @@ export const TokenScanner = () => {
   // Merged security data state (JSON + Live API)
   const [mergedSecurityResult, setMergedSecurityResult] = useState<MergedSecurityResult | null>(null);
   const [isMerging, setIsMerging] = useState(false);
+
+  const [searchParams] = useSearchParams();
+
+  // Auto-scan from URL params on mount
+  const preferredChainFromUrl = useRef<string | null>(null);
+  const hasAutoSelectedFromUrl = useRef(false);
+
+  useEffect(() => {
+    const urlAddress = searchParams.get("address");
+    const urlChain = searchParams.get("chain");
+    if (urlAddress) {
+      if (urlChain) {
+        // Map chain slug to Network type
+        const chainMap: Record<string, string> = {
+          eth: "ETH", ethereum: "ETH",
+          bsc: "BSC", bnb: "BSC",
+          sol: "SOL", solana: "SOL",
+          polygon: "POLYGON", matic: "POLYGON",
+          arbitrum: "ARB", arb: "ARB",
+          base: "BASE",
+          avalanche: "AVAX", avax: "AVAX",
+          optimism: "OP", op: "OP",
+          ton: "TON",
+        };
+        const mapped = chainMap[urlChain.toLowerCase()];
+        if (mapped) preferredChainFromUrl.current = mapped;
+      }
+      setTokenQuery(urlAddress);
+      setDisplayAddress(urlAddress);
+      // Small delay to let state settle
+      const timer = setTimeout(() => handleScanWithAddress(urlAddress), 300);
+      return () => clearTimeout(timer);
+    }
+  }, []); // run once on mount
 
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
@@ -1435,6 +1469,22 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           (a.marketData?.liquidity || 0) > (b.marketData?.liquidity || 0) ? a : b
         );
         setSelectedResult(best);
+
+        // If URL specified a chain, prefer that result on first scan after mount
+        let shareResult = best;
+        if (preferredChainFromUrl.current && !hasAutoSelectedFromUrl.current) {
+          const preferred = sortedResults.find(r => r.network === preferredChainFromUrl.current);
+          if (preferred) {
+            setSelectedResult(preferred);
+            shareResult = preferred;
+          }
+          hasAutoSelectedFromUrl.current = true;
+        }
+
+        // Update URL to make result shareable
+        const chainSlug = shareResult.network.toLowerCase().replace("ethereum", "eth").replace("avalanche", "avax").replace("optimism", "op").replace("arbitrum", "arb").replace("polygon", "matic");
+        const newUrl = `${window.location.pathname}?address=${shareResult.address}&chain=${chainSlug}`;
+        window.history.replaceState(null, "", newUrl);
       }
     } catch (error) {
       console.error('Scan error:', error);
@@ -2814,7 +2864,24 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           {selectedResult && (
             <div className="grid md:grid-cols-2 gap-6">
               {/* Risk Score */}
-              <div className="glass-card p-6 flex flex-col items-center justify-center">
+              <div className="glass-card p-6 flex flex-col items-center justify-center relative">
+                {/* Share button */}
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href).then(() => {
+                      toast("Link copied!", {
+                        description: "Share this to let others view this scan.",
+                        duration: 2500,
+                      });
+                    });
+                  }}
+                  className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/60 border border-border/50 text-xs text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+                  title="Copy shareable link"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  Share
+                </button>
+
                 <div className="flex items-center gap-3 mb-1">
                   <h3 className="font-display text-xl text-foreground">{tokenInfo?.name}</h3>
                   {getTokenStatusBadge(selectedResult.tokenStatus)}
