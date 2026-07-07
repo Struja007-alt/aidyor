@@ -99,6 +99,80 @@ const Index = () => {
           ))}
         </section>
 
+        {/* How It Works Section */}
+        <section className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <div className="w-1 h-8 bg-primary rounded-full" />
+              <h2 className="font-display text-2xl font-bold text-foreground">How It Works</h2>
+              <div className="w-1 h-8 bg-primary rounded-full" />
+            </div>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Institutional-grade crypto security analysis in three steps — no wallet, no sign-up required.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-0 relative">
+            {/* Connector lines — desktop only */}
+            <div className="hidden md:block absolute top-10 left-1/3 right-1/3 h-px bg-gradient-to-r from-primary/40 via-primary/20 to-primary/40 z-0" />
+
+            {[
+              {
+                step: "01",
+                icon: Search,
+                title: "Input Your Token",
+                description: "Paste a contract address, search by token name, or drop a screenshot — our OCR engine extracts the address automatically.",
+                color: "text-primary",
+                border: "border-primary/30",
+                bg: "bg-primary/10",
+              },
+              {
+                step: "02",
+                icon: Cpu,
+                title: "Real-Time Analysis",
+                description: "We cross-check 7+ security APIs simultaneously — GoPlus, RugCheck, Unicrypt, DexScreener and more — across 9 blockchain networks.",
+                color: "text-accent",
+                border: "border-accent/30",
+                bg: "bg-accent/10",
+              },
+              {
+                step: "03",
+                icon: ShieldCheck,
+                title: "Get Your Risk Score",
+                description: "Receive a 0–100 safety score with AI-powered plain-English explanations of every risk factor. No jargon, no guesswork.",
+                color: "text-emerald-400",
+                border: "border-emerald-400/30",
+                bg: "bg-emerald-400/10",
+              },
+            ].map((item, i) => (
+              <div key={i} className="relative z-10 flex flex-col items-center text-center px-4 md:px-6">
+                <div className={`w-16 h-16 rounded-2xl ${item.bg} border ${item.border} flex items-center justify-center mb-4 relative`}>
+                  <item.icon className={`w-7 h-7 ${item.color}`} />
+                  <span className={`absolute -top-2 -right-2 w-5 h-5 rounded-full bg-background border ${item.border} text-[10px] font-bold ${item.color} flex items-center justify-center`}>
+                    {item.step.slice(1)}
+                  </span>
+                </div>
+                <h3 className="font-display text-base font-semibold text-foreground mb-2">
+                  {item.title}
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {item.description}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mt-10">
+            <a
+              href="#scanner"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+            >
+              <Zap className="w-4 h-4" />
+              Try it free — no wallet needed
+            </a>
+          </div>
+        </section>
+
         {/* Token Scanner Section */}
         <section id="scanner" className="scroll-mt-20">
           <div className="flex items-center gap-3 mb-6">
