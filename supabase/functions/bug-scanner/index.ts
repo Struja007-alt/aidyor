@@ -322,7 +322,23 @@ serve(async (req) => {
         message: 'Smart Contract Bug Scanner is a Pro feature. Upgrade to unlock unlimited audits.',
       }), { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-
+// ----- Server-side scan limit (atomic, replaces bypassable client-side check) -----
+    const { data: limitData, error: limitErr } = await supabase.rpc('check_and_increment_scan', {
+      p_user_id: userId,
+    });
+    if (limitErr) {
+      console.error('[bug-scanner] scan limit check failed:', limitErr);
+      return new Response(JSON.stringify({ error: 'Could not verify scan limit, try again' }), {
+        status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    const limitRow = limitData?.[0];
+    if (!limitRow?.allowed) {
+      return new Response(JSON.stringify({
+        error: 'SCAN_LIMIT_REACHED',
+        message: 'You have reached your scan limit. Try again later.',
+      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     // ----- Parse body -----
     const body = await req.json();
     const address = String(body?.address ?? '').trim();
