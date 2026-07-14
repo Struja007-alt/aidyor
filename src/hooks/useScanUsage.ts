@@ -1,96 +1,61 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useStripeSubscription } from '@/hooks/useStripeSubscription';
+import { supabase } from '@/integrations/supabase/client';
 
 const DAILY_FREE_LIMIT = 5;
-const STORAGE_KEY = 'aidyor_scan_usage';
 
-interface ScanUsage {
-  date: string;
-  count: number;
-}
-
-/**
- * Hook to track and enforce scan usage limits.
- * Free users: 5 scans/day
- * Pro users: Unlimited scans
- */
 export function useScanUsage() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { isPro, loading: subscriptionLoading } = useStripeSubscription();
-  const [usage, setUsage] = useState<ScanUsage | null>(null);
+  const [remainingScans, setRemainingScans] = useState<number>(DAILY_FREE_LIMIT);
+  const [scansUsedToday, setScansUsedToday] = useState<number>(0);
+  const [blocked, setBlocked] = useState(false);
+  const [checking, setChecking] = useState(false);
 
-  // Get today's date string (YYYY-MM-DD)
-  const getTodayString = () => new Date().toISOString().split('T')[0];
-
-  // Load usage from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const today = getTodayString();
-
-    if (stored) {
-      try {
-        const parsed: ScanUsage = JSON.parse(stored);
-        // Reset if it's a new day
-        if (parsed.date !== today) {
-          const newUsage = { date: today, count: 0 };
-          setUsage(newUsage);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(newUsage));
-        } else {
-          setUsage(parsed);
-        }
-      } catch {
-        const newUsage = { date: today, count: 0 };
-        setUsage(newUsage);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newUsage));
+  // Calls the server, which atomically checks AND increments in one step.
+  // Returns true if the scan is allowed to proceed.
+  const checkAndRecordScan = useCallback(async (): Promise<boolean> => {
+    setChecking(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-scan-limit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token
+            ? `Bearer ${session.access_token}`
+            : `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.allowed) {
+        setBlocked(true);
+        setRemainingScans(0);
+        return false;
       }
-    } else {
-      const newUsage = { date: today, count: 0 };
-      setUsage(newUsage);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newUsage));
+      setBlocked(false);
+      if (typeof data.remaining === 'number' && data.remaining >= 0) {
+        setRemainingScans(data.remaining);
+        setScansUsedToday(DAILY_FREE_LIMIT - data.remaining);
+      }
+      return true;
+    } catch (e) {
+      console.error('[useScanUsage] check failed:', e);
+      // Fail closed: if we can't verify, don't allow the scan.
+      setBlocked(true);
+      return false;
+    } finally {
+      setChecking(false);
     }
-  }, []);
-
-  // Check if user can scan
-  const canScan = useCallback(() => {
-    // Pro users have unlimited scans
-    if (isPro) return true;
-    
-    // Check daily limit for free users
-    if (!usage) return true; // Allow while loading
-    
-    return usage.count < DAILY_FREE_LIMIT;
-  }, [isPro, usage]);
-
-  // Increment scan count
-  const recordScan = useCallback(() => {
-    const today = getTodayString();
-    
-    setUsage(prev => {
-      const newUsage = {
-        date: today,
-        count: (prev?.date === today ? prev.count : 0) + 1
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newUsage));
-      return newUsage;
-    });
-  }, []);
-
-  // Get remaining scans for free users
-  const remainingScans = isPro 
-    ? Infinity 
-    : Math.max(0, DAILY_FREE_LIMIT - (usage?.count || 0));
-
-  // Get scans used today
-  const scansUsedToday = usage?.count || 0;
+  }, [session]);
 
   return {
-    canScan: canScan(),
-    recordScan,
-    remainingScans,
+    canScan: isPro || !blocked,
+    recordScan: checkAndRecordScan, // now async + does the real check
+    remainingScans: isPro ? Infinity : remainingScans,
     scansUsedToday,
     dailyLimit: DAILY_FREE_LIMIT,
     isPro,
-    loading: subscriptionLoading || !usage,
+    loading: subscriptionLoading || checking,
   };
 }
