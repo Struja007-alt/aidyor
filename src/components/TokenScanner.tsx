@@ -1069,14 +1069,20 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     if (!address) return;
     
     // Check scan limit for free users
-    if (!canScan) {
+    // Server-side scan limit check (atomic check + increment)
+    const allowed = await recordScan();
+    if (!allowed) {
       toast.error(
         `Daily scan limit reached (${dailyLimit} scans). Upgrade to Pro for unlimited scans!`,
         {
           action: {
             label: "Upgrade",
             onClick: () => window.location.href = "/subscription",
-          },
+          
+        
+     
+     
+    },
         }
       );
       return;
@@ -1103,9 +1109,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     
     // Use the sanitized address for API calls
     const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : correctedAddress.trim();
-    
-    // Record the scan usage
-    recordScan();
+                     
+
+ 
     
     setIsScanning(true);
     setScanResults([]);
