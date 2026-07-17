@@ -251,3 +251,7 @@
     }
   }
 }
+/* Hide Lovable editor badge on production */
+#lovable-badge {
+  display: none !important;
+}
