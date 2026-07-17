@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { RiskFactorTooltip } from "./RiskFactorTooltip";
 import type { MergedSecurityResult } from "@/lib/api/mergeSecurityData";
 import { Badge } from "@/components/ui/badge";
+import { TrezorAffiliateCard } from "./TrezorAffiliateCard";
 
 /**
  * Props for the MergedSecurityDisplay component
@@ -420,6 +421,8 @@ export const MergedSecurityDisplay = memo(function MergedSecurityDisplay({
           </div>
         )}
       </div>
+
+      <TrezorAffiliateCard mergedScore={mergedScore} />
     </div>
   );
 });
