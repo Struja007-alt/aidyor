@@ -1,4 +1,4 @@
-project_id = "ckhagucgyjnpvcolcihc"
+project_id = "lerromdxykuydrpttfif"
 
 [functions.passkey-register]
 verify_jwt = false
