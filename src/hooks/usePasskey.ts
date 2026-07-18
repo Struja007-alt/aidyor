@@ -51,11 +51,7 @@ export function usePasskey() {
       const { data: completeData, error: completeError } = await supabase.functions.invoke('passkey-register', {
         body: { 
           action: 'complete',
-          credential: {
-            id: credential.id,
-            publicKey: credential.response.publicKey,
-            authenticatorAttachment: credential.authenticatorAttachment,
-          }
+          credential
         }
       });
 
