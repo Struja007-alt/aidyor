@@ -117,11 +117,8 @@ export function usePasskey() {
       const { data: completeData, error: completeError } = await supabase.functions.invoke('passkey-authenticate', {
         body: { 
           action: 'complete',
-          credential: {
-            id: credential.id,
-            userId: startData.userId,
-            email: email,
-          }
+          email,
+          credential
         }
       });
 
