@@ -1,4 +1,5 @@
 import { Shield } from "lucide-react";
+import { TrezorAffiliateCard } from "./TrezorAffiliateCard";
 import { Link } from "react-router-dom";
 
 const footerLinks = {
@@ -90,7 +91,9 @@ export const Footer = () => (
           </div>
         ))}
       </div>
-
+<div className="mb-10">
+        <TrezorAffiliateCard mergedScore={100} />
+      </div>
       {/* Bottom bar */}
       <div className="border-t border-border/40 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
