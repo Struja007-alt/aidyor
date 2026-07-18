@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useStripeSubscription } from '@/hooks/useStripeSubscription';
 import { supabase } from '@/integrations/supabase/client';
@@ -48,6 +48,33 @@ export function useScanUsage() {
       setChecking(false);
     }
   }, [session]);
+
+  // On mount, fetch the true remaining count (read-only, doesn't consume a scan)
+  // so the UI never shows a stale "5" before the user's first scan attempt.
+  useEffect(() => {
+    if (isPro) return;
+    (async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-scan-limit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: session?.access_token
+              ? `Bearer ${session.access_token}`
+              : `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ peek: true }),
+        });
+        const data = await res.json();
+        if (typeof data.remaining === 'number' && data.remaining >= 0) {
+          setRemainingScans(data.remaining);
+          setScansUsedToday(DAILY_FREE_LIMIT - data.remaining);
+        }
+      } catch (e) {
+        console.error('[useScanUsage] peek failed:', e);
+      }
+    })();
+  }, [isPro, session]);
 
   return {
     canScan: isPro || !blocked,
