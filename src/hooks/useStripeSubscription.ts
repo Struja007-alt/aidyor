@@ -10,7 +10,17 @@ interface SubscriptionStatus {
   pro_subscription_end: string | null;
   whale_pro_subscription_end: string | null;
 }
-
+async function getFunctionErrorMessage(err: any, fallback: string): Promise<string> {
+  try {
+    if (err?.context && typeof err.context.json === 'function') {
+      const body = await err.context.json();
+      if (body?.error) return body.error;
+    }
+  } catch (_e) {
+    // ignore parse failures, fall back below
+  }
+  return err instanceof Error ? err.message : fallback;
+}
 export function useStripeSubscription() {
   const { user, session } = useAuth();
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
@@ -37,7 +47,7 @@ export function useStripeSubscription() {
       if (fnError) throw fnError;
       setStatus(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to check subscription';
+      const message = await getFunctionErrorMessage(err, 'Failed to check subscription');
       setError(message);
       console.error('Subscription check error:', err);
     } finally {
@@ -87,7 +97,7 @@ export function useStripeSubscription() {
         window.open(data.url, '_blank');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to start checkout';
+      const message = await getFunctionErrorMessage(err, 'Failed to start checkout');
       toast.error(message);
       console.error('Checkout error:', err);
     } finally {
@@ -114,7 +124,7 @@ export function useStripeSubscription() {
         window.open(data.url, '_blank');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to open customer portal';
+      const message = await getFunctionErrorMessage(err, 'Failed to open customer portal');
       toast.error(message);
       console.error('Portal error:', err);
     }
