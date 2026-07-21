@@ -265,4 +265,3 @@ input:-webkit-autofill:focus {
   caret-color: hsl(var(--foreground));
   transition: background-color 5000s ease-in-out 0s;
 }
-}
