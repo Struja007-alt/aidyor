@@ -225,7 +225,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 - [x] Push notifications (browser)
 - [x] Risk trend analysis
 - [x] Telegram bot integration (@aidyor_bot)
-- [x] Freemium subscription (10 scans/day free)
+- [x] Freemium subscription (5 scans/day free)
 - [x] Premium subscriptions ($9.99/month via Telegram Payments)
 - [x] B2B API Client Tier ($49-199/month)
 - [x] Browser extension (Chrome/Firefox MV3)
