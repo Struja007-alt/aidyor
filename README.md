@@ -272,7 +272,7 @@ The project uses Lovable Cloud - no manual `.env` configuration needed.
 
 ## 🔗 Links
 
-- **Live Demo:** https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app
+- **Live Demo:** https://aidyor.app
 - **Whitepaper:** [WHITEPAPER.md](./WHITEPAPER.md)
 - **Full Audit:** [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md)
 
