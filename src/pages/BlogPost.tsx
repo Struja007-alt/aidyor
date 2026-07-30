@@ -146,6 +146,26 @@ const BlogPost = () => {
           font-size: 0.875em;
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
+        .blog-prose pre {
+          background: hsl(var(--secondary));
+          border: 1px solid hsl(var(--border));
+          border-radius: 0.5rem;
+          padding: 1rem;
+          margin: 1rem 0;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          max-width: 100%;
+        }
+        .blog-prose pre code {
+          background: none;
+          color: hsl(var(--foreground));
+          padding: 0;
+          border-radius: 0;
+          font-size: 0.8rem;
+          line-height: 1.6;
+          white-space: pre;
+          display: block;
+        }
       `}</style>
       <Footer />
     </div>
