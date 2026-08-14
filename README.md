@@ -2,7 +2,7 @@
 
 > **Do Your Own Research, Powered by AI**
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app)
+[![Live Demo](https://aidyor.app)
 [![React](https://img.shields.io/badge/React-18.3-blue)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org)
 [![Supabase](https://img.shields.io/badge/Backend-Supabase-green)](https://supabase.com)
@@ -60,7 +60,7 @@ React 18.3 + TypeScript + Vite
 └── OCR: Tesseract.js + Gemini 2.5 Pro/Flash (dual-pass)
 ```
 
-### Backend (Lovable Cloud / Supabase Edge Functions)
+### Backend (Vercel / Supabase Edge Functions)
 ```
 Deno Runtime - 19 Edge Functions
 ├── risk-orchestrator        → Central API gateway (JWT auth)
@@ -138,8 +138,7 @@ npm install
 npm run dev
 ```
 
-### Environment Variables
-The project uses Lovable Cloud - no manual `.env` configuration needed.
+
 
 ---
 
@@ -286,4 +285,4 @@ For licensing inquiries, contact through acquisition channels.
 
 ---
 
-*Built with ❤️ using [Lovable](https://lovable.dev)*
+
