@@ -1,288 +1,447 @@
-# 🛡️ AIDYOR - AI-Powered Token Risk Scanner
+🛡️ AIDYOR — AI-Powered Crypto Token Risk Scanner
 
-> **Do Your Own Research, Powered by AI**
+«Do Your Own Research, Powered by AI»
 
-[![Live Demo](https://aidyor.app)
-[![React](https://img.shields.io/badge/React-18.3-blue)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org)
-[![Supabase](https://img.shields.io/badge/Backend-Supabase-green)](https://supabase.com)
+AIDYOR is a cryptocurrency token security analysis platform designed to help users investigate token contracts and market conditions before making decisions.
 
-AIDYOR is a comprehensive cryptocurrency token security analysis platform that aggregates data from multiple blockchain security providers and uses AI to deliver actionable risk assessments.
+It aggregates blockchain, market, liquidity and security data from multiple sources and presents the results through a unified risk-analysis interface.
 
----
+Live application: https://aidyor.app
 
-## ✨ Features
-
-### Core Functionality
-- **🔍 Multi-Chain Token Scanner** - Scan tokens across 9+ blockchains
-- **📊 Risk Score Calculation** - Weighted 0-100 safety score
-- **🤖 AI Risk Explanations** - Natural language insights via Gemini 3
-- **📈 Market Data Dashboard** - Real-time price, liquidity, volume
-
-### Advanced Features
-- **📸 OCR Screenshot Scanner** - Extract addresses from images using a **data-driven prioritized pipeline**: Tesseract.js (fastest, highest real-world success rate) → **Parallel AI fallback**: Gemini 2.5 Pro and Gemini 2.5 Flash run **concurrently** via `Promise.all`, results unioned by address with highest-confidence wins. Includes multi-token detection, per-address confidence scoring, automatic retry, exponential backoff, and token-name search for truncated addresses
-- **🎨 Refined Cyberpunk Hero** - Ambient neon glows, animated grid pattern, pulsing live indicator, feature chips, and JunkStartups featured badge
-- **📊 Live Scanner Feedback** - Animated gradient progress bar with OCR stage tracking ("AI Vision", "Validating") and color-coded confidence badges per extracted address
-- **🔗 Shareable Scan Links** - Copy a link like `aidyor.app/?address=0x...&chain=eth` after any scan; opening it auto-runs the same scan and pre-selects the requested chain
-- **🐋 Whale Activity Alerts** - Monitor large transactions (>$50k) - 5 free/hour
-- **⭐ Cloud Watchlist** - Synced favorites with risk tracking
-- **🤖 Telegram Bot** - Scan tokens and receive alerts via @aidyor_bot
-- **💎 Premium Subscriptions** - Pro $9.99/mo (unlimited scans) + Whale Pro $49/mo add-on
-- **🐛 Smart Contract Bug Scanner (Pro)** - Pre-audit scanner for verified Solidity contracts on 8 EVM chains. Dual engine: 12 static vulnerability patterns (reentrancy, tx.origin, delegatecall, selfdestruct, weak randomness, mintable supply, mutable tax, blacklist, unprotected initializer, etc.) + AI deep audit via Gemini 3.1 Pro. Returns severity-rated findings, A–F security grade, and remediation steps.
-- **💳 Stripe Payments** - Web-based subscription checkout + customer portal
-- **🔐 Passkey Authentication** - Passwordless WebAuthn login
-- **📱 Push Notifications** - Browser alerts for whale activity
-- **✉️ Contact & Social** - Email + X (@aidyor33641) links in dedicated Contact section
-
-### Security Analysis
-- Honeypot detection (GoPlus, BSCTrace)
-- Tax analysis (buy/sell percentages)
-- Ownership verification (renounced, hidden owner)
-- Liquidity lock status (Unicrypt)
-- Holder concentration analysis
-- Mint/freeze authority (Solana via RugCheck)
-- **BEP Token Standard Detection** (BEP-20, BEP-721, BEP-1155) for BNB Chain
-- **ERC Token Standard Detection** (ERC-20, ERC-721, ERC-1155) for ETH, Polygon, Arbitrum, Base, OP, Avalanche
-- **SPL Token Standard Detection** (SPL Token, Token-2022, Metaplex NFT, cNFT) for Solana
+«⚠️ Important: AIDYOR provides automated analysis and informational risk indicators. It is not a financial adviser, security audit, or guarantee that a token is safe. Users should perform their own research before interacting with any cryptocurrency project.»
 
 ---
 
-## 🛠️ Tech Stack
+✨ Features
 
-### Frontend
-```
-React 18.3 + TypeScript + Vite
-├── UI: Tailwind CSS + shadcn/ui + Radix Primitives
-├── State: React Query (TanStack) + Context API
-├── Routing: React Router v6
-├── Forms: React Hook Form + Zod validation
-├── Mobile: Capacitor (Android/iOS ready)
-└── OCR: Tesseract.js + Gemini 2.5 Pro/Flash (dual-pass)
-```
+🔍 Multi-Chain Token Scanner
 
-### Backend (Vercel / Supabase Edge Functions)
-```
-Deno Runtime - 19 Edge Functions
-├── risk-orchestrator        → Central API gateway (JWT auth)
-├── market-data-service      → DEXScreener integration
-├── onchain-data-service     → GoPlus/RugCheck/BSCTrace
-├── ai-risk-engine           → AI explanations (Gemini 3)
-├── ai-risk-explain          → Natural language risk summaries
-├── simulation-engine        → Pump/dump detection
-├── whale-alerts             → Transaction monitoring (public)
-├── security-alerts          → Live scam/hack news feed (public)
-├── ocr-extract              → Triple-pass VLM OCR (Gemini 3.1 Pro Preview + 3.5 Flash parallel, 3.1 Pro forensic + pixel-level fallback) + retry + address correction
-├── ocr-analytics            → OCR metrics logging (CER/WER/EMR)
-├── ocr-analytics-dashboard  → Aggregated OCR analytics API
-├── telegram-webhook         → Telegram bot & payments
-├── api-token-scan           → B2B API with key management
-├── stripe-checkout          → Stripe subscription checkout
-├── stripe-check-subscription → Verify active subscriptions
-├── stripe-customer-portal   → Manage billing via Stripe Portal
-├── stripe-webhook           → Stripe event handler (cancellations, failures, renewals)
-└── passkey-*                → WebAuthn handlers (2 functions)
-```
+Analyze cryptocurrency tokens across multiple supported blockchain networks, including EVM networks and Solana.
 
-### Data Sources
-| Provider | Coverage |
-|----------|----------|
-| GoPlus Labs | ETH, BSC, Polygon, Arbitrum, Base, OP, Avalanche |
-| RugCheck | Solana |
-| BSCTrace | BSC |
-| SolanaFM | Solana |
-| DEXScreener | All chains |
-| Unicrypt | ETH, BSC (liquidity locks) |
-| CoinGecko | Token validation |
+The scanner combines contract, market and security information into a single result.
+
+No wallet is required to run a token scan.
+
+📊 Risk Scoring
+
+AIDYOR calculates a normalized risk score and presents the result through an easy-to-understand risk gauge.
+
+The analysis can incorporate factors such as:
+
+- Honeypot indicators
+- Buy and sell taxes
+- Ownership characteristics
+- Holder concentration
+- Liquidity information
+- Mint and freeze capabilities
+- Contract characteristics
+- Market conditions
+- Trading activity
+- Token-standard information
+
+🤖 AI-Powered Analysis
+
+AI is used to help interpret technical security and market information and turn it into understandable explanations.
+
+The purpose is to help users understand why a token may present particular risks rather than simply displaying raw API data.
+
+📸 OCR Screenshot Scanner
+
+Upload a screenshot containing a cryptocurrency contract address and AIDYOR can attempt to:
+
+1. Detect text from the image
+2. Extract cryptocurrency addresses
+3. Validate extracted addresses
+4. Correct OCR-related character errors where possible
+5. Identify multiple addresses when present
+6. Pass valid addresses to the token scanner
+
+The OCR system combines local OCR and AI vision processing to improve extraction reliability.
+
+🔗 Shareable Scan Results
+
+Scan results can be shared through links containing the relevant token address and blockchain information.
+
+Opening a supported shared link can automatically initiate the corresponding scan.
+
+🐋 Whale Activity
+
+AIDYOR can monitor significant blockchain transactions and surface potentially relevant whale activity.
+
+⭐ Watchlist
+
+Users can save tokens to a cloud-based watchlist and monitor their associated risk information.
+
+🤖 Telegram Integration
+
+AIDYOR includes Telegram integration for token scanning and related functionality.
+
+🐛 Smart Contract Bug Scanner
+
+The Pro security scanner can analyze verified Solidity contracts for common vulnerability patterns.
+
+The analysis can include areas such as:
+
+- Reentrancy
+- "tx.origin" usage
+- Dangerous "delegatecall"
+- "selfdestruct"
+- Weak randomness
+- Minting controls
+- Mutable tax mechanisms
+- Blacklist mechanisms
+- Initialization protection
+- Other potentially dangerous contract patterns
+
+AI-assisted analysis can provide additional explanations and remediation-oriented information.
+
+«This feature is intended as a pre-audit security analysis tool, not a replacement for a professional smart-contract audit.»
+
+🌐 Browser Extension
+
+AIDYOR includes a browser-extension component designed to bring token-security scanning functionality closer to the user's browsing workflow.
+
+📱 Mobile Support
+
+The project includes Capacitor configuration for packaging the application for mobile platforms.
 
 ---
 
-## 📊 Risk Scoring Logic
+🔐 Security Analysis
 
-```javascript
-// Weighted calculation
-Final Score = (Market Score × 0.55) + (Security Score × 0.45)
+Depending on the blockchain and token, AIDYOR can use information from multiple security and market-data providers.
 
-// Critical overrides
-if (isHoneypot) cap = 39
-if (sellTax > 50) cap = 29
-if (hiddenOwner) penalty = -15
-```
+Analysis may include:
 
-### Score Interpretation
-| Score | Rating | Meaning |
-|-------|--------|---------|
-| 70-100 | ✅ SAFE | Low risk, proceed with caution |
-| 40-69 | ⚠️ CAUTION | Moderate risk, research thoroughly |
-| 20-39 | 🔴 WARNING | High risk, not recommended |
-| 0-19 | ☠️ DANGER | Critical issues, avoid |
+- Honeypot detection
+- Buy/sell tax analysis
+- Ownership analysis
+- Liquidity-lock information
+- Holder concentration
+- Mint/freeze authority
+- Contract characteristics
+- Token-standard detection
+- Market liquidity
+- Trading volume
+- Price activity
+- Transaction activity
 
----
+Supported token standards may include:
 
-## 🚀 Getting Started
+- ERC-20 / ERC-721 / ERC-1155
+- BEP-20 / BEP-721 / BEP-1155
+- SPL Token / Token-2022
+- Selected NFT and Solana token formats
 
-### Prerequisites
-- Node.js 18+
-- npm or bun
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/your-org/aidyor.git
-cd aidyor
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-
+Actual availability depends on the blockchain, token and external data provider.
 
 ---
 
-## 📁 Project Structure
+📈 Risk Score
 
-```
+AIDYOR presents token analysis through a 0–100 risk/safety score.
+
+The score is intended as an informational risk indicator, not an objective measure of whether an investment will succeed.
+
+Score| Rating| General Interpretation
+70–100| 🟢 SAFE| Fewer detected risk indicators
+40–69| 🟡 CAUTION| Moderate risk indicators
+20–39| 🔴 WARNING| Significant risk indicators
+0–19| ☠️ DANGER| Severe detected risk indicators
+
+A high score does not guarantee that a token is legitimate or profitable.
+
+A low score does not necessarily mean that every identified issue is exploitable.
+
+---
+
+🛠️ Technology Stack
+
+Frontend
+
+React 18
+├── TypeScript
+├── Vite
+├── Tailwind CSS
+├── shadcn/ui
+├── Radix UI
+├── React Router
+├── TanStack React Query
+├── React Hook Form
+├── Zod
+└── Capacitor
+
+OCR
+
+Tesseract.js
++
+AI Vision processing
++
+Address validation/correction
+
+The OCR pipeline includes address validation and correction logic designed to reduce common OCR transcription errors.
+
+Backend
+
+AIDYOR uses Supabase and Edge Functions for backend services and integrations.
+
+Backend functionality includes areas such as:
+
+Risk orchestration
+Market data
+On-chain security data
+AI analysis
+Simulation / market analysis
+Whale monitoring
+Security alerts
+OCR processing
+OCR analytics
+Telegram integration
+B2B API
+Authentication
+Payments
+Subscription management
+Passkeys / WebAuthn
+
+The exact backend implementation and function set are maintained in the repository.
+
+---
+
+📡 Data Sources
+
+AIDYOR integrates data from multiple external providers, depending on chain and feature.
+
+Examples include:
+
+Provider| Primary Use
+GoPlus Labs| Token and contract security data
+RugCheck| Solana token security information
+BSCTrace| BNB Chain analysis
+SolanaFM| Solana blockchain information
+DEXScreener| Market and trading data
+Unicrypt| Liquidity-lock information
+CoinGecko| Token and market information
+
+External provider availability, limits and returned data may change independently of AIDYOR.
+
+---
+
+🏗️ Project Structure
+
 ├── src/
-│   ├── components/          # React components
-│   │   ├── ui/              # shadcn/ui primitives
-│   │   ├── TokenScanner.tsx # Main scanner (3000+ lines)
-│   │   ├── RiskGauge.tsx    # Visual risk display
-│   │   ├── WhaleAlerts.tsx  # Transaction monitor
-│   │   ├── CryptoSecurityNews.tsx # Live security alerts
-│   │   └── Watchlist.tsx    # User favorites
-│   ├── hooks/               # Custom React hooks
+│   ├── components/
+│   │   ├── ui/
+│   │   ├── TokenScanner.tsx
+│   │   ├── RiskGauge.tsx
+│   │   ├── WhaleAlerts.tsx
+│   │   ├── CryptoSecurityNews.tsx
+│   │   └── Watchlist.tsx
+│   │
+│   ├── hooks/
 │   │   ├── useAuth.tsx
 │   │   ├── useCloudWatchlist.ts
 │   │   ├── useSecurityAlerts.ts
 │   │   ├── usePasskey.ts
 │   │   └── useWhaleAlerts.ts
+│   │
 │   ├── lib/
-│   │   ├── api/             # External API clients
-│   │   ├── ocr/             # Smart OCR address correction
-│   │   │   ├── addressCorrector.ts # EIP-55 checksum validation + char fixes
-│   │   │   └── keccak256.ts        # Keccak-256 for checksums
-│   │   ├── security/        # Input sanitization (Zod + XSS firewall)
-│   │   └── constants/       # Known token networks
-│   └── pages/               # Route components
+│   │   ├── api/
+│   │   ├── ocr/
+│   │   ├── security/
+│   │   └── constants/
+│   │
+│   └── pages/
+│
 ├── supabase/
-│   └── functions/           # 13 Edge functions
-├── browser-extension/       # Chrome/Firefox extension
-│   ├── manifest.json        # Extension manifest (MV3)
-│   ├── popup/               # Popup UI
-│   ├── background/          # Service worker
-│   ├── content/             # Content scripts
-│   └── icons/               # Extension icons
-└── public/                  # Static assets
-```
+│   └── functions/
+│
+├── browser-extension/
+│   ├── manifest.json
+│   ├── popup/
+│   ├── background/
+│   ├── content/
+│   └── icons/
+│
+└── public/
 
 ---
 
-## 🔒 Security
+🔒 Security Architecture
 
-### Database Security (Supabase RLS)
-- ✅ **Row Level Security (RLS)** on all 9 tables
-- ✅ **Service role isolation** - Telegram tables use `TO service_role` policies
-- ✅ **Secure views** - `api_keys_safe` hides key hashes with `security_invoker=on`
-- ✅ **NOT NULL constraints** - All user_id columns enforce ownership
-- ✅ **Supabase Linter** - 0 warnings/errors
+Security-related implementation includes:
 
-### Edge Function Security
-- ✅ **Dynamic CORS** - Origin allowlist (aidyor.app, preview URLs, localhost)
-- ✅ **JWT authentication** - Required for user-specific endpoints
-- ✅ **Input validation** - Email RFC 5322 regex, address format validation
-- ✅ **Generic error responses** - No implementation details leaked to clients
-- ✅ **Sanitized logging** - Sensitive payment/PII data excluded from logs
-- ✅ **Telegram webhook secret** - `X-Telegram-Bot-Api-Secret-Token` header verified on every update; spoofed `successful_payment` events rejected with 401
+Database
 
-### Frontend Security
-- ✅ **Input sanitization** via Zod schemas (`src/lib/security/inputSanitizer.ts`)
-- ✅ **XSS/SQL injection pattern blocking** - Centralized prompt firewall
-- ✅ **API timeout controls** - AbortController (5-15s timeouts)
-- ✅ **Address validation** - EIP-55 (EVM), Base58 (Solana), T-prefix (Tron)
-- ✅ **No exposed API keys** - All external APIs are public/free tier
+- Row Level Security (RLS)
+- User ownership enforcement
+- Protected service-role operations
+- Restricted access to sensitive records
+- Secure database policies
 
-### Audit Status
-- **Last Audit:** January 26, 2026
-- **Overall Status:** ✅ SECURE
-- **Report:** [SECURITY_AUDIT_REPORT.md](./SECURITY_AUDIT_REPORT.md)
+Edge Functions
 
----
+- Authentication where required
+- CORS controls
+- Input validation
+- Request validation
+- Error handling
+- Sanitized logging
+- Protected webhook processing
 
-## 🗺️ Roadmap
+Frontend
 
-### Completed ✅
-- [x] Multi-chain token scanner (9+ blockchains)
-- [x] AI risk explanations (Gemini 3)
-- [x] OCR screenshot scanner (Tesseract.js + Vision AI)
-- [x] Live security alerts feed (public endpoint)
-- [x] Whale activity alerts (public endpoint)
-- [x] Cloud watchlist (RLS-protected)
-- [x] Passkey/WebAuthn authentication
-- [x] Push notifications (browser)
-- [x] Risk trend analysis
-- [x] Telegram bot integration (@aidyor_bot)
-- [x] Freemium subscription (5 scans/day free)
-- [x] Premium subscriptions ($9.99/month via Telegram Payments)
-- [x] B2B API Client Tier ($49-199/month)
-- [x] Browser extension (Chrome/Firefox MV3)
-- [x] Token standard detection (BEP, ERC, SPL)
-- [x] Comprehensive security audit (0 critical issues)
-- [x] Edge function hardening (JWT, CORS, input validation)
-- [x] Smart Contract Bug Scanner (Pro, dual-engine static + AI)
-- [x] Shareable scan result links with auto-trigger and one-click Share button
+- Zod-based input validation
+- Address validation
+- XSS-oriented input filtering
+- API timeout controls
+- Separation of sensitive backend operations
 
-### In Progress
-- [ ] Mobile app (Capacitor configured, ready for build)
+Security controls are intended to reduce application-level risks but do not constitute a formal third-party security certification.
 
 ---
 
-## 💰 Valuation & Selling
+🚀 Getting Started
 
-**Estimated Value:** $18,000 - $32,000 USD
+Requirements
 
-### Recommended Marketplaces
-1. **Acquire.com** - Best for SaaS products
-2. **Flippa** - Wide audience, quick sales
-3. **MicroAcquire** - Free for sellers
-4. **Side Projectors** - Side project focus
+- Node.js 18+
+- npm or Bun
+- Git
 
-### Documentation
-- [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) - Complete technical audit
-- [WHITEPAPER.md](./WHITEPAPER.md) - Business whitepaper
+Installation
 
----
+git clone https://github.com/Struja007-alt/aidyor.git
 
-## 📄 Legal & Documentation Pages
+cd aidyor
 
-- [API Documentation](/api-docs)
-- [OCR Analytics Dashboard](/ocr-dashboard) ⭐ NEW
-- [Privacy Policy](/privacy-policy)
-- [Terms of Service](/terms-of-service)
-- [Cookie Policy](/cookie-policy)
-- [Disclaimer](/disclaimer)
-- [Transparency](/transparency)
-- [FAQ](/faq)
-- [Glossary](/glossary)
+npm install
 
----
+Development
 
-## 🔗 Links
+npm run dev
 
-- **Live Demo:** https://aidyor.app
-- **Whitepaper:** [WHITEPAPER.md](./WHITEPAPER.md)
-- **Full Audit:** [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md)
+Production Build
+
+npm run build
+
+Lint
+
+npm run lint
 
 ---
 
-## 📜 License
+⚙️ Environment Configuration
 
-Proprietary - All rights reserved.
+AIDYOR uses environment variables for configuration of external services and backend integrations.
 
-For licensing inquiries, contact through acquisition channels.
+Do not commit private API keys, service-role keys, payment secrets, authentication secrets or other credentials to the repository.
+
+For production deployments, configure secrets through the appropriate hosting or backend secret-management system.
 
 ---
+
+📚 Documentation
+
+The repository contains additional project documentation, including:
+
+- "WHITEPAPER.md" (./WHITEPAPER.md)
+- "FULL_PROJECT_AUDIT.md" (./FULL_PROJECT_AUDIT.md)
+- "SECURITY_AUDIT_REPORT.md" (./SECURITY_AUDIT_REPORT.md)
+
+Application documentation pages include areas such as:
+
+- API Documentation
+- Privacy Policy
+- Terms of Service
+- Cookie Policy
+- Disclaimer
+- Transparency
+- FAQ
+- Glossary
+- OCR Analytics
+
+---
+
+🗺️ Project Status
+
+AIDYOR is an actively developed cryptocurrency security-analysis platform.
+
+Implemented
+
+- [x] Multi-chain token scanning
+- [x] Token risk scoring
+- [x] AI-assisted risk explanations
+- [x] Screenshot OCR scanning
+- [x] Address validation and correction
+- [x] Market-data integration
+- [x] Security-data aggregation
+- [x] Liquidity-lock analysis
+- [x] Whale activity monitoring
+- [x] Cloud watchlist
+- [x] Telegram integration
+- [x] Browser extension
+- [x] Token-standard detection
+- [x] Smart-contract vulnerability scanning
+- [x] Shareable scan results
+- [x] Passkey/WebAuthn infrastructure
+- [x] Subscription infrastructure
+- [x] B2B API infrastructure
+- [x] OCR analytics infrastructure
+
+Mobile
+
+- [x] Capacitor configuration
+- [ ] Production mobile distribution/build process
+
+---
+
+⚠️ Disclaimer
+
+AIDYOR is a software tool for cryptocurrency research and automated risk analysis.
+
+It does not provide financial, investment, legal or tax advice.
+
+AIDYOR cannot guarantee that:
+
+- a token is legitimate;
+- a token is free from vulnerabilities;
+- a contract cannot be exploited;
+- liquidity will remain available;
+- a project will not disappear;
+- a token will increase in value;
+- an identified risk is necessarily exploitable; or
+- an unrecognized risk does not exist.
+
+Cryptocurrency markets and smart contracts involve substantial risk.
+
+Users are responsible for independently verifying information before interacting with a token, smart contract, wallet, exchange or decentralized application.
+
+Never rely solely on an automated scanner when making financial decisions.
+
+---
+
+🔗 Links
+
+Live application: https://aidyor.app
+
+GitHub repository: https://github.com/Struja007-alt/aidyor
+
+---
+
+📜 License
+
+Proprietary — All Rights Reserved
+
+The source code and associated AIDYOR intellectual property are not licensed for unrestricted commercial redistribution or modification unless expressly authorized by the rights holder.
+
+---
+
+About AIDYOR
+
+AIDYOR is built around a simple objective:
+
+«Make cryptocurrency security research faster, more accessible and easier to understand.»
+
+The platform combines automated blockchain analysis, security-data aggregation, market information, OCR and AI-assisted explanations into a single research workflow.
 
 
