@@ -2,5 +2,6 @@ User-agent: *
 Allow: /
 Disallow: /auth
 Disallow: /ocr-dashboard
+Disallow: /admin
 
 Sitemap: https://aidyor.app/sitemap.xml

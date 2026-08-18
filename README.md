@@ -32,6 +32,7 @@ AIDYOR is a comprehensive cryptocurrency token security analysis platform that a
 - **💳 Payments** - Telegram Stars (bot) + Stripe (web checkout + customer portal)
 - **🔐 Passkey Authentication** - Passwordless WebAuthn login
 - **📱 Push Notifications** - Browser alerts for whale activity
+- **📊 Private Admin Marketing Dashboard** - Internal `/admin/marketing` route (backend-verified `admin` role required, `noindex`) with KPI cards, date-range controls, acquisition/engagement/monetization tables, campaign attribution, partner pipeline and trend placeholders. No analytics source connected yet — all figures render placeholder states.
 - **✉️ Contact & Social** - Email + X (@aidyor33641) links in dedicated Contact section
 
 ### Security Analysis
@@ -171,6 +172,7 @@ The frontend requires `VITE_SUPABASE_PROJECT_ID`, `VITE_SUPABASE_PUBLISHABLE_KEY
 │   │   └── Watchlist.tsx    # User favorites
 │   ├── hooks/               # Custom React hooks
 │   │   ├── useAuth.tsx
+│   │   ├── useAdminRole.ts
 │   │   ├── useCloudWatchlist.ts
 │   │   ├── useSecurityAlerts.ts
 │   │   ├── usePasskey.ts
