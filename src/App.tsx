@@ -28,6 +28,7 @@ const Subscription = lazy(() => import("./pages/Subscription"));
 const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
 const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
+const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
 
 /**
  * Optimized QueryClient configuration for better caching and performance
@@ -83,6 +84,7 @@ const App = () => (
             <Route path="/ocr-dashboard" element={<OCRDashboard />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
+            <Route path="/admin/marketing" element={<AdminMarketing />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
             </Routes>
