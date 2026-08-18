@@ -1,5 +1,5 @@
 import { useState, useEffect, forwardRef } from "react";
-import { Star, Trash2, ExternalLink, RefreshCw, Loader2, Rocket, TrendingDown, AlertTriangle, LogIn, Cloud } from "lucide-react";
+import { Star, Trash2, ExternalLink, RefreshCw, Loader2, Rocket, TrendingDown, AlertTriangle, LogIn, LogOut, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCloudWatchlist, WatchlistToken } from "@/hooks/useCloudWatchlist";
 import { useAuth } from "@/hooks/useAuth";
