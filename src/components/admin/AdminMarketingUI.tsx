@@ -1,7 +1,7 @@
 /**
  * @fileoverview Presentational building blocks for the private admin
- * marketing dashboard. No data fetching happens here — every component
- * renders an explicit "no data source connected" placeholder state.
+ * marketing dashboard. Components render a real value/series when provided;
+ * otherwise they fall back to an explicit "no data source connected" state.
  */
 import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -24,9 +24,11 @@ interface KpiCardProps {
   icon: React.ComponentType<{ className?: string }>;
   hint?: string;
   accent?: boolean;
+  /** Real value. Omit to render the placeholder state. */
+  value?: string | number;
 }
 
-export const KpiCard = ({ label, icon: Icon, hint, accent }: KpiCardProps) => (
+export const KpiCard = ({ label, icon: Icon, hint, accent, value }: KpiCardProps) => (
   <div
     className={cn(
       "glass-card p-4 flex flex-col gap-2",
@@ -39,10 +41,12 @@ export const KpiCard = ({ label, icon: Icon, hint, accent }: KpiCardProps) => (
       </span>
       <Icon className={cn("w-4 h-4", accent ? "text-primary" : "text-muted-foreground")} />
     </div>
-    <p className="font-display text-2xl font-bold text-foreground leading-none">
-      {NO_DATA}
+    <p className="font-display text-2xl font-bold text-foreground leading-none tabular-nums">
+      {value ?? NO_DATA}
     </p>
-    <p className="text-[11px] text-muted-foreground/70">{hint ?? "Awaiting data source"}</p>
+    <p className="text-[11px] text-muted-foreground/70">
+      {value !== undefined ? (hint ?? "") : (hint ?? "Awaiting data source")}
+    </p>
   </div>
 );
 
@@ -86,6 +90,31 @@ export const EmptyRows = ({
         {Array.from({ length: columns - 1 }).map((_, i) => (
           <td key={i} className="py-2.5 pr-4 text-muted-foreground/60 tabular-nums">
             {NO_DATA}
+          </td>
+        ))}
+      </tr>
+    ))}
+  </>
+);
+
+/** Table rows built from real data. Each row's first cell is bold like EmptyRows' label. */
+export const DataRows = ({
+  rows,
+}: {
+  rows: (string | number | ReactNode)[][];
+}) => (
+  <>
+    {rows.map((row, i) => (
+      <tr key={i} className="border-b border-border/30 last:border-0">
+        {row.map((cell, j) => (
+          <td
+            key={j}
+            className={cn(
+              "py-2.5 pr-4 whitespace-nowrap tabular-nums",
+              j === 0 ? "text-foreground font-medium" : "text-muted-foreground"
+            )}
+          >
+            {cell === "" || cell === null || cell === undefined ? NO_DATA : cell}
           </td>
         ))}
       </tr>
@@ -141,3 +170,56 @@ export const EmptyChart = ({ title }: { title: string }) => (
     </div>
   </div>
 );
+
+/**
+ * Real trend chart, drawn with plain SVG (no new chart dependency).
+ * Falls back to EmptyChart's placeholder look if `points` is empty.
+ */
+export const TrendChart = ({
+  title,
+  points,
+}: {
+  title: string;
+  points: { label: string; value: number }[];
+}) => {
+  if (!points || points.length === 0) return <EmptyChart title={title} />;
+
+  const width = 280;
+  const height = 100;
+  const max = Math.max(...points.map((p) => p.value), 1);
+  const min = 0;
+  const stepX = points.length > 1 ? width / (points.length - 1) : 0;
+  const toY = (v: number) => height - ((v - min) / (max - min || 1)) * height;
+
+  const path = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${i * stepX} ${toY(p.value)}`)
+    .join(" ");
+  const areaPath = `${path} L ${width} ${height} L 0 ${height} Z`;
+  const total = points.reduce((s, p) => s + p.value, 0);
+
+  return (
+    <div className="glass-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-foreground">{title}</span>
+        <span className="text-[11px] text-muted-foreground tabular-nums">
+          {total.toLocaleString()} total
+        </span>
+      </div>
+      <div className="relative h-32 rounded-lg border border-border/60 bg-secondary/10 overflow-hidden">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          className="w-full h-full"
+        >
+          <path d={areaPath} fill="hsl(var(--primary) / 0.12)" stroke="none" />
+          <path d={path} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} />
+        </svg>
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground/70">
+        <span>{points[0]?.label}</span>
+        <span>{points[points.length - 1]?.label}</span>
+      </div>
+    </div>
+  );
+};
+
