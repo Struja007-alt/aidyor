@@ -12,7 +12,9 @@ import { prefetchCoinGeckoTokens } from "@/lib/api/coingecko";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
 import { InstallBanner } from "@/components/InstallBanner";
+import { Analytics } from "@vercel/analytics/react";
 import Index from "./pages/Index";
+
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
@@ -32,7 +34,7 @@ const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
 
 /**
  * Optimized QueryClient configuration for better caching and performance
- * 
+ *
  * @description
  * - staleTime: 2 minutes - Data is considered fresh, prevents unnecessary refetches
  * - gcTime: 10 minutes - Cached data retained for faster navigation
@@ -62,38 +64,39 @@ prefetchCoinGeckoTokens();
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Suspense fallback={<div className="min-h-screen bg-background" />}>
-            <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/terms-of-service" element={<TermsOfService />} />
-            <Route path="/cookie-policy" element={<CookiePolicy />} />
-            <Route path="/disclaimer" element={<Disclaimer />} />
-            <Route path="/transparency" element={<Transparency />} />
-            <Route path="/faq" element={<FAQ />} />
-            <Route path="/glossary" element={<Glossary />} />
-            <Route path="/glossary/:slug" element={<GlossaryTerm />} />
-            <Route path="/api-docs" element={<ApiDocs />} />
-            <Route path="/subscription" element={<Subscription />} />
-            <Route path="/ocr-dashboard" element={<OCRDashboard />} />
-            <Route path="/blog" element={<Blog />} />
-            <Route path="/blog/:slug" element={<BlogPost />} />
-            <Route path="/admin/marketing" element={<AdminMarketing />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Suspense fallback={<div className="min-h-screen bg-background" />}>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="/terms-of-service" element={<TermsOfService />} />
+                <Route path="/cookie-policy" element={<CookiePolicy />} />
+                <Route path="/disclaimer" element={<Disclaimer />} />
+                <Route path="/transparency" element={<Transparency />} />
+                <Route path="/faq" element={<FAQ />} />
+                <Route path="/glossary" element={<Glossary />} />
+                <Route path="/glossary/:slug" element={<GlossaryTerm />} />
+                <Route path="/api-docs" element={<ApiDocs />} />
+                <Route path="/subscription" element={<Subscription />} />
+                <Route path="/ocr-dashboard" element={<OCRDashboard />} />
+                <Route path="/blog" element={<Blog />} />
+                <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/admin/marketing" element={<AdminMarketing />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
     <InstallBanner />
+    <Analytics />
   </ErrorBoundary>
 );
 
