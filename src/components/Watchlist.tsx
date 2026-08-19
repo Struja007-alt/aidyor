@@ -281,8 +281,8 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
   return (
     <div className="glass-card p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
           <Star className="w-5 h-5 text-warning fill-warning" />
           <h3 className="font-display text-lg text-foreground">Watchlist</h3>
           {alertCount > 0 && (
@@ -292,43 +292,54 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 sm:justify-end">
           <span className="hidden sm:flex text-xs text-muted-foreground items-center gap-1">
             <Cloud className="w-3 h-3" />
             Synced
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={cn(
-              "h-8 text-xs gap-1",
-              autoRefresh && "bg-primary/20 text-primary"
-            )}
-            title={autoRefresh ? "Auto-refresh ON (30s)" : "Enable auto-refresh"}
-          >
-            <RefreshCw className={cn("w-3 h-3", autoRefresh && "animate-spin")} />
-            Auto
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleScanAll}
-            disabled={scanningAll}
-            className="h-8 text-xs gap-1"
-          >
-            {scanningAll ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Rocket className="w-3 h-3" />
-            )}
-            Scan All
-          </Button>
-          <Button variant="ghost" size="sm" onClick={signOut} className="h-8 text-xs">
-            Sign Out
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={cn(
+                "h-8 text-xs gap-1",
+                autoRefresh && "bg-primary/20 text-primary"
+              )}
+              title={autoRefresh ? "Auto-refresh ON (30s)" : "Enable auto-refresh"}
+            >
+              <RefreshCw className={cn("w-3 h-3", autoRefresh && "animate-spin")} />
+              Auto
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleScanAll}
+              disabled={scanningAll}
+              className="h-8 text-xs gap-1"
+            >
+              {scanningAll ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Rocket className="w-3 h-3" />
+              )}
+              Scan All
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={signOut}
+              className="h-8 w-8 p-0 sm:w-auto sm:px-3"
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <LogOut className="w-4 h-4 sm:hidden" />
+              <span className="hidden sm:inline text-xs">Sign Out</span>
+            </Button>
+          </div>
         </div>
       </div>
+
 
       {/* Token List */}
       <div className="space-y-3">
