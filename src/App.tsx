@@ -16,6 +16,7 @@ import { Analytics } from "@vercel/analytics/react";
 import Index from "./pages/Index";
 
 const Auth = lazy(() => import("./pages/Auth"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
@@ -32,24 +33,14 @@ const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
 
-/**
- * Optimized QueryClient configuration for better caching and performance
- *
- * @description
- * - staleTime: 2 minutes - Data is considered fresh, prevents unnecessary refetches
- * - gcTime: 10 minutes - Cached data retained for faster navigation
- * - refetchOnWindowFocus: false - Prevents refetch on tab switch (crypto data updates via manual scan)
- * - retry: 2 - Limited retries for failed requests (external APIs may rate limit)
- * - retryDelay: Exponential backoff starting at 1s
- */
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 2 * 60 * 1000, // 2 minutes - data stays fresh
-      gcTime: 10 * 60 * 1000, // 10 minutes - cache retention (formerly cacheTime)
-      refetchOnWindowFocus: false, // Prevent unnecessary refetches
-      refetchOnReconnect: true, // Refetch when connection restored
-      retry: 2, // Limit retries for rate-limited APIs
+      staleTime: 2 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      retry: 2,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
     mutations: {
@@ -58,7 +49,6 @@ const queryClient = new QueryClient({
   },
 });
 
-// Pre-fetch CoinGecko token list on app load for faster original detection
 prefetchCoinGeckoTokens();
 
 const App = () => (
@@ -73,6 +63,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<Auth />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="/terms-of-service" element={<TermsOfService />} />
                 <Route path="/cookie-policy" element={<CookiePolicy />} />
