@@ -2004,7 +2004,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     className="w-full bg-secondary/80 border-border/50 focus:border-primary/50 h-16 pl-12 pr-32 text-foreground placeholder:text-muted-foreground text-base rounded-xl font-mono truncate"
                   />
                   {isSearching && (
-                    <Loader2 className="absolute right-24 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground animate-spin" />
+                    <Loader2 className="absolute right-24 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
                   )}
                   <Button 
                     onClick={handleScan}
