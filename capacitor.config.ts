@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.eaa8d564cf6a4d6f81e20ddab66a4a49',
+  appId: 'app.aidyor.mobile',
   appName: 'AIDYOR',
   webDir: 'dist',
   server: {
