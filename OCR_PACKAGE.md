@@ -846,4 +846,4 @@ MIT - Use freely in any project.
 
 ---
 
-*Generated from AIDYOR project - https://aidyor.lovable.app*
+*Generated from AIDYOR project - https://aidyor.app*
