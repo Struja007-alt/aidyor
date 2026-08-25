@@ -41,7 +41,7 @@
     "notifications"
   ],
   "host_permissions": [
-    "https://*.lovable.app/*"
+   
   ],
   "web_accessible_resources": [
     {
