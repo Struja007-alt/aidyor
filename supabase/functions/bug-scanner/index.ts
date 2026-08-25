@@ -9,19 +9,17 @@ const PRODUCT_IDS = {
 
 // ---------- CORS ----------
 const ALLOWED_ORIGINS = [
-  'https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app',
-  'https://aidyor.lovable.app',
   'https://aidyor.app',
   'https://www.aidyor.app',
   'http://localhost:5173',
   'http://localhost:8080',
 ];
+
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.endsWith('.lovableproject.com') || origin.endsWith('.lovable.app')) return true;
-  return false;
+  return ALLOWED_ORIGINS.includes(origin);
 }
+
 function corsFor(origin: string | null): Record<string, string> {
   const allowed = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
   return {
@@ -202,8 +200,9 @@ async function fetchEvmSource(chainId: number, address: string): Promise<{ sourc
 
 // ---------- AI deep audit ----------
 async function aiAudit(source: string, chainLabel: string): Promise<{ findings: Finding[]; summary: string } | null> {
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) return null;
+
   // Trim very long sources to keep latency reasonable
   const trimmed = source.length > 60_000 ? source.slice(0, 60_000) + '\n\n/* …source truncated for analysis… */' : source;
   const prompt = `You are a senior smart-contract security auditor. Review the following ${chainLabel} contract source and report critical, exploitable bugs.
@@ -222,22 +221,38 @@ CONTRACT SOURCE:
 \`\`\`solidity
 ${trimmed}
 \`\`\``;
+
   try {
-    const res = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'google/gemini-3.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: prompt }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+          },
+        }),
+      },
+    );
+
     if (!res.ok) {
       console.error('[bug-scanner] AI gateway error:', res.status);
       return null;
     }
+
     const data = await res.json();
-    const text = data?.choices?.[0]?.message?.content ?? '{}';
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
     const parsed = JSON.parse(text);
+
     const findings: Finding[] = (parsed.findings ?? []).map((f: any, i: number) => ({
       id: `ai-${i}`,
       title: String(f.title ?? 'Issue').slice(0, 200),
@@ -246,6 +261,7 @@ ${trimmed}
       description: String(f.description ?? '').slice(0, 1000),
       remediation: String(f.remediation ?? '').slice(0, 600),
     }));
+
     return { findings, summary: String(parsed.summary ?? '').slice(0, 600) };
   } catch (e) {
     console.error('[bug-scanner] AI parse error:', e);
@@ -322,6 +338,7 @@ serve(async (req) => {
         message: 'Smart Contract Bug Scanner is a Pro feature. Upgrade to unlock unlimited audits.',
       }), { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+
 // ----- Server-side scan limit (atomic, replaces bypassable client-side check) -----
     const { data: limitData, error: limitErr } = await supabase.rpc('check_and_increment_scan', {
       p_user_id: userId,
@@ -339,6 +356,7 @@ serve(async (req) => {
         message: 'You have reached your scan limit. Try again later.',
       }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+
     // ----- Parse body -----
     const body = await req.json();
     const address = String(body?.address ?? '').trim();
