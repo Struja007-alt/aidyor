@@ -22,7 +22,7 @@ const ApiDocs = () => {
     setTimeout(() => setCopiedSnippet(null), 2000);
   };
 
-  const baseUrl = "https://ckhagucgyjnpvcolcihc.supabase.co/functions/v1/api-token-scan";
+  const baseUrl = "https://lerromdxykuydrpttfif.supabase.co/functions/v1/api-token-scan";
 
   const codeSnippets = {
     scan: {
