@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
  * Adjust the CONTACT_EMAIL constant below before publishing.
  */
 
-const CONTACT_EMAIL = "d.belligoi@gmail.com"; // TODO: swap for a dedicated address if you set one up, e.g. api@aidyor.app
+const CONTACT_EMAIL = "aidyor.app@gmail.com"; // TODO: swap for a dedicated address if you set one up, e.g. api@aidyor.app
 
 export default function ApiAccess() {
   return (
