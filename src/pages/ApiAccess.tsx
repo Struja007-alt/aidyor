@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 
 /**
  * AIDYOR — API Access page
@@ -10,7 +11,7 @@ import React from "react";
  * Adjust the CONTACT_EMAIL constant below before publishing.
  */
 
-const CONTACT_EMAIL = "aidyor.app@gmail.com"; // TODO: swap for a dedicated address if you set one up, e.g. api@aidyor.app
+const CONTACT_EMAIL = "d.belligoi@gmail.com"; // TODO: swap for a dedicated address if you set one up, e.g. api@aidyor.app
 
 export default function ApiAccess() {
   return (
@@ -315,7 +316,7 @@ export default function ApiAccess() {
               <a className="btn-primary" href={`mailto:${CONTACT_EMAIL}?subject=AIDYOR API Access`}>
                 Request API access
               </a>
-              <a className="btn-ghost" href="#pricing">See pricing</a>
+              <Link className="btn-ghost" to="/api-docs">Read the docs</Link>
             </div>
           </div>
 
@@ -353,18 +354,18 @@ export default function ApiAccess() {
           <h2 className="display">What you get</h2>
           <div className="endpoint-row">
             <span className="method">POST</span>
-            <span className="path">/v1/scan</span>
-            <span className="desc">Single contract risk check — chain + address in, risk score + flags out</span>
-          </div>
-          <div className="endpoint-row">
-            <span className="method">POST</span>
-            <span className="path">/v1/scan/batch</span>
-            <span className="desc">Score up to 50 addresses in one call</span>
+            <span className="path">/scan</span>
+            <span className="desc">Single contract risk check — address (+ optional chain) in, risk score + flags out</span>
           </div>
           <div className="endpoint-row">
             <span className="method">GET</span>
-            <span className="path">/v1/networks</span>
-            <span className="desc">List of supported chains and current data source coverage</span>
+            <span className="path">/usage</span>
+            <span className="desc">Check your current billing-period usage and remaining calls</span>
+          </div>
+          <div className="endpoint-row">
+            <span className="method">GET</span>
+            <span className="path">/plans</span>
+            <span className="desc">Public — list available pricing tiers, no auth required</span>
           </div>
         </section>
 
@@ -385,16 +386,16 @@ export default function ApiAccess() {
                 <div className="tier-name">Growth</div>
                 <div className="tier-desc">For live wallets, bots, and front-ends with real traffic</div>
               </div>
-              <div className="tier-calls">10,000 calls/mo</div>
-              <div className="tier-price">$199<small>/mo</small></div>
+              <div className="tier-calls">5,000 calls/mo</div>
+              <div className="tier-price">$99<small>/mo</small></div>
             </div>
             <div className="pricing-row" style={{ borderBottom: "none" }}>
               <div>
                 <div className="tier-name">Enterprise</div>
-                <div className="tier-desc">High volume, custom SLA, dedicated support</div>
+                <div className="tier-desc">High volume, priority support</div>
               </div>
-              <div className="tier-calls">Custom volume</div>
-              <div className="tier-price" style={{ fontSize: 16 }}>Contact us</div>
+              <div className="tier-calls">25,000 calls/mo</div>
+              <div className="tier-price">$199<small>/mo</small></div>
             </div>
           </div>
         </section>
@@ -425,9 +426,12 @@ export default function ApiAccess() {
         <footer>
           <h2 className="display">Ready to integrate?</h2>
           <p>Send a message and we'll get you a test API key within 24 hours.</p>
-          <a className="btn-primary" href={`mailto:${CONTACT_EMAIL}?subject=AIDYOR API Access`}>
-            Request API access
-          </a>
+          <div className="hero-ctas" style={{ justifyContent: "center" }}>
+            <a className="btn-primary" href={`mailto:${CONTACT_EMAIL}?subject=AIDYOR API Access`}>
+              Request API access
+            </a>
+            <Link className="btn-ghost" to="/api-docs">Read the docs</Link>
+          </div>
         </footer>
       </div>
     </div>
