@@ -8,19 +8,17 @@ const PRODUCT_IDS = {
 } as const;
 
 const ALLOWED_ORIGINS = [
-  'https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app',
-  'https://aidyor.lovable.app',
   'https://aidyor.app',
   'https://www.aidyor.app',
   'http://localhost:5173',
   'http://localhost:8080',
 ];
+
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.endsWith('.lovableproject.com') || origin.endsWith('.lovable.app')) return true;
-  return false;
+  return ALLOWED_ORIGINS.includes(origin);
 }
+
 function corsFor(origin: string | null): Record<string, string> {
   const allowed = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
   return {
@@ -53,6 +51,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     let userId: string | null = null;
     let userEmail: string | null = null;
+
     if (authHeader.startsWith('Bearer ')) {
       const { data } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
       if (data?.user) {
@@ -104,15 +103,17 @@ serve(async (req) => {
     if (peek) {
       const { data: peekData, error: peekErr } = await supabase.rpc('get_remaining_free_scans', {
         p_identifier: finalIdentifier,
-        p_daily_limit: 5,
+        p_daily_limit: 3,
       });
+
       if (peekErr) {
         console.error('[check-scan-limit] peek rpc failed:', peekErr);
         return new Response(JSON.stringify({ error: 'Could not check scan limit' }), {
           status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
         });
       }
-      const remaining = peekData?.[0]?.remaining ?? 5;
+
+      const remaining = peekData?.[0]?.remaining ?? 3;
       return new Response(JSON.stringify({ allowed: remaining > 0, remaining, isPro: false }), {
         headers: { ...cors, 'Content-Type': 'application/json' },
       });
@@ -121,16 +122,19 @@ serve(async (req) => {
     const { data: limitData, error: limitErr } = await supabase.rpc('check_and_increment_free_scan', {
       p_identifier: finalIdentifier,
     });
+
     if (limitErr) {
       console.error('[check-scan-limit] rpc failed:', limitErr);
       return new Response(JSON.stringify({ error: 'Could not verify scan limit' }), {
         status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
       });
     }
+
     const row = limitData?.[0];
     return new Response(JSON.stringify({ allowed: !!row?.allowed, remaining: row?.remaining ?? 0, isPro: false }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
+
   } catch (e) {
     console.error('[check-scan-limit] error:', e);
     return new Response(JSON.stringify({ error: 'Internal error' }), {
