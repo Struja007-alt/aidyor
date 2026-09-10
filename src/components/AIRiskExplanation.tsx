@@ -2,49 +2,30 @@
  * @fileoverview AIRiskExplanation component for AI-powered risk analysis
  * Uses Gemini AI to generate human-readable explanations of token risks
  */
-
 import { useState, useEffect, memo } from 'react';
-import { Brain, Sparkles, AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Brain, Sparkles, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAIRiskExplanation } from '@/hooks/useAIRiskExplanation';
 
-/**
- * Risk factor data structure
- * @interface RiskFactor
- */
 interface RiskFactor {
-  /** Name of the risk factor */
   name: string;
-  /** Current status of the factor */
   status: 'safe' | 'warning' | 'danger';
-  /** Description of the risk factor state */
   description: string;
 }
 
-/**
- * Complete token data for AI analysis
- * @interface TokenData
- */
 interface TokenData {
-  /** Token name */
   name: string;
-  /** Token symbol/ticker */
   symbol: string;
-  /** Blockchain network */
   network: string;
-  /** Calculated risk score (0-100) */
   riskScore: number;
-  /** Array of detected risk factors */
   riskFactors: RiskFactor[];
-  /** Optional market data */
   marketData?: {
     price: number;
     liquidity: number;
     volume24h: number;
     marketCap: number;
   };
-  /** Optional security analysis data */
   securityData?: {
     isHoneypot: boolean;
     isVerified: boolean;
@@ -54,7 +35,6 @@ interface TokenData {
     isMintable: boolean;
     hasHiddenOwner: boolean;
   };
-  /** Optional liquidity lock information */
   lockInfo?: {
     isLocked: boolean;
     lockPercentage: number;
@@ -62,40 +42,24 @@ interface TokenData {
   };
 }
 
-/**
- * Props for the AIRiskExplanation component
- * @interface AIRiskExplanationProps
- */
 interface AIRiskExplanationProps {
-  /** Token data to analyze */
   tokenData: TokenData;
-  /** Auto-generate explanation on mount */
   autoGenerate?: boolean;
-  /** Additional CSS classes */
   className?: string;
+  /** Called when the user clicks the upgrade CTA in the Pro-gate card. Defaults to navigating to /pricing. */
+  onUpgradeClick?: () => void;
 }
-
-/**
- * Displays AI-powered risk analysis explanations for tokens.
- * Features expandable card with generation controls and loading states.
- * 
- * @component
- * @example
- * ```tsx
- * <AIRiskExplanation tokenData={tokenData} autoGenerate />
- * ```
- */
 
 export const AIRiskExplanation = memo(function AIRiskExplanation({
   tokenData,
   autoGenerate = false,
   className,
+  onUpgradeClick,
 }: AIRiskExplanationProps) {
-  const { generateExplanation, explanation, isLoading, error, reset } = useAIRiskExplanation();
+  const { generateExplanation, explanation, isLoading, error, requiresPro, reset } = useAIRiskExplanation();
   const [isExpanded, setIsExpanded] = useState(true);
   const [hasGenerated, setHasGenerated] = useState(false);
 
-  // Auto-generate on mount if enabled
   useEffect(() => {
     if (autoGenerate && !hasGenerated && tokenData.riskFactors.length > 0) {
       setHasGenerated(true);
@@ -103,7 +67,6 @@ export const AIRiskExplanation = memo(function AIRiskExplanation({
     }
   }, [autoGenerate, hasGenerated, tokenData, generateExplanation]);
 
-  // Reset when token changes
   useEffect(() => {
     reset();
     setHasGenerated(false);
@@ -114,17 +77,25 @@ export const AIRiskExplanation = memo(function AIRiskExplanation({
     generateExplanation(tokenData);
   };
 
-  const riskColor = tokenData.riskScore >= 70 
-    ? 'text-safe' 
-    : tokenData.riskScore >= 40 
-      ? 'text-warning' 
-      : 'text-danger';
+  const handleUpgrade = () => {
+    if (onUpgradeClick) {
+      onUpgradeClick();
+    } else {
+      window.location.href = '/pricing';
+    }
+  };
+
+  const riskColor = tokenData.riskScore >= 70
+    ? 'text-safe'
+    : tokenData.riskScore >= 40
+    ? 'text-warning'
+    : 'text-danger';
 
   const bgGradient = tokenData.riskScore >= 70
     ? 'from-safe/10 to-safe/5'
     : tokenData.riskScore >= 40
-      ? 'from-warning/10 to-warning/5'
-      : 'from-danger/10 to-danger/5';
+    ? 'from-warning/10 to-warning/5'
+    : 'from-danger/10 to-danger/5';
 
   return (
     <div className={cn(
@@ -170,7 +141,7 @@ export const AIRiskExplanation = memo(function AIRiskExplanation({
               <p className="text-sm text-muted-foreground mb-4">
                 Get an AI-powered explanation of why this token has a {tokenData.riskScore >= 70 ? 'low' : tokenData.riskScore >= 40 ? 'medium' : 'high'} risk score
               </p>
-              <Button 
+              <Button
                 onClick={handleGenerate}
                 className="gap-2"
                 variant="outline"
@@ -196,14 +167,35 @@ export const AIRiskExplanation = memo(function AIRiskExplanation({
             </div>
           )}
 
-          {/* Error state */}
-          {error && (
+          {/* Pro upgrade gate */}
+          {requiresPro && !isLoading && (
+            <div className="flex flex-col items-center gap-3 py-6 px-2 text-center">
+              <div className="p-3 rounded-full bg-primary/10">
+                <Lock className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1">
+                  Unlock AI Risk Explanations
+                </p>
+                <p className="text-xs text-muted-foreground max-w-xs">
+                  Get plain-English breakdowns of exactly why a token is risky — included with Pro.
+                </p>
+              </div>
+              <Button onClick={handleUpgrade} className="gap-2 mt-1">
+                <Sparkles className="w-4 h-4" />
+                Upgrade to Pro
+              </Button>
+            </div>
+          )}
+
+          {/* Error state (non-Pro-gate errors only) */}
+          {error && !requiresPro && (
             <div className="flex flex-col items-center gap-3 py-4">
               <div className="flex items-center gap-2 text-warning">
                 <AlertTriangle className="w-5 h-5" />
                 <span className="text-sm">{error}</span>
               </div>
-              <Button 
+              <Button
                 onClick={handleGenerate}
                 variant="outline"
                 size="sm"
@@ -218,7 +210,6 @@ export const AIRiskExplanation = memo(function AIRiskExplanation({
           {/* Explanation */}
           {explanation && !isLoading && (
             <div className="space-y-4">
-              {/* Stats bar */}
               <div className="flex items-center gap-2 text-xs">
                 {explanation.dangerCount > 0 && (
                   <span className="px-2 py-1 rounded-full bg-danger/20 text-danger">
@@ -237,14 +228,12 @@ export const AIRiskExplanation = memo(function AIRiskExplanation({
                 )}
               </div>
 
-              {/* AI explanation text */}
               <div className="prose prose-sm prose-invert max-w-none">
                 <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
                   {explanation.explanation}
                 </p>
               </div>
 
-              {/* Regenerate button */}
               <div className="flex justify-end">
                 <Button
                   onClick={handleGenerate}
