@@ -46,7 +46,7 @@ interface AIRiskExplanationProps {
   tokenData: TokenData;
   autoGenerate?: boolean;
   className?: string;
-  /** Called when the user clicks the upgrade CTA in the Pro-gate card. Defaults to navigating to /pricing. */
+  /** Called when the user clicks the upgrade CTA in the Pro-gate card. Defaults to navigating to /subscription. */
   onUpgradeClick?: () => void;
 }
 
@@ -81,7 +81,7 @@ export const AIRiskExplanation = memo(function AIRiskExplanation({
     if (onUpgradeClick) {
       onUpgradeClick();
     } else {
-      window.location.href = '/pricing';
+      window.location.href = '/subscription';
     }
   };
 
