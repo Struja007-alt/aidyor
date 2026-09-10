@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useStripeSubscription } from '@/hooks/useStripeSubscription';
 import { supabase } from '@/integrations/supabase/client';
 
-const DAILY_FREE_LIMIT = 5;
+const DAILY_FREE_LIMIT = 3;
 
 export function useScanUsage() {
   const { user, session } = useAuth();
