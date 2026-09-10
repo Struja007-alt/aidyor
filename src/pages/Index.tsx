@@ -19,7 +19,6 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <DisclaimerDialog />
       <Header />
-      
       <main className="container mx-auto px-4 py-8 space-y-8 md:space-y-12">
         {/* Hero Section */}
         <section className="relative text-center py-6 md:py-16 overflow-hidden">
@@ -45,6 +44,7 @@ const Index = () => {
             <Zap className="w-4 h-4" />
             Real-time Token Analysis
           </div>
+
           <h1 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-4 tracking-tight inline-flex items-center justify-center gap-3 flex-wrap">
             Protect Your <span className="text-gradient-safe drop-shadow-[0_0_25px_hsl(var(--primary)/0.35)]">Crypto</span>
             <TooltipProvider>
@@ -58,10 +58,11 @@ const Index = () => {
               </Tooltip>
             </TooltipProvider>
           </h1>
+
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
             Advanced multi-chain token scanner. Paste a contract, search by name, or drop a screenshot — we surface the risk in seconds.
           </p>
-          
+
           {/* Feature Highlights */}
           <div className="flex flex-wrap justify-center gap-2 md:gap-3 text-sm">
             {[
@@ -81,7 +82,11 @@ const Index = () => {
               </div>
             ))}
           </div>
+        </section>
 
+        {/* Token Scanner Section — moved directly under the hero so it's reachable without scrolling past marketing content */}
+        <section id="scanner" className="scroll-mt-20">
+          <TokenScanner />
         </section>
 
         {/* Feature Stats */}
@@ -115,7 +120,6 @@ const Index = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-0 relative">
             {/* Connector lines — desktop only */}
             <div className="hidden md:block absolute top-10 left-1/3 right-1/3 h-px bg-gradient-to-r from-primary/40 via-primary/20 to-primary/40 z-0" />
-
             {[
               {
                 step: "01",
@@ -161,25 +165,6 @@ const Index = () => {
               </div>
             ))}
           </div>
-
-          <div className="text-center mt-10">
-            <a
-              href="#scanner"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
-            >
-              <Zap className="w-4 h-4" />
-              Try it free — no wallet needed
-            </a>
-          </div>
-        </section>
-
-        {/* Token Scanner Section */}
-        <section id="scanner" className="scroll-mt-20">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-1 h-8 bg-primary rounded-full" />
-            <h2 className="font-display text-2xl font-bold text-foreground">Token Scanner</h2>
-          </div>
-          <TokenScanner />
         </section>
 
         {/* Bug Scanner Section */}
@@ -217,8 +202,6 @@ const Index = () => {
           </div>
           <Watchlist />
         </section>
-
-
       </main>
       <Footer />
     </div>
