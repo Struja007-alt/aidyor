@@ -2,46 +2,27 @@
  * @fileoverview AI risk explanation hook
  * Generates human-readable risk explanations using Gemini AI
  */
-
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-/**
- * Risk factor data structure
- * @interface RiskFactor
- */
 interface RiskFactor {
-  /** Name of the risk factor */
   name: string;
-  /** Status classification */
   status: 'safe' | 'warning' | 'danger';
-  /** Description of the risk */
   description: string;
 }
 
-/**
- * Token data for AI analysis
- * @interface TokenData
- */
 interface TokenData {
-  /** Token name */
   name: string;
-  /** Token symbol */
   symbol: string;
-  /** Blockchain network */
   network: string;
-  /** Risk score (0-100) */
   riskScore: number;
-  /** Detected risk factors */
   riskFactors: RiskFactor[];
-  /** Optional market data */
   marketData?: {
     price: number;
     liquidity: number;
     volume24h: number;
     marketCap: number;
   };
-  /** Optional security analysis */
   securityData?: {
     isHoneypot: boolean;
     isVerified: boolean;
@@ -51,7 +32,6 @@ interface TokenData {
     isMintable: boolean;
     hasHiddenOwner: boolean;
   };
-  /** Optional lock information */
   lockInfo?: {
     isLocked: boolean;
     lockPercentage: number;
@@ -59,54 +39,25 @@ interface TokenData {
   };
 }
 
-/**
- * AI explanation result structure
- * @interface AIExplanationResult
- */
 interface AIExplanationResult {
-  /** AI-generated explanation text */
   explanation: string;
-  /** Risk level classification */
   riskLevel: string;
-  /** Count of danger-level factors */
   dangerCount: number;
-  /** Count of warning-level factors */
   warningCount: number;
-  /** Count of safe-level factors */
   safeCount: number;
 }
-
-/**
- * Hook for generating AI-powered risk explanations.
- * Calls the ai-risk-explain edge function to generate human-readable analysis.
- * 
- * @returns {Object} AI explanation state and functions
- * @returns {Function} generateExplanation - Generate explanation for token
- * @returns {AIExplanationResult|null} explanation - Generated explanation
- * @returns {boolean} isLoading - Loading state
- * @returns {string|null} error - Error message if failed
- * @returns {Function} reset - Reset state
- * 
- * @example
- * ```tsx
- * const { generateExplanation, explanation, isLoading } = useAIRiskExplanation();
- * 
- * await generateExplanation(tokenData);
- * if (explanation) {
- *   console.log(explanation.explanation);
- * }
- * ```
- */
 
 export function useAIRiskExplanation() {
   const [isLoading, setIsLoading] = useState(false);
   const [explanation, setExplanation] = useState<AIExplanationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [requiresPro, setRequiresPro] = useState(false);
 
   const generateExplanation = useCallback(async (tokenData: TokenData) => {
     setIsLoading(true);
     setError(null);
     setExplanation(null);
+    setRequiresPro(false);
 
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('ai-risk-explain', {
@@ -114,10 +65,33 @@ export function useAIRiskExplanation() {
       });
 
       if (invokeError) {
-        throw new Error(invokeError.message || 'Failed to generate explanation');
+        // Supabase's invoke() doesn't surface the JSON body on non-2xx by default.
+        // Read it from the underlying Response so we can detect PRO_REQUIRED specifically.
+        let body: any = null;
+        try {
+          const ctx = (invokeError as any)?.context;
+          if (ctx && typeof ctx.json === 'function') {
+            body = await ctx.json();
+          }
+        } catch (_e) {
+          // context wasn't readable JSON, fall through to generic error
+        }
+
+        if (body?.error === 'PRO_REQUIRED') {
+          setRequiresPro(true);
+          setError(body.message || 'AI risk explanations are a Pro feature.');
+          return null;
+        }
+
+        throw new Error(body?.message || invokeError.message || 'Failed to generate explanation');
       }
 
       if (data?.error) {
+        if (data.error === 'PRO_REQUIRED') {
+          setRequiresPro(true);
+          setError(data.message || 'AI risk explanations are a Pro feature.');
+          return null;
+        }
         throw new Error(data.error);
       }
 
@@ -136,6 +110,7 @@ export function useAIRiskExplanation() {
   const reset = useCallback(() => {
     setExplanation(null);
     setError(null);
+    setRequiresPro(false);
     setIsLoading(false);
   }, []);
 
@@ -144,6 +119,7 @@ export function useAIRiskExplanation() {
     explanation,
     isLoading,
     error,
+    requiresPro,
     reset,
   };
 }
