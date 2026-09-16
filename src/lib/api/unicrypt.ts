@@ -1,5 +1,5 @@
 // Liquidity Lock Verification APIs
-// Supports: Unicrypt, Team Finance, PinkSale, DXSale
+// Supports: Unicrypt, Team Finance, PinkSale, DXSale, and burn-address detection
 
 export interface LockInfo {
   isLocked: boolean;
@@ -31,18 +31,63 @@ const networkToUnicryptChain: Record<string, string> = {
   'AVAX': 'Avalanche',
 };
 
-// Main function: Check all lock platforms in parallel with validation
+// Known permanent burn / dead addresses. LP tokens sent here are
+// unrecoverable forever — at least as safe as a timed lock, since a lock
+// eventually expires and lets the deployer withdraw, while a burn never does.
+const BURN_ADDRESSES = new Set([
+  '0x000000000000000000000000000000000000dead',
+  '0x0000000000000000000000000000000000dead',
+  '0x0000000000000000000000000000000000000000',
+]);
+
+// Checks GoPlus's own top-holders breakdown (already fetched by goplus.ts)
+// for burn addresses. None of the four locker-platform APIs below can see
+// a burn — only a registered lock — so without this check, a token whose
+// LP was burned (e.g. PEPE) gets mislabeled as fully unlocked.
+function checkBurnedLiquidity(
+  lpHolders?: { address: string; percent: string; is_locked: number; tag?: string }[]
+): LockInfo | null {
+  if (!lpHolders || lpHolders.length === 0) return null;
+
+  let burnedPercent = 0;
+  for (const holder of lpHolders) {
+    const addr = (holder.address || '').toLowerCase();
+    const tag = (holder.tag || '').toLowerCase();
+    const isBurn = BURN_ADDRESSES.has(addr) || tag.includes('burn');
+    if (isBurn) {
+      burnedPercent += (parseFloat(holder.percent) || 0) * 100;
+    }
+  }
+
+  if (burnedPercent < 1) return null; // no meaningful burn found
+
+  return {
+    isLocked: true,
+    lockPercentage: Math.min(100, Math.round(burnedPercent)),
+    unlockDate: null,
+    lockDuration: 'Permanent (burned)',
+    lockerPlatform: 'Burned (dead address)',
+  };
+}
+
+// Main function: Check burn status, then all lock platforms in parallel
 export async function getLiquidityLockInfo(
-  tokenAddress: string, 
-  network: string
+  tokenAddress: string,
+  network: string,
+  lpHolders?: { address: string; percent: string; is_locked: number; tag?: string }[]
 ): Promise<LockInfo | null> {
   // Input validation
   if (!tokenAddress || typeof tokenAddress !== 'string') return null;
   const sanitized = tokenAddress.trim().toLowerCase();
   if (!/^0x[a-f0-9]{40}$/i.test(sanitized)) return null;
-  
+
   const chainId = networkToChainId[network];
   if (!chainId) return null;
+
+  // Burned liquidity is permanent and at least as safe as a timed lock, but
+  // invisible to the locker-platform APIs below — check it first.
+  const burnResult = checkBurnedLiquidity(lpHolders);
+  if (burnResult) return burnResult;
 
   try {
     // Check all platforms in parallel for speed
@@ -55,7 +100,7 @@ export async function getLiquidityLockInfo(
 
     // Collect successful results
     const results: LockInfo[] = [];
-    
+
     if (unicryptResult.status === 'fulfilled' && unicryptResult.value?.isLocked) {
       results.push(unicryptResult.value);
     }
@@ -73,7 +118,7 @@ export async function getLiquidityLockInfo(
     if (results.length > 0) {
       return results.reduce((best, current) => {
         if (current.lockPercentage > best.lockPercentage) return current;
-        if (current.lockPercentage === best.lockPercentage && 
+        if (current.lockPercentage === best.lockPercentage &&
             (current.unlockDate || 0) > (best.unlockDate || 0)) return current;
         return best;
       });
@@ -104,7 +149,6 @@ async function checkUnicryptLock(
     if (!response.ok) return null;
 
     const data = await response.json();
-    
     if (!data.locks || data.locks.length === 0) return null;
 
     let totalLocked = 0;
@@ -148,7 +192,6 @@ async function checkTeamFinanceLock(
     if (!response.ok) return null;
 
     const data = await response.json();
-
     if (!data.data || data.data.length === 0) return null;
 
     let totalLocked = 0;
@@ -196,7 +239,6 @@ async function checkPinkSaleLock(
     }
 
     const data = await response.json();
-
     if (!data.data || !data.data.locks || data.data.locks.length === 0) {
       return await checkPinkSaleAlternative(tokenAddress, chainId);
     }
@@ -240,7 +282,6 @@ async function checkPinkSaleAlternative(
     if (!response.ok) return null;
 
     const data = await response.json();
-
     if (!data.locks || data.locks.length === 0) return null;
 
     let totalLocked = 0;
@@ -300,7 +341,6 @@ async function checkDxSaleLock(
     }
 
     const data = await response.json();
-
     if (!data.locks || data.locks.length === 0) {
       return await checkDxLockerAlternative(tokenAddress, chainId);
     }
@@ -343,7 +383,6 @@ async function checkDxLockerAlternative(
     if (!response.ok) return null;
 
     const data = await response.json();
-
     if (!data.data || data.data.length === 0) return null;
 
     let totalLocked = 0;
@@ -382,7 +421,7 @@ function getDefaultLockInfo(): LockInfo {
 
 function formatLockDuration(ms: number): string {
   if (ms <= 0) return 'Unlocked';
-  
+
   const days = Math.floor(ms / (1000 * 60 * 60 * 24));
   const months = Math.floor(days / 30);
   const years = Math.floor(days / 365);
@@ -398,7 +437,12 @@ function formatLockDuration(ms: number): string {
   }
 }
 
-// Analyze lock status for risk scoring
+// Analyze lock status for risk scoring.
+// FIXED: scoring polarity was previously inverted — a fully locked/burned
+// token was penalized (score -= 15) while a fully unlocked token was
+// rewarded (score += 25). This flips it so "safe" factors add to the score
+// and "danger" factors subtract, matching the convention used everywhere
+// else in the app (e.g. goplus.ts).
 export function analyzeLockSecurity(lockInfo: LockInfo): {
   score: number;
   factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[];
@@ -409,38 +453,38 @@ export function analyzeLockSecurity(lockInfo: LockInfo): {
   if (lockInfo.isLocked) {
     if (lockInfo.lockPercentage >= 90) {
       factors.push({
-        name: 'Liquidity Lock',
+        name: lockInfo.lockerPlatform.startsWith('Burned') ? 'Liquidity Burned' : 'Liquidity Lock',
         status: 'safe',
-        description: `${lockInfo.lockPercentage.toFixed(0)}% locked via ${lockInfo.lockerPlatform}`,
+        description: `${lockInfo.lockPercentage.toFixed(0)}% secured via ${lockInfo.lockerPlatform}`,
       });
-      score -= 15;
+      score += 15;
     } else if (lockInfo.lockPercentage >= 50) {
       factors.push({
         name: 'Liquidity Lock',
         status: 'warning',
         description: `Only ${lockInfo.lockPercentage.toFixed(0)}% locked via ${lockInfo.lockerPlatform}`,
       });
-      score += 5;
+      score -= 5;
     } else {
       factors.push({
         name: 'Liquidity Lock',
         status: 'warning',
         description: `Low lock: ${lockInfo.lockPercentage.toFixed(0)}% via ${lockInfo.lockerPlatform}`,
       });
-      score += 10;
+      score -= 10;
     }
 
-    // Check unlock timing
+    // Check unlock timing (not applicable to permanent burns, which have no unlockDate)
     if (lockInfo.unlockDate) {
       const daysUntilUnlock = (lockInfo.unlockDate - Date.now()) / (1000 * 60 * 60 * 24);
-      
+
       if (daysUntilUnlock > 365) {
         factors.push({
           name: 'Lock Duration',
           status: 'safe',
           description: `Locked for ${lockInfo.lockDuration}`,
         });
-        score -= 5;
+        score += 5;
       } else if (daysUntilUnlock > 90) {
         factors.push({
           name: 'Lock Duration',
@@ -453,23 +497,23 @@ export function analyzeLockSecurity(lockInfo: LockInfo): {
           status: 'warning',
           description: `Unlocks soon: ${lockInfo.lockDuration}`,
         });
-        score += 10;
+        score -= 10;
       } else {
         factors.push({
           name: 'Lock Duration',
           status: 'danger',
           description: 'Lock has expired',
         });
-        score += 20;
+        score -= 20;
       }
     }
   } else {
     factors.push({
       name: 'Liquidity Lock',
       status: 'danger',
-      description: 'No liquidity lock detected',
+      description: 'No liquidity lock or burn detected',
     });
-    score += 25;
+    score -= 25;
   }
 
   return { score, factors };
