@@ -1,15 +1,14 @@
 // GoPlus Security API - Free, no auth required
 // Docs: https://docs.gopluslabs.io/
-
 // SolanaFM API - Free, no auth required
 // Docs: https://docs.solana.fm/
 
-import { 
-  detectERCStandard, 
-  getERCStandardRiskFactors, 
+import {
+  detectERCStandard,
+  getERCStandardRiskFactors,
   getERCStandardScoreModifier,
   supportsERCDetection,
-  type ERCStandardResult 
+  type ERCStandardResult
 } from './ercStandards';
 
 // Re-export ERC standard types for convenience
@@ -39,6 +38,7 @@ export interface GoPlusSecurityResult {
   tradingCooldown: boolean;
   transferPausable: boolean;
   ercStandard?: ERCStandardResult | null; // ERC token standard detection
+  lpHolders?: { address: string; percent: string; is_locked: number; tag?: string }[]; // NEW: top holders breakdown, used for burn-address detection
 }
 
 // GoPlus Solana-specific security result
@@ -85,17 +85,17 @@ export async function getSolanaTokenSecurity(mintAddress: string): Promise<Solan
   if (!mintAddress || typeof mintAddress !== 'string') return null;
   const sanitized = mintAddress.trim();
   if (sanitized.length < 32 || sanitized.length > 44) return null;
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
-  
+
   try {
     // Get holder count from SolanaFM
     const holdersResponse = await fetch(
       `https://api.solana.fm/v1/tokens/${encodeURIComponent(sanitized)}/holders?pageSize=1`,
       { signal: controller.signal }
     );
-    
+
     let holderCount = 0;
     if (holdersResponse.ok) {
       const holdersData = await holdersResponse.json();
@@ -107,10 +107,9 @@ export async function getSolanaTokenSecurity(mintAddress: string): Promise<Solan
       `https://api.solana.fm/v1/tokens/${encodeURIComponent(sanitized)}`,
       { signal: controller.signal }
     );
-    
+
     let isFreezeAuthority = false;
     let isMintAuthority = false;
-    
     if (metaResponse.ok) {
       const metaData = await metaResponse.json();
       isFreezeAuthority = !!metaData.freezeAuthority;
@@ -118,6 +117,7 @@ export async function getSolanaTokenSecurity(mintAddress: string): Promise<Solan
     }
 
     clearTimeout(timeoutId);
+
     return {
       holderCount,
       isFreezeAuthority,
@@ -140,22 +140,23 @@ export async function getGoPlusSolanaSecurity(mintAddress: string): Promise<GoPl
   if (!mintAddress || typeof mintAddress !== 'string') return null;
   const sanitized = mintAddress.trim();
   if (sanitized.length < 32 || sanitized.length > 44) return null;
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
-  
+
   try {
     const response = await fetch(
       `https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${encodeURIComponent(sanitized)}`,
       { signal: controller.signal }
     );
-    
+
     clearTimeout(timeoutId);
+
     if (!response.ok) return null;
-    
+
     const data = await response.json();
     const tokenData = data.result?.[sanitized];
-    
+
     if (!tokenData) return null;
 
     return {
@@ -347,14 +348,14 @@ export async function getTokenSecurity(address: string, network: string): Promis
   if (!address || typeof address !== 'string') return null;
   const sanitized = address.trim().toLowerCase();
   if (!/^0x[a-f0-9]{40}$/i.test(sanitized)) return null;
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
   try {
     // Fetch GoPlus data and ERC standard detection in parallel (for non-BSC networks)
     const shouldDetectERC = supportsERCDetection(network) && network !== 'BSC';
-    
+
     const [response, ercStandard] = await Promise.all([
       fetch(
         `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${encodeURIComponent(sanitized)}`,
@@ -362,13 +363,14 @@ export async function getTokenSecurity(address: string, network: string): Promis
       ),
       shouldDetectERC ? detectERCStandard(sanitized, network).catch(() => null) : Promise.resolve(null)
     ]);
-    
+
     clearTimeout(timeoutId);
+
     if (!response.ok) return null;
-    
+
     const data = await response.json();
     const tokenData = data.result?.[sanitized];
-    
+
     if (!tokenData) return null;
 
     return {
@@ -393,6 +395,7 @@ export async function getTokenSecurity(address: string, network: string): Promis
       isBlacklisted: tokenData.is_blacklisted === '1',
       tradingCooldown: tokenData.trading_cooldown === '1',
       transferPausable: tokenData.transfer_pausable === '1',
+      lpHolders: tokenData.holders || undefined, // NEW: GoPlus's top-holders array (field is called "holders", includes is_locked + tag e.g. "Burn Address")
       ercStandard,
     };
   } catch (error) {
@@ -463,14 +466,17 @@ export function analyzeGoPlusSecurity(security: GoPlusSecurityResult): {
     factors.push({ name: 'Mintable', status: 'warning', description: 'Owner can mint tokens' });
     score -= 5;
   }
+
   if (security.hiddenOwner) {
     factors.push({ name: 'Hidden Owner', status: 'danger', description: 'Contract has hidden owner' });
     score -= 10;
   }
+
   if (security.canTakeBackOwnership) {
     factors.push({ name: 'Ownership', status: 'danger', description: 'Owner can reclaim ownership' });
     score -= 10;
   }
+
   if (security.transferPausable) {
     factors.push({ name: 'Pausable', status: 'warning', description: 'Transfers can be paused' });
     score -= 5;
