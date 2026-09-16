@@ -1305,7 +1305,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               
               // Fetch Unicrypt/Team Finance/PinkSale/DXSale liquidity lock data for EVM chains
               try {
-                const lockInfo = await getLiquidityLockInfo(mainPair.baseToken.address, network);
+                const lockInfo = await getLiquidityLockInfo(mainPair.baseToken.address, network, goplusData?.lpHolders);
                 if (lockInfo) {
                   apiSources.push("unicrypt");
                   tokenLockInfo = lockInfo;
