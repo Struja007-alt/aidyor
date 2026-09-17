@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
 
 // Production origins only.
-// Lovable preview/project domains are intentionally removed.
 const ALLOWED_ORIGINS = [
   "https://aidyor.app",
   "https://www.aidyor.app",
