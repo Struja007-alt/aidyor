@@ -1,10 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = [
+  'https://aidyor.app',
+  'https://www.aidyor.app',
+  'http://localhost:5173',
+  'http://localhost:8080',
+];
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.includes(origin);
+}
+function corsFor(origin: string | null): Record<string, string> {
+  const allowed = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Credentials': 'true',
+  };
+}
 
 interface OCRAnalyticsPayload {
   method: 'vlm' | 'tesseract' | 'vlm_fallback_tesseract';
@@ -20,64 +34,49 @@ interface OCRAnalyticsPayload {
   extracted_address?: string;
   error_type?: string;
   error_message?: string;
-  // Enhanced metrics
   confidence?: number;
   char_count?: number;
   raw_text_length?: number;
   fix_applied?: boolean;
 }
 
-// Calculate Levenshtein distance for CER
 function levenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = [];
-  
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-  
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j;
-  }
-  
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
   for (let i = 1; i <= b.length; i++) {
     for (let j = 1; j <= a.length; j++) {
       if (b.charAt(i - 1) === a.charAt(j - 1)) {
         matrix[i][j] = matrix[i - 1][j - 1];
       } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        );
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
       }
     }
   }
-  
   return matrix[b.length][a.length];
 }
 
-// Calculate Character Error Rate
 function calculateCER(extracted: string, groundTruth: string): number {
   if (!groundTruth || groundTruth.length === 0) return 0;
   const distance = levenshteinDistance(extracted.toLowerCase(), groundTruth.toLowerCase());
   return Math.min(1, distance / groundTruth.length);
 }
 
-// Calculate Word Error Rate (treat address as single word)
 function calculateWER(extracted: string, groundTruth: string): number {
   if (!groundTruth) return 0;
-  // For addresses, WER is essentially 0 or 1 (exact match or not)
   return extracted.toLowerCase() === groundTruth.toLowerCase() ? 0 : 1;
 }
 
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  const cors = corsFor(origin);
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors });
   }
 
   try {
     const payload: OCRAnalyticsPayload = await req.json();
-    
+
     console.log("[ocr-analytics] Logging OCR metrics:", {
       method: payload.method,
       addresses_found: payload.addresses_found,
@@ -86,17 +85,14 @@ serve(async (req) => {
       fix_applied: payload.fix_applied,
     });
 
-    // Calculate accuracy metrics if ground truth provided
     let cer: number | null = null;
     let wer: number | null = null;
     let exactMatch: boolean | null = null;
-    
+
     if (payload.ground_truth_address && payload.extracted_address) {
       cer = calculateCER(payload.extracted_address, payload.ground_truth_address);
       wer = calculateWER(payload.extracted_address, payload.ground_truth_address);
       exactMatch = payload.extracted_address.toLowerCase() === payload.ground_truth_address.toLowerCase();
-      
-      console.log("[ocr-analytics] Accuracy metrics:", { cer, wer, exactMatch });
     }
 
     const supabase = createClient(
@@ -121,7 +117,6 @@ serve(async (req) => {
       exact_match: exactMatch,
       error_type: payload.error_type || null,
       error_message: payload.error_message || null,
-      // Enhanced metrics
       confidence: payload.confidence || null,
       char_count: payload.char_count || null,
       raw_text_length: payload.raw_text_length || null,
@@ -132,20 +127,20 @@ serve(async (req) => {
       console.error("[ocr-analytics] Insert error:", error);
       return new Response(
         JSON.stringify({ error: "Failed to log analytics" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
     return new Response(
       JSON.stringify({ success: true }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...cors, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
     console.error("[ocr-analytics] Error:", error);
     return new Response(
       JSON.stringify({ error: "Internal error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
     );
   }
 });
