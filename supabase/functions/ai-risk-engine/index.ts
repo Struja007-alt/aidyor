@@ -1,22 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
 
-// Dynamic CORS - restrict to allowed origins
 const ALLOWED_ORIGINS = [
-  'https://id-preview--eaa8d564-cf6a-4d6f-81e2-0ddab66a4a49.lovable.app',
-  'https://aidyor.lovable.app',
   'https://aidyor.app',
   'https://www.aidyor.app',
   'http://localhost:5173',
   'http://localhost:8080',
 ];
 
-// Allow Lovable preview domains dynamically
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.endsWith('.lovableproject.com') || origin.endsWith('.lovable.app')) return true;
-  return false;
+  return ALLOWED_ORIGINS.includes(origin);
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
@@ -80,7 +74,6 @@ interface AIRiskResponse {
   timestamp: string;
 }
 
-// Input validation
 function validateTokenData(data: any): boolean {
   if (!data || typeof data !== 'object') return false;
   if (typeof data.name !== 'string' || data.name.length > 200) return false;
@@ -112,14 +105,14 @@ function buildPrompt(tokenData: AIRiskRequest["tokenData"]): string {
 
   if (securityData) {
     context += "Security Analysis:\n";
-    if (securityData.isHoneypot) context += "- ⚠️ HONEYPOT DETECTED\n";
+    if (securityData.isHoneypot) context += "- \u26a0\ufe0f HONEYPOT DETECTED\n";
     context += `- Contract Verified: ${securityData.isVerified ? "Yes" : "No"}\n`;
     if (securityData.buyTax > 0 || securityData.sellTax > 0) {
       context += `- Buy Tax: ${securityData.buyTax}%, Sell Tax: ${securityData.sellTax}%\n`;
     }
     context += `- Holders: ${securityData.holderCount.toLocaleString()}\n`;
-    if (securityData.isMintable) context += "- ⚠️ Token is mintable\n";
-    if (securityData.hasHiddenOwner) context += "- ⚠️ Hidden owner detected\n";
+    if (securityData.isMintable) context += "- \u26a0\ufe0f Token is mintable\n";
+    if (securityData.hasHiddenOwner) context += "- \u26a0\ufe0f Hidden owner detected\n";
     context += "\n";
   }
 
@@ -138,26 +131,20 @@ function buildPrompt(tokenData: AIRiskRequest["tokenData"]): string {
   }
 
   if (dangerFactors.length > 0) {
-    context += "🚨 DANGER Factors:\n";
-    dangerFactors.forEach(f => {
-      context += `- ${f.name}: ${f.description}\n`;
-    });
+    context += "\ud83d\udea8 DANGER Factors:\n";
+    dangerFactors.forEach(f => { context += `- ${f.name}: ${f.description}\n`; });
     context += "\n";
   }
 
   if (warningFactors.length > 0) {
-    context += "⚠️ WARNING Factors:\n";
-    warningFactors.forEach(f => {
-      context += `- ${f.name}: ${f.description}\n`;
-    });
+    context += "\u26a0\ufe0f WARNING Factors:\n";
+    warningFactors.forEach(f => { context += `- ${f.name}: ${f.description}\n`; });
     context += "\n";
   }
 
   if (safeFactors.length > 0) {
-    context += "✅ SAFE Factors:\n";
-    safeFactors.forEach(f => {
-      context += `- ${f.name}: ${f.description}\n`;
-    });
+    context += "\u2705 SAFE Factors:\n";
+    safeFactors.forEach(f => { context += `- ${f.name}: ${f.description}\n`; });
   }
 
   return context;
@@ -172,50 +159,30 @@ serve(async (req) => {
   }
 
   try {
-    // Authentication check
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!
-    );
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const { data: { user } } = await supabase.auth.getUser(token);
 
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`[AI Risk Engine] Request from user: ${user.id}`);
+    console.log(`[AI Risk Engine] Request from ${user ? `user: ${user.id}` : 'anonymous visitor'}`);
 
     const { tokenData }: AIRiskRequest = await req.json();
 
     if (!tokenData || !validateTokenData(tokenData)) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid request format", timestamp: new Date().toISOString() }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Invalid request format", timestamp: new Date().toISOString() }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     console.log(`[AI Risk Engine] Analyzing: ${tokenData.name} (${tokenData.symbol})`);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("[AI Risk Engine] LOVABLE_API_KEY not configured");
-      return new Response(
-        JSON.stringify({ success: false, error: "Service temporarily unavailable", timestamp: new Date().toISOString() }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      console.error("[AI Risk Engine] GEMINI_API_KEY not configured");
+      return new Response(JSON.stringify({ success: false, error: "Service temporarily unavailable", timestamp: new Date().toISOString() }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const prompt = buildPrompt(tokenData);
@@ -235,54 +202,36 @@ FORMAT:
 - Keep response under 200 words
 - End with: "Recommendation: [AVOID/CAUTION/ACCEPTABLE/LOW RISK]"`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 500,
-      }),
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 500 },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const status = response.status;
-      console.error(`[AI Risk Engine] AI gateway error: ${status}`);
-      
+      console.error(`[AI Risk Engine] Gemini error: ${status}`);
+
       if (status === 429) {
-        return new Response(
-          JSON.stringify({ success: false, error: "Too many requests. Please try again later.", timestamp: new Date().toISOString() }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: false, error: "Too many requests. Please try again later.", timestamp: new Date().toISOString() }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      if (status === 402) {
-        return new Response(
-          JSON.stringify({ success: false, error: "Service temporarily unavailable.", timestamp: new Date().toISOString() }),
-          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      return new Response(
-        JSON.stringify({ success: false, error: "Service temporarily unavailable", timestamp: new Date().toISOString() }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Service temporarily unavailable", timestamp: new Date().toISOString() }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const aiResponse = await response.json();
-    const explanation = aiResponse.choices?.[0]?.message?.content || "Unable to generate analysis.";
+    const explanation = (aiResponse.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "Unable to generate analysis.";
 
-    // Parse counts from risk factors
     const dangerCount = tokenData.riskFactors.filter(f => f.status === "danger").length;
     const warningCount = tokenData.riskFactors.filter(f => f.status === "warning").length;
     const safeCount = tokenData.riskFactors.filter(f => f.status === "safe").length;
 
-    // Determine recommendation from explanation
     let recommendation: "avoid" | "caution" | "acceptable" | "low_risk" = "caution";
     const lowerExplanation = explanation.toLowerCase();
     if (lowerExplanation.includes("avoid") || tokenData.securityData?.isHoneypot) {
@@ -293,7 +242,6 @@ FORMAT:
       recommendation = "acceptable";
     }
 
-    // Extract key takeaways (simple heuristic)
     const keyTakeaways: string[] = [];
     if (tokenData.securityData?.isHoneypot) keyTakeaways.push("Honeypot detected - cannot sell");
     if (dangerCount > 0) keyTakeaways.push(`${dangerCount} critical risk(s) found`);
@@ -318,20 +266,11 @@ FORMAT:
 
     console.log(`[AI Risk Engine] Generated explanation, recommendation: ${recommendation}`);
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("[AI Risk Engine] Error:", error);
     const origin = req.headers.get('origin');
     const corsHeaders = getCorsHeaders(origin);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: "An error occurred processing your request",
-        timestamp: new Date().toISOString(),
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: false, error: "An error occurred processing your request", timestamp: new Date().toISOString() }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
