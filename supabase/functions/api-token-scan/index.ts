@@ -7,13 +7,13 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8080',
 ];
 
-function isAllowedOrigin(origin) {
+function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin);
 }
 
-function getCorsHeaders(origin) {
-  const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
@@ -21,11 +21,11 @@ function getCorsHeaders(origin) {
   };
 }
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-async function hashApiKey(key) {
+async function hashApiKey(key: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(key);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -33,7 +33,7 @@ async function hashApiKey(key) {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function generateApiKey() {
+function generateApiKey(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let key = 'aidyor_sk_';
   for (let i = 0; i < 32; i++) {
@@ -42,9 +42,9 @@ function generateApiKey() {
   return key;
 }
 
-async function validateApiKey(apiKey) {
+async function validateApiKey(apiKey: string | null) {
   if (!apiKey || !apiKey.startsWith('aidyor_sk_')) {
-    return { valid: false, error: 'Invalid API key format' };
+    return { valid: false, error: 'Invalid API key format' } as const;
   }
 
   const keyHash = await hashApiKey(apiKey);
@@ -58,13 +58,13 @@ async function validateApiKey(apiKey) {
 
   if (keyError || !keyRecord) {
     console.log('API key lookup failed:', keyError?.message);
-    return { valid: false, error: 'Invalid or inactive API key' };
+    return { valid: false, error: 'Invalid or inactive API key' } as const;
   }
 
   const client = keyRecord.api_clients;
 
   if (client.status !== 'active') {
-    return { valid: false, error: `API client account is ${client.status}` };
+    return { valid: false, error: `API client account is ${client.status}` } as const;
   }
 
   const { data: plan, error: planError } = await supabase
@@ -74,7 +74,7 @@ async function validateApiKey(apiKey) {
     .single();
 
   if (planError || !plan) {
-    return { valid: false, error: 'Plan configuration error' };
+    return { valid: false, error: 'Plan configuration error' } as const;
   }
 
   const billingPeriod = new Date().toISOString().slice(0, 7) + '-01';
@@ -95,15 +95,44 @@ async function validateApiKey(apiKey) {
 
     if (insertError) {
       console.error('Failed to create usage record:', insertError);
-      return { valid: false, error: 'Usage tracking error' };
+      return { valid: false, error: 'Usage tracking error' } as const;
     }
     usage = newUsage;
   }
 
-  return { valid: true, client, keyRecord, plan, usage };
+  return { valid: true, client, keyRecord, plan, usage } as const;
 }
 
-async function trackUsage(clientId, keyId, planLimit, currentUsage) {
+// ----- Rate limiting: sliding 1-minute window, enforced per API key -----
+function currentWindowStart(): string {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  return now.toISOString();
+}
+
+async function checkRateLimit(apiKeyId: string, limitPerMinute: number) {
+  const windowStart = currentWindowStart();
+
+  const { data: count, error } = await supabase.rpc('increment_api_rate_limit', {
+    p_api_key_id: apiKeyId,
+    p_window_start: windowStart,
+  });
+
+  if (error) {
+    // Fail open on infra errors so a rate-limit hiccup doesn't take down the API,
+    // but log it since it means the counter isn't protecting anything right now.
+    console.error('Rate limit check failed, failing open:', error);
+    return { limited: false, count: 0, limit: limitPerMinute, retryAfterSeconds: 0 };
+  }
+
+  const limited = count > limitPerMinute;
+  const secondsIntoWindow = new Date().getSeconds();
+  const retryAfterSeconds = 60 - secondsIntoWindow;
+
+  return { limited, count, limit: limitPerMinute, retryAfterSeconds };
+}
+
+async function trackUsage(clientId: string, keyId: string, planLimit: number, currentUsage: any) {
   const totalScans = currentUsage.scan_count + 1;
   const isOverage = totalScans > planLimit;
 
@@ -121,7 +150,7 @@ async function trackUsage(clientId, keyId, planLimit, currentUsage) {
   return { allowed: true, isOverage, remainingScans: Math.max(0, planLimit - totalScans) };
 }
 
-async function performScan(address, network) {
+async function performScan(address: string, network: string) {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/risk-orchestrator`, {
       method: 'POST',
@@ -155,7 +184,7 @@ Deno.serve(async (req) => {
     if (path === '/health' || path === '') {
       return new Response(JSON.stringify({
         status: 'healthy',
-        version: '1.0.0',
+        version: '1.1.0',
         endpoints: {
           'POST /scan': 'Scan a token address for security risks',
           'GET /usage': 'Get current billing period usage',
@@ -169,13 +198,13 @@ Deno.serve(async (req) => {
     if (path === '/plans' && req.method === 'GET') {
       const { data: plans, error } = await supabase
         .from('api_plans')
-        .select('tier, name, price_cents, monthly_scan_limit, overage_price_cents, description')
+        .select('tier, name, price_cents, monthly_scan_limit, overage_price_cents, rate_limit_per_minute, description')
         .order('price_cents');
 
       if (error) throw error;
 
       return new Response(JSON.stringify({
-        plans: plans.map((p) => ({ ...p, price: `$${(p.price_cents / 100).toFixed(2)}/month`, overage_price: `$${(p.overage_price_cents / 100).toFixed(2)}/scan` })),
+        plans: plans.map((p) => ({ ...p, price: `$${(p.price_cents / 100).toFixed(2)}/month`, overage_price: `$${(p.overage_price_cents / 100).toFixed(2)}/scan`, rate_limit: `${p.rate_limit_per_minute} requests/minute` })),
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -189,6 +218,18 @@ Deno.serve(async (req) => {
       const validation = await validateApiKey(apiKey);
       if (!validation.valid) {
         return new Response(JSON.stringify({ error: 'Authentication failed', message: validation.error }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const rateLimit = await checkRateLimit(validation.keyRecord.id, validation.plan.rate_limit_per_minute);
+      if (rateLimit.limited) {
+        return new Response(JSON.stringify({
+          error: 'Rate limit exceeded',
+          message: `Your plan allows ${rateLimit.limit} requests per minute. Please slow down.`,
+          retry_after_seconds: rateLimit.retryAfterSeconds,
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': String(rateLimit.retryAfterSeconds) },
+        });
       }
 
       const body = await req.json();
@@ -212,6 +253,10 @@ Deno.serve(async (req) => {
           is_overage: usageResult.isOverage,
           overage_rate: `$${(validation.plan.overage_price_cents / 100).toFixed(2)}/scan`,
         },
+        rate_limit: {
+          limit_per_minute: rateLimit.limit,
+          used_this_minute: rateLimit.count,
+        },
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -226,7 +271,7 @@ Deno.serve(async (req) => {
       }
 
       return new Response(JSON.stringify({
-        plan: { tier: validation.client.plan_tier, name: validation.plan.name, monthly_limit: validation.plan.monthly_scan_limit, overage_rate: `$${(validation.plan.overage_price_cents / 100).toFixed(2)}/scan` },
+        plan: { tier: validation.client.plan_tier, name: validation.plan.name, monthly_limit: validation.plan.monthly_scan_limit, overage_rate: `$${(validation.plan.overage_price_cents / 100).toFixed(2)}/scan`, rate_limit_per_minute: validation.plan.rate_limit_per_minute },
         current_period: {
           start: validation.usage.billing_period,
           scans_used: validation.usage.scan_count,
