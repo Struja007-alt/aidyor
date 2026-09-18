@@ -2,9 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-// Dynamic CORS - restrict to allowed origins
 const ALLOWED_ORIGINS = [
-  'https://aidyor.lovable.app',
   'https://aidyor.app',
   'https://www.aidyor.app',
   'http://localhost:5173',
@@ -13,9 +11,7 @@ const ALLOWED_ORIGINS = [
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.endsWith('.lovableproject.com') || origin.endsWith('.lovable.app')) return true;
-  return false;
+  return ALLOWED_ORIGINS.includes(origin);
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
@@ -32,7 +28,6 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[STRIPE-CHECK-SUBSCRIPTION] ${step}${detailsStr}`);
 };
 
-// Stripe product IDs mapping
 const PRODUCT_IDS = {
   pro: "prod_TsmarvHsLfmOgX",
   whale_pro: "prod_TsmahG5mQUlguv",
@@ -61,23 +56,19 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header provided");
-
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
     if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    
     const user = userData.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    
-    // Check for Stripe customer
+
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    
     if (customers.data.length === 0) {
       logStep("No customer found");
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         subscribed: false,
         has_pro: false,
         has_whale_pro: false,
@@ -90,7 +81,6 @@ serve(async (req) => {
     const customerId = customers.data[0].id;
     logStep("Found Stripe customer", { customerId });
 
-    // Get all active subscriptions
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
       status: "active",
@@ -105,7 +95,7 @@ serve(async (req) => {
       for (const item of subscription.items.data) {
         const productId = item.price.product as string;
         const endDate = new Date(subscription.current_period_end * 1000).toISOString();
-        
+
         if (productId === PRODUCT_IDS.pro) {
           hasPro = true;
           proSubscriptionEnd = endDate;
@@ -129,6 +119,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
+
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
