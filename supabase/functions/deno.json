@@ -4,7 +4,6 @@
     "lib": ["deno.window"]
   },
   "imports": {
-    "openai": "npm:openai@^4.52.5",
     "stripe": "npm:stripe@^18.5.0",
     "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.57.2"
   },
