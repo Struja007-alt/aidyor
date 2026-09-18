@@ -27,6 +27,8 @@ const FAQ = lazy(() => import("./pages/FAQ"));
 const Glossary = lazy(() => import("./pages/Glossary"));
 const GlossaryTerm = lazy(() => import("./pages/GlossaryTerm"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
+const ApiAccess = lazy(() => import("./pages/ApiAccess"));
+const ApiSuccess = lazy(() => import("./pages/ApiSuccess"));
 const Subscription = lazy(() => import("./pages/Subscription"));
 const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
 const Blog = lazy(() => import("./pages/Blog"));
@@ -73,6 +75,8 @@ const App = () => (
                 <Route path="/glossary" element={<Glossary />} />
                 <Route path="/glossary/:slug" element={<GlossaryTerm />} />
                 <Route path="/api-docs" element={<ApiDocs />} />
+                <Route path="/api" element={<ApiAccess />} />
+                <Route path="/api/success" element={<ApiSuccess />} />
                 <Route path="/subscription" element={<Subscription />} />
                 <Route path="/ocr-dashboard" element={<OCRDashboard />} />
                 <Route path="/blog" element={<Blog />} />
