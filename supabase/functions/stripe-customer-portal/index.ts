@@ -2,9 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-// Dynamic CORS - restrict to allowed origins
 const ALLOWED_ORIGINS = [
-  'https://aidyor.lovable.app',
   'https://aidyor.app',
   'https://www.aidyor.app',
   'http://localhost:5173',
@@ -13,9 +11,7 @@ const ALLOWED_ORIGINS = [
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.endsWith('.lovableproject.com') || origin.endsWith('.lovable.app')) return true;
-  return false;
+  return ALLOWED_ORIGINS.includes(origin);
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
@@ -55,28 +51,25 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header provided");
-
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
     if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    
     const user = userData.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    
-    // Find Stripe customer
+
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     if (customers.data.length === 0) {
       throw new Error("No Stripe customer found for this user");
     }
-    
+
     const customerId = customers.data[0].id;
     logStep("Found Stripe customer", { customerId });
 
-    const requestOrigin = req.headers.get("origin") || "https://aidyor.lovable.app";
-    
+    const requestOrigin = req.headers.get("origin") || "https://aidyor.app";
+
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${requestOrigin}/subscription`,
@@ -88,6 +81,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
+
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
