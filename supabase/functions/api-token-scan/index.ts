@@ -33,11 +33,19 @@ async function hashApiKey(key: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Cryptographically secure key generation (Web Crypto API, OS-backed CSPRNG),
+// with rejection sampling to avoid modulo bias across the 62-character alphabet.
 function generateApiKey(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const alphabetSize = chars.length; // 62
+  const maxValid = 256 - (256 % alphabetSize); // 248, discard bytes >= this to keep uniform distribution
   let key = 'aidyor_sk_';
-  for (let i = 0; i < 32; i++) {
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
+  const buf = new Uint8Array(1);
+  while (key.length < 10 + 32) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < maxValid) {
+      key += chars.charAt(buf[0] % alphabetSize);
+    }
   }
   return key;
 }
