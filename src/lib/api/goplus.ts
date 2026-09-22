@@ -38,7 +38,6 @@ export interface GoPlusSecurityResult {
   tradingCooldown: boolean;
   transferPausable: boolean;
   ercStandard?: ERCStandardResult | null; // ERC token standard detection
-  lpHolders?: { address: string; percent: string; is_locked: number; tag?: string; is_contract?: number }[]; // Top holders of the LP/pool token specifically (NOT the token's own top holders — verified against a live API response that these are two separate GoPlus fields)
 }
 
 // GoPlus Solana-specific security result
@@ -283,13 +282,18 @@ export function analyzeGoPlusSolanaSecurity(security: GoPlusSolanaSecurityResult
     score -= 10;
   }
 
-  // Creator concentration
+  // Creator/deployer wallet concentration
+  // NOTE: GoPlus's `creator_percent` reflects the ORIGINAL creator/deployer address's
+  // tracked balance — not the current largest holder on-chain. For older or actively
+  // traded tokens these can diverge significantly (e.g. a token's initial dev/treasury
+  // allocation vs. today's actual top wallet). Label this explicitly as "creator wallet"
+  // so it is never mistaken for a live top-holder concentration metric.
   const creatorPercent = parseFloat(security.creatorPercent) * 100;
   if (creatorPercent > 50) {
-    factors.push({ name: 'Creator Holdings', status: 'danger', description: `Creator holds ${creatorPercent.toFixed(1)}% of supply` });
+    factors.push({ name: 'Creator/Deployer Wallet', status: 'danger', description: `Creator/deployer wallet holds ${creatorPercent.toFixed(1)}% of supply (may not reflect current top holder)` });
     score -= 15;
   } else if (creatorPercent > 20) {
-    factors.push({ name: 'Creator Holdings', status: 'warning', description: `Creator holds ${creatorPercent.toFixed(1)}% of supply` });
+    factors.push({ name: 'Creator/Deployer Wallet', status: 'warning', description: `Creator/deployer wallet holds ${creatorPercent.toFixed(1)}% of supply (may not reflect current top holder)` });
     score -= 5;
   }
 
@@ -355,7 +359,6 @@ export async function getTokenSecurity(address: string, network: string): Promis
   try {
     // Fetch GoPlus data and ERC standard detection in parallel (for non-BSC networks)
     const shouldDetectERC = supportsERCDetection(network) && network !== 'BSC';
-
     const [response, ercStandard] = await Promise.all([
       fetch(
         `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${encodeURIComponent(sanitized)}`,
@@ -395,7 +398,6 @@ export async function getTokenSecurity(address: string, network: string): Promis
       isBlacklisted: tokenData.is_blacklisted === '1',
       tradingCooldown: tokenData.trading_cooldown === '1',
       transferPausable: tokenData.transfer_pausable === '1',
-      lpHolders: tokenData.lp_holders || undefined, // Verified against a live GoPlus response for PEPE: "holders" is top holders of the token itself, "lp_holders" is the actual LP/pool token breakdown we need here
       ercStandard,
     };
   } catch (error) {
