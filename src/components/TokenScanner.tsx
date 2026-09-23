@@ -3520,3 +3520,4 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     </div>
   );
 };
+
