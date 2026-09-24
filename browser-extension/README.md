@@ -108,7 +108,7 @@ browser-extension/
 
 The extension uses the AIDYOR risk-orchestrator API:
 ```
-POST https://ckhagucgyjnpvcolcihc.supabase.co/functions/v1/risk-orchestrator
+POST https://lerromdxykuydrpttfif.supabase.co.supabase.co/functions/v1/risk-orchestrator
 ```
 
 Request body:
