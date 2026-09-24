@@ -1,6 +1,6 @@
 // AIDYOR Browser Extension - Popup Script
 
-const API_BASE = 'https://ckhagucgyjnpvcolcihc.supabase.co/functions/v1';
+const API_BASE = 'https://lerromdxykuydrpttfif.supabase.co/functions/v1';
 
 // DOM Elements
 const addressInput = document.getElementById('addressInput');
@@ -83,21 +83,21 @@ function detectNetwork(address) {
 
 async function performScan() {
   const address = addressInput.value.trim();
-  
+
   if (!address) {
     showError('Please enter a token address');
     return;
   }
-  
+
   if (!isValidAddress(address)) {
     showError('Invalid token address format');
     return;
   }
 
   const network = networkSelect.value === 'auto' ? detectNetwork(address) : networkSelect.value;
-  
+
   showLoading();
-  
+
   try {
     const response = await fetch(`${API_BASE}/risk-orchestrator`, {
       method: 'POST',
@@ -112,15 +112,14 @@ async function performScan() {
     });
 
     const result = await response.json();
-    
+
     if (!result.success || !result.data) {
       throw new Error(result.error || 'Failed to analyze token');
     }
-    
+
     currentScanResult = result.data;
     saveScan(address, network, result.data);
     displayResults(result.data);
-    
   } catch (error) {
     console.error('Scan error:', error);
     showError(error.message || 'Failed to scan token. Please try again.');
@@ -149,7 +148,7 @@ function displayResults(data) {
   errorState.classList.add('hidden');
   emptyState.classList.add('hidden');
   scanBtn.disabled = false;
-  
+
   // Token info
   if (data.token.imageUrl) {
     tokenImage.src = data.token.imageUrl;
@@ -160,18 +159,18 @@ function displayResults(data) {
   tokenName.textContent = data.token.name || 'Unknown Token';
   tokenSymbol.textContent = data.token.symbol || '???';
   tokenNetwork.textContent = data.token.network?.toUpperCase() || 'ETH';
-  
+
   // Risk score gauge
   const score = data.riskAssessment.overallScore;
   const dashOffset = 157 - (157 * score / 100);
   gaugeProgress.style.strokeDashoffset = dashOffset;
   scoreText.textContent = score;
-  
+
   // Risk level badge
   const level = data.riskAssessment.riskLevel;
   riskLevel.textContent = level;
   riskLevel.className = 'risk-level ' + getLevelClass(level);
-  
+
   // Quick stats
   updateHoneypotStatus(data.securityData.isHoneypot);
   buyTax.textContent = formatTax(data.securityData.buyTax);
@@ -180,10 +179,10 @@ function displayResults(data) {
   sellTax.className = 'stat-value ' + getTaxClass(data.securityData.sellTax);
   liquidity.textContent = formatLiquidity(data.marketData.liquidity);
   liquidity.className = 'stat-value ' + getLiquidityClass(data.marketData.liquidity);
-  
+
   // Risk factors
   renderRiskFactors(data.riskFactors);
-  
+
   resultsSection.classList.remove('hidden');
 }
 
@@ -241,7 +240,7 @@ function renderRiskFactors(factors) {
     riskFactorsList.innerHTML = '<li class="risk-factor-item">No risk factors detected</li>';
     return;
   }
-  
+
   riskFactorsList.innerHTML = factors.slice(0, 5).map(factor => {
     const iconClass = factor.status === 'safe' ? 'safe' : factor.status === 'warning' ? 'warning' : 'danger';
     const icon = factor.status === 'safe' ? '✓' : factor.status === 'warning' ? '!' : '✕';
@@ -263,15 +262,16 @@ function openFullReport() {
 
 async function copyResultsToClipboard() {
   if (!currentScanResult) return;
-  
+
   const data = currentScanResult;
   const text = `🛡️ AIDYOR Token Scan
-
+  
 Token: ${data.token.name} (${data.token.symbol})
 Network: ${data.token.network}
 Address: ${data.token.address}
 
 Risk Score: ${data.riskAssessment.overallScore}/100 (${data.riskAssessment.riskLevel})
+
 Honeypot: ${data.securityData.isHoneypot ? '⚠️ YES' : '✅ NO'}
 Buy Tax: ${data.securityData.buyTax}%
 Sell Tax: ${data.securityData.sellTax}%
