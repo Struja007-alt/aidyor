@@ -21,6 +21,12 @@ export interface CoinGeckoTokenDetail {
   coingecko_rank: number | null;
 }
 
+export interface OfficialTokenResult {
+  address: string;
+  coinGeckoId: string;
+  marketCapRank: number | null;
+}
+
 // Map CoinGecko platform IDs to our network names
 export const platformToNetwork: Record<string, string> = {
   'ethereum': 'ethereum',
@@ -59,6 +65,10 @@ const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 // Pre-fetch status tracking
 let prefetchPromise: Promise<CoinGeckoToken[]> | null = null;
 let isPrefetching = false;
+
+// Cache for resolved official addresses: "symbol-network" -> result (or null if none found)
+const officialAddressCache = new Map<string, { result: OfficialTokenResult | null; timestamp: number }>();
+const OFFICIAL_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Pre-fetch the CoinGecko token list on app load
@@ -125,25 +135,24 @@ export async function getCoinGeckoTokenList(): Promise<CoinGeckoToken[]> {
   try {
     const response = await fetch(
       'https://api.coingecko.com/api/v3/coins/list?include_platform=true',
-      { 
+      {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
         }
       }
     );
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
       console.warn('CoinGecko API returned non-OK status:', response.status);
       return tokenListCache || [];
     }
-    
+
     const data: CoinGeckoToken[] = await response.json();
     tokenListCache = data;
     cacheTimestamp = Date.now();
-    
     console.log(`CoinGecko: Loaded ${data.length} tokens`);
     return data;
   } catch (error) {
@@ -163,24 +172,24 @@ export async function getCoinGeckoTokenList(): Promise<CoinGeckoToken[]> {
  */
 export async function getTokenOriginalNetworks(symbol: string): Promise<string[]> {
   if (!symbol || typeof symbol !== 'string') return [];
-  
+
   const normalizedSymbol = symbol.trim().toLowerCase();
   if (normalizedSymbol.length < 1 || normalizedSymbol.length > 20) return [];
-  
+
   try {
     const tokenList = await getCoinGeckoTokenList();
-    
+
     // Find all tokens matching this symbol
     const matchingTokens = tokenList.filter(
       token => token.symbol.toLowerCase() === normalizedSymbol
     );
-    
+
     if (matchingTokens.length === 0) return [];
-    
+
     // Get unique platforms across all matching tokens
     // Prioritize tokens with higher market presence (more platforms = more established)
     const platformCounts = new Map<string, number>();
-    
+
     matchingTokens.forEach(token => {
       const platforms = Object.keys(token.platforms || {});
       platforms.forEach(platform => {
@@ -193,12 +202,12 @@ export async function getTokenOriginalNetworks(symbol: string): Promise<string[]
         }
       });
     });
-    
+
     // Sort by frequency (most common platform first)
     const sortedPlatforms = [...platformCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([platform]) => platform);
-    
+
     // For well-known tokens, the first platform listed is usually the original
     // Return top 2 platforms as "original" candidates
     return sortedPlatforms.slice(0, 2);
@@ -213,28 +222,28 @@ export async function getTokenOriginalNetworks(symbol: string): Promise<string[]
  */
 export async function getCoinGeckoTokenDetail(coinId: string): Promise<CoinGeckoTokenDetail | null> {
   if (!coinId || typeof coinId !== 'string') return null;
-  
+
   const sanitized = coinId.trim().toLowerCase().slice(0, 100);
   if (sanitized.length < 1) return null;
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
-  
+
   try {
     const response = await fetch(
       `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(sanitized)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`,
-      { 
+      {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
         }
       }
     );
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) return null;
-    
+
     return await response.json();
   } catch (error) {
     clearTimeout(timeoutId);
@@ -252,28 +261,28 @@ export async function getCoinGeckoTokenDetail(coinId: string): Promise<CoinGecko
  */
 export async function searchCoinGeckoTokens(query: string): Promise<{ id: string; symbol: string; name: string; market_cap_rank: number | null }[]> {
   if (!query || typeof query !== 'string') return [];
-  
+
   const sanitized = query.trim().slice(0, 50);
   if (sanitized.length < 2) return [];
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
-  
+
   try {
     const response = await fetch(
       `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(sanitized)}`,
-      { 
+      {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
         }
       }
     );
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) return [];
-    
+
     const data = await response.json();
     return (data.coins || []).slice(0, 10).map((coin: { id: string; symbol: string; name: string; market_cap_rank: number | null }) => ({
       id: coin.id,
@@ -293,15 +302,76 @@ export async function searchCoinGeckoTokens(query: string): Promise<{ id: string
 }
 
 /**
+ * Resolve the EXACT official contract address for a symbol on a given network.
+ * This is the key function for distinguishing a real token from a same-named
+ * copycat: it ranks CoinGecko search matches by market cap rank (lower = more
+ * established) and returns the contract address of the top-ranked match that
+ * actually has a listing on the requested network.
+ *
+ * Returns null if no confident match is found (e.g. brand-new or unlisted
+ * tokens) — callers should treat null as "unverified", not "fake".
+ */
+export async function getOfficialTokenAddress(
+  symbol: string,
+  network: string
+): Promise<OfficialTokenResult | null> {
+  if (!symbol || typeof symbol !== 'string') return null;
+
+  const normalizedSymbol = symbol.trim().toLowerCase();
+  if (normalizedSymbol.length < 1 || normalizedSymbol.length > 20) return null;
+
+  const platformId = networkToPlatform[network];
+  if (!platformId) return null;
+
+  const cacheKey = `${normalizedSymbol}-${network}`;
+  const cached = officialAddressCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < OFFICIAL_CACHE_DURATION) {
+    return cached.result;
+  }
+
+  try {
+    const searchResults = await searchCoinGeckoTokens(normalizedSymbol);
+
+    const candidates = searchResults
+      .filter(c => c.symbol.toLowerCase() === normalizedSymbol)
+      .sort((a, b) => {
+        const rankA = a.market_cap_rank ?? Number.MAX_SAFE_INTEGER;
+        const rankB = b.market_cap_rank ?? Number.MAX_SAFE_INTEGER;
+        return rankA - rankB;
+      });
+
+    for (const candidate of candidates) {
+      const detail = await getCoinGeckoTokenDetail(candidate.id);
+      const address = detail?.platforms?.[platformId];
+      if (address) {
+        const result: OfficialTokenResult = {
+          address: address.toLowerCase(),
+          coinGeckoId: candidate.id,
+          marketCapRank: candidate.market_cap_rank,
+        };
+        officialAddressCache.set(cacheKey, { result, timestamp: Date.now() });
+        return result;
+      }
+    }
+
+    officialAddressCache.set(cacheKey, { result: null, timestamp: Date.now() });
+    return null;
+  } catch (error) {
+    console.error('Error resolving official token address:', error);
+    return null;
+  }
+}
+
+/**
  * Build a mapping of symbol -> original networks from CoinGecko data
  * Focuses on top tokens by market cap rank
  */
 export async function buildCoinGeckoNetworkMappings(): Promise<Record<string, string[]>> {
   const mappings: Record<string, string[]> = {};
-  
+
   try {
     const tokenList = await getCoinGeckoTokenList();
-    
+
     // Group tokens by symbol
     const symbolGroups = new Map<string, CoinGeckoToken[]>();
     tokenList.forEach(token => {
@@ -311,12 +381,12 @@ export async function buildCoinGeckoNetworkMappings(): Promise<Record<string, st
       }
       symbolGroups.get(symbol)!.push(token);
     });
-    
+
     // For each symbol, determine the original network(s)
     symbolGroups.forEach((tokens, symbol) => {
       // Skip very generic symbols that have too many matches
       if (tokens.length > 50) return;
-      
+
       // Collect all platforms
       const platforms = new Set<string>();
       tokens.forEach(token => {
@@ -327,7 +397,7 @@ export async function buildCoinGeckoNetworkMappings(): Promise<Record<string, st
           }
         });
       });
-      
+
       if (platforms.size > 0) {
         // Prioritize ethereum if present (most tokens originate there)
         const platformArray = [...platforms];
@@ -338,7 +408,7 @@ export async function buildCoinGeckoNetworkMappings(): Promise<Record<string, st
         }
       }
     });
-    
+
     console.log(`CoinGecko: Built mappings for ${Object.keys(mappings).length} tokens`);
     return mappings;
   } catch (error) {
