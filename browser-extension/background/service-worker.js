@@ -1,6 +1,7 @@
 // AIDYOR Browser Extension - Background Service Worker
 
 const API_BASE = 'https://lerromdxykuydrpttfif.supabase.co/functions/v1';
+const SUPABASE_ANON_KEY = 'sb_publishable_sbnuinfaMvAS4u09u962Fw_BiW8ac0H';
 
 // Context menu setup
 chrome.runtime.onInstalled.addListener(() => {
@@ -150,6 +151,7 @@ async function scanToken(address, network) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({
       address,
