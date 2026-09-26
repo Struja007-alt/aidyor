@@ -65,7 +65,7 @@ import {
   containsDangerousPatterns 
 } from "@/lib/security/inputSanitizer";
 import { knownOriginalNetworks } from "@/lib/constants/knownTokenNetworks";
-import { getTokenOriginalNetworks } from "@/lib/api/coingecko";
+import { getTokenOriginalNetworks, getOfficialTokenAddress, type OfficialTokenResult } from "@/lib/api/coingecko";
 import { 
   tryParseStructuredSecurityJson, 
   parseStructuredSecurityData,
@@ -127,6 +127,10 @@ interface NetworkResult {
   lockInfo?: LockInfo;
   pumpDumpAnalysis?: PumpDumpAnalysis;
   apiSources: ApiSource[];
+  // true = address matched CoinGecko's official contract for this network
+  // false = an official contract exists for this network but this address doesn't match it (likely copycat)
+  // undefined = no official record found (can't confirm either way)
+  isAddressVerified?: boolean;
 }
 
 interface TokenInfo {
@@ -146,6 +150,9 @@ export const TokenScanner = () => {
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [suggestions, setSuggestions] = useState<DexPair[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  // Maps "chainId-address" (lowercase) -> verification result for the search dropdown.
+  // true = confirmed official contract, false = confirmed mismatch (likely copycat), absent = not checked/unknown.
+  const [officialTokenMap, setOfficialTokenMap] = useState<Map<string, boolean>>(new Map());
   const [isSearching, setIsSearching] = useState(false);
   const [selectedResult, setSelectedResult] = useState<NetworkResult | null>(null);
   
@@ -1007,6 +1014,30 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       
       setSuggestions(sorted);
       setShowSuggestions(sorted.length > 0);
+
+      // Resolve official contract addresses for the top candidates so copycats
+      // sharing the same name/symbol get flagged instead of just trusting
+      // liquidity/list-order. Runs after suggestions render so the dropdown
+      // isn't blocked on CoinGecko round-trips.
+      const topForVerification = sorted.slice(0, 8);
+      try {
+        const verificationResults = await Promise.all(
+          topForVerification.map(async (pair) => {
+            const network = chainIdToNetwork[pair.chainId.toLowerCase()] || pair.chainId;
+            const official = await getOfficialTokenAddress(pair.baseToken.symbol, network);
+            if (!official) return null; // no official record found - stay neutral, don't accuse
+            const key = `${pair.chainId.toLowerCase()}-${pair.baseToken.address.toLowerCase()}`;
+            return { key, isOfficial: official.address === pair.baseToken.address.toLowerCase() };
+          })
+        );
+        if (currentSearchId === searchIdRef.current) {
+          const newOfficialMap = new Map<string, boolean>();
+          verificationResults.forEach(r => { if (r) newOfficialMap.set(r.key, r.isOfficial); });
+          setOfficialTokenMap(newOfficialMap);
+        }
+      } catch (verificationError) {
+        console.warn('Official address verification failed:', verificationError);
+      }
     } catch (error) {
       console.error('Search error:', error);
       // Only clear suggestions if this is still the current search
@@ -1406,6 +1437,34 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           console.warn('CoinGecko lookup failed:', error);
         }
       }
+
+      // Resolve the exact official contract address per network present in the results.
+      // This is what actually distinguishes a real token from a same-named copycat -
+      // liquidity and volume alone can't (a copycat can fund a big pool; it can't fake
+      // being the CoinGecko-listed contract). Address mismatch overrides the liquidity
+      // heuristic below so a well-funded fake can no longer be labeled "original".
+      const officialAddressByChain = new Map<string, string>(); // chainId (lowercase) -> official address (lowercase)
+      if (tokenSymbol) {
+        try {
+          const uniqueChainIds = [...new Set(resultsWithData.map(r => r.chainId.toLowerCase()))];
+          await Promise.all(
+            uniqueChainIds.map(async (chainId) => {
+              const network = chainIdToNetwork[chainId] || chainId;
+              const official = await getOfficialTokenAddress(tokenSymbol, network);
+              if (official) {
+                officialAddressByChain.set(chainId, official.address);
+                resultsWithData.forEach(r => {
+                  if (r.chainId.toLowerCase() === chainId && !r.apiSources.includes('coingecko')) {
+                    r.apiSources.push('coingecko');
+                  }
+                });
+              }
+            })
+          );
+        } catch (error) {
+          console.warn('Official address resolution failed:', error);
+        }
+      }
       
       const results: NetworkResult[] = resultsWithData.map(r => {
         let tokenStatus: "original" | "bridged" | "suspicious";
@@ -1418,27 +1477,45 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         
         // Check if this is on a known original network for this token
         const isKnownOriginal = knownNetworks.includes(chainId);
-        
+
+        // Address verification against CoinGecko's official contract for this network.
+        // undefined = no official record found for this network (can't confirm either way).
+        const officialAddress = officialAddressByChain.get(chainId);
+        const isAddressVerified = officialAddress
+          ? officialAddress === r.address.toLowerCase()
+          : undefined;
+        const isConfirmedMismatch = officialAddress !== undefined && isAddressVerified === false;
+
         if (r._isHoneypot || r._score < 30) {
           // Honeypot or very low score = suspicious
           tokenStatus = "suspicious";
-        } else if (isKnownOriginal && hasGoodLiquidity) {
-          // Known original network with good liquidity = original
+        } else if (isConfirmedMismatch) {
+          // An official contract exists for this network and this isn't it - this is
+          // squatting on the real project's name, not a legitimate bridge. Flag it,
+          // regardless of how much liquidity it's carrying.
+          tokenStatus = "suspicious";
+        } else if (isAddressVerified && hasGoodLiquidity) {
+          // Confirmed match against CoinGecko's official contract = original
           tokenStatus = "original";
-        } else if (isHighestLiquidity && hasGoodLiquidity && hasGoodVolume && knownNetworks.length === 0) {
-          // Best metrics and no known original network = original (for unknown tokens)
+        } else if (isKnownOriginal && hasGoodLiquidity && officialAddress === undefined) {
+          // Known original network with good liquidity, no official address to check
+          // against (fell back to the hardcoded network list) = original
+          tokenStatus = "original";
+        } else if (isHighestLiquidity && hasGoodLiquidity && hasGoodVolume && knownNetworks.length === 0 && officialAddress === undefined) {
+          // Best metrics, no known original network, AND no official record to
+          // contradict it = original (fallback for genuinely unlisted/new tokens)
           tokenStatus = "original";
         } else if (r._liquidity < 1000 || r._score < 40) {
           // Low liquidity or poor score = suspicious
           tokenStatus = "suspicious";
         } else {
-          // Decent metrics but not original = bridged
+          // Decent metrics but not confirmed original = bridged
           tokenStatus = "bridged";
         }
         
-        // Remove temp properties and add status
+        // Remove temp properties and add status + verification flag
         const { _liquidity, _volume, _hasSocials, _score, _isHoneypot, ...rest } = r;
-        return { ...rest, tokenStatus };
+        return { ...rest, tokenStatus, isAddressVerified };
       });
 
       // Set token info from best result
@@ -2046,7 +2123,12 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               {showSuggestions && (
                 <div className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto">
                   {suggestions.map((pair, index) => {
-                    const isOriginal = index === 0;
+                    const officialKey = `${pair.chainId.toLowerCase()}-${pair.baseToken.address.toLowerCase()}`;
+                    const verification = officialTokenMap.get(officialKey); // true | false | undefined
+                    // Only badge as "Original" once we've actually confirmed the address against
+                    // CoinGecko's official contract - never just because it's first in the list.
+                    const isOriginal = verification === true;
+                    const isFlaggedCopycat = verification === false;
                     return (
                       <button
                         key={`${pair.chainId}-${pair.pairAddress}-${index}`}
@@ -2089,6 +2171,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                               {isOriginal && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold uppercase tracking-wide">
                                   Original
+                                </span>
+                              )}
+                              {isFlaggedCopycat && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold uppercase tracking-wide">
+                                  Unverified
                                 </span>
                               )}
                             </div>
