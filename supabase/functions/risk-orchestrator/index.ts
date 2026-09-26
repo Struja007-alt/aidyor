@@ -102,7 +102,6 @@ function validateAddress(address: string): boolean {
   if (!address || typeof address !== "string" || address.length > 100) {
     return false;
   }
-
   return (
     ADDRESS_PATTERNS.evm.test(address) ||
     ADDRESS_PATTERNS.solana.test(address)
@@ -185,7 +184,6 @@ function calculateOverallRisk(
   );
 
   let level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-
   if (finalScore >= 70) level = "LOW";
   else if (finalScore >= 40) level = "MEDIUM";
   else if (finalScore >= 20) level = "HIGH";
@@ -239,37 +237,50 @@ serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!
-    );
-
     const token = authHeader.replace("Bearer ", "");
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(token);
+    // Guest path: the browser extension (and any other unauthenticated
+    // client) sends the public anon key instead of a logged-in user's JWT.
+    // Treat that as an anonymous scan rather than rejecting it, mirroring
+    // the free client-side scanner's access level.
+    const isGuestRequest =
+      SUPABASE_ANON_KEY !== "" && token === SUPABASE_ANON_KEY;
 
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Unauthorized",
-          processingTime: Date.now() - startTime,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 401,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
+    let userId = "anonymous-extension";
+
+    if (!isGuestRequest) {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!
       );
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser(token);
+
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Unauthorized",
+            processingTime: Date.now() - startTime,
+            timestamp: new Date().toISOString(),
+          }),
+          {
+            status: 401,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      }
+
+      userId = user.id;
     }
 
-    console.log(`[Orchestrator] Request from user: ${user.id}`);
+    console.log(`[Orchestrator] Request from user: ${userId}`);
 
     const {
       address,
@@ -344,7 +355,6 @@ serve(async (req) => {
         },
         authHeader
       ),
-
       callService<any>(
         "simulation-engine",
         {
@@ -368,7 +378,6 @@ serve(async (req) => {
       status: "safe" | "warning" | "danger";
       description: string;
     }[] = [];
-
     const sources: string[] = ["dexscreener"];
 
     if (marketResult.data.riskMetrics?.factors) {
@@ -383,10 +392,8 @@ serve(async (req) => {
     // Calculate overall risk
     const marketScore =
       marketResult.data.riskMetrics?.overallScore || 50;
-
     const securityScore =
       securityResult?.data?.riskScore || 50;
-
     const simulationStatus =
       simulationResult?.data?.pumpDumpStatus || "normal";
 
@@ -407,9 +414,7 @@ serve(async (req) => {
           network: detectedNetwork.toUpperCase(),
           imageUrl: bestPair?.info?.imageUrl,
         },
-
         riskAssessment,
-
         marketData: {
           price: parseFloat(bestPair?.priceUsd) || 0,
           liquidity: marketResult.data.summary.totalLiquidity,
@@ -418,7 +423,6 @@ serve(async (req) => {
           marketCap: bestPair?.marketCap || bestPair?.fdv || 0,
           chainsFound: marketResult.data.summary.chainsFound,
         },
-
         securityData: {
           isHoneypot:
             securityResult?.data?.security?.isHoneypot || false,
@@ -435,7 +439,6 @@ serve(async (req) => {
           lockInfo:
             securityResult?.data?.lockInfo || null,
         },
-
         simulation: {
           pumpDumpStatus: simulationStatus,
           confidence:
@@ -444,11 +447,9 @@ serve(async (req) => {
             simulationResult?.data?.prediction?.recommendation ||
             "Standard due diligence recommended.",
         },
-
         riskFactors: allFactors,
         sources,
       },
-
       processingTime: Date.now() - startTime,
       timestamp: new Date().toISOString(),
     };
@@ -481,7 +482,6 @@ serve(async (req) => {
           keyTakeaways: aiResult.data.keyTakeaways,
           recommendation: aiResult.data.recommendation,
         };
-
         sources.push("ai-engine");
       }
     }
@@ -498,7 +498,6 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("[Orchestrator] Error:", error);
-
     return new Response(
       JSON.stringify({
         success: false,
