@@ -240,11 +240,16 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
 
     // Guest path: the browser extension (and any other unauthenticated
-    // client) sends the public anon key instead of a logged-in user's JWT.
+    // client) sends a public key instead of a logged-in user's JWT.
     // Treat that as an anonymous scan rather than rejecting it, mirroring
-    // the free client-side scanner's access level.
+    // the free client-side scanner's access level. Accept either the
+    // legacy JWT-format anon key (SUPABASE_ANON_KEY env var) or the newer
+    // sb_publishable_ key format - both are safe to expose publicly, so
+    // either one is sufficient proof this is a legitimate client, not a
+    // proof of identity.
     const isGuestRequest =
-      SUPABASE_ANON_KEY !== "" && token === SUPABASE_ANON_KEY;
+      (SUPABASE_ANON_KEY !== "" && token === SUPABASE_ANON_KEY) ||
+      token.startsWith("sb_publishable_");
 
     let userId = "anonymous-extension";
 
