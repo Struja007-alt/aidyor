@@ -1,6 +1,7 @@
 // AIDYOR Browser Extension - Popup Script
 
 const API_BASE = 'https://lerromdxykuydrpttfif.supabase.co/functions/v1';
+const SUPABASE_ANON_KEY = 'sb_publishable_sbnuinfaMvAS4u09u962Fw_BiW8ac0H';
 
 // DOM Elements
 const addressInput = document.getElementById('addressInput');
@@ -103,6 +104,7 @@ async function performScan() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
         address,
@@ -156,6 +158,7 @@ function displayResults(data) {
   } else {
     tokenImage.style.display = 'none';
   }
+
   tokenName.textContent = data.token.name || 'Unknown Token';
   tokenSymbol.textContent = data.token.symbol || '???';
   tokenNetwork.textContent = data.token.network?.toUpperCase() || 'ETH';
@@ -265,13 +268,10 @@ async function copyResultsToClipboard() {
 
   const data = currentScanResult;
   const text = `🛡️ AIDYOR Token Scan
-  
 Token: ${data.token.name} (${data.token.symbol})
 Network: ${data.token.network}
 Address: ${data.token.address}
-
 Risk Score: ${data.riskAssessment.overallScore}/100 (${data.riskAssessment.riskLevel})
-
 Honeypot: ${data.securityData.isHoneypot ? '⚠️ YES' : '✅ NO'}
 Buy Tax: ${data.securityData.buyTax}%
 Sell Tax: ${data.securityData.sellTax}%
