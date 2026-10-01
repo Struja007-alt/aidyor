@@ -1,5 +1,13 @@
 // Comprehensive risk factor explanations for educating users
 // Includes explanations for GoPlus EVM, GoPlus Solana, SolanaFM, RugCheck, and BSCTrace risk factors
+//
+// Matching order in getRiskExplanation():
+//   1. exact key
+//   2. case-insensitive exact key
+//   3. aliases (longest phrase first, word-start match)
+//   4. partial key match (LONGEST key first, word-start match)
+// Backend factor names (onchain-data-service / market-data-service) have their own
+// exact entries so they never fall through to a generic key with opposite meaning.
 
 export interface RiskExplanation {
   title: string;
@@ -12,13 +20,12 @@ export interface RiskExplanation {
 export const riskExplanations: Record<string, RiskExplanation> = {
   // Critical Dangers
   'Honeypot': {
-    title: 'Honeypot Detected',
-    shortDesc: 'Cannot sell tokens',
-    detailedExplanation: 'The contract blocks sell transactions while allowing buys. Once you buy, your tokens are permanently locked - you cannot sell or transfer them.',
+    title: 'Honeypot Flagged',
+    shortDesc: 'Selling may be blocked',
+    detailedExplanation: 'The scanner flagged this contract as allowing buys while blocking or restricting sells. If accurate, tokens you buy cannot be sold or transferred. Detection can come from a single data source, so treat it as a serious warning rather than a final verdict.',
     impact: 'critical',
-    whatToDo: 'DO NOT BUY. This is a confirmed scam designed to steal your money.'
+    whatToDo: 'Do not buy. If you still want to check, verify with a second independent checker or a tiny test sell before trusting it either way.'
   },
-  
   'Hidden Owner': {
     title: 'Hidden Contract Owner',
     shortDesc: 'Owner can manipulate secretly',
@@ -26,7 +33,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'critical',
     whatToDo: 'Avoid this token. Hidden ownership is a major red flag for rug pulls.'
   },
-  
   'Ownership': {
     title: 'Reclaimable Ownership',
     shortDesc: 'Owner can regain control anytime',
@@ -43,7 +49,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Calculate if returns can overcome tax burden. Watch for tax increases.'
   },
-  
   'Mintable': {
     title: 'Token is Mintable',
     shortDesc: 'Supply can be inflated',
@@ -51,7 +56,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Only invest if you trust the team and there are mint limits or timelock.'
   },
-  
   'Freeze Authority': {
     title: 'Freeze Authority Active',
     shortDesc: 'Your tokens can be frozen',
@@ -59,7 +63,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Verify if freeze authority is needed (e.g., stablecoins) or if it\'s a risk.'
   },
-  
   'Mint Authority': {
     title: 'Mint Authority Active',
     shortDesc: 'More tokens can be created',
@@ -76,7 +79,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Prefer tokens with verified, audited contracts. Unverified = unknown risks.'
   },
-  
   'Pausable': {
     title: 'Transfers Pausable',
     shortDesc: 'Trading can be halted',
@@ -84,7 +86,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Understand why pause functionality exists. Check if there\'s a timelock.'
   },
-  
   'Holders': {
     title: 'Low Holder Count',
     shortDesc: 'Few wallets hold tokens',
@@ -101,7 +102,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Use small position sizes. Check if liquidity is locked or can be removed.'
   },
-  
   'Volume': {
     title: 'Low Trading Volume',
     shortDesc: 'Little trading activity',
@@ -109,7 +109,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Consider the project stage. New tokens have lower volume naturally.'
   },
-  
   'Price Volatility': {
     title: 'Extreme Price Swings',
     shortDesc: 'Price is highly unstable',
@@ -126,7 +125,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'critical',
     whatToDo: 'Verify liquidity lock on Unicrypt, Team Finance, or similar platforms.'
   },
-  
   'Lock Duration': {
     title: 'Short Lock Duration',
     shortDesc: 'Liquidity unlocks soon',
@@ -134,7 +132,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Check exact unlock date. Be prepared to exit before unlock if needed.'
   },
-  
   'Lock Percentage': {
     title: 'Partial Liquidity Lock',
     shortDesc: 'Not all liquidity is locked',
@@ -149,9 +146,8 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     shortDesc: 'Contract can be destroyed',
     detailedExplanation: 'The contract contains a self-destruct function. The owner can permanently destroy the contract, making all tokens worthless and untradeable.',
     impact: 'critical',
-    whatToDo: 'DO NOT invest. Self-destruct is a major scam indicator.'
+    whatToDo: 'Do not invest. Self-destruct is a major scam indicator.'
   },
-
   'External Calls': {
     title: 'External Contract Calls',
     shortDesc: 'Contract calls unknown code',
@@ -159,7 +155,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Verify what external contracts are called and if they are upgradeable.'
   },
-
   'Ownership Risk': {
     title: 'Reclaimable Ownership',
     shortDesc: 'Owner can reclaim control',
@@ -167,7 +162,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'critical',
     whatToDo: 'Avoid tokens where ownership can be reclaimed after renouncement.'
   },
-
   'Proxy': {
     title: 'Proxy Contract',
     shortDesc: 'Logic can be changed',
@@ -175,7 +169,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Check if upgrades require timelock or multi-sig governance.'
   },
-
   'Blacklist': {
     title: 'Blacklist Function',
     shortDesc: 'Wallets can be blocked',
@@ -183,7 +176,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Understand why blacklist exists. Some use it for anti-bot, others for control.'
   },
-
   'Anti-Whale': {
     title: 'Anti-Whale Protection',
     shortDesc: 'Transaction limits active',
@@ -191,7 +183,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'This is usually a positive feature. Check the limit amounts are reasonable.'
   },
-
   'Fixed Supply': {
     title: 'Fixed Token Supply',
     shortDesc: 'No new tokens can be minted',
@@ -199,7 +190,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'This is a positive indicator. Your tokens cannot be diluted.'
   },
-
   'Low Tax': {
     title: 'Low Transaction Tax',
     shortDesc: 'Minimal fees on trades',
@@ -207,7 +197,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'This is favorable. Monitor for tax increases over time.'
   },
-
   'Moderate Tax': {
     title: 'Moderate Transaction Tax',
     shortDesc: 'Notable fees on trades',
@@ -215,7 +204,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Factor tax into your profit calculations. Check if taxes can change.'
   },
-
   'High Tax': {
     title: 'High Transaction Tax',
     shortDesc: 'Excessive fees on trades',
@@ -223,7 +211,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Carefully consider if potential gains outweigh the tax burden.'
   },
-
   'Verified': {
     title: 'Contract Verified',
     shortDesc: 'Source code is public',
@@ -231,7 +218,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'This is positive. Consider if the code has been professionally audited too.'
   },
-
   'Unverified': {
     title: 'Unverified Contract',
     shortDesc: 'Source code hidden',
@@ -248,7 +234,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Scores above 80 are safer. Below 50 indicates significant risk factors.'
   },
-
   'Insider Holdings': {
     title: 'Insider Token Holdings',
     shortDesc: 'Team/insider wallet concentration',
@@ -256,7 +241,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Be cautious if insiders hold >20%. They can dump and crash the price.'
   },
-
   'Holder Concentration': {
     title: 'Token Holder Concentration',
     shortDesc: 'Large holders dominate supply',
@@ -264,7 +248,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Well-distributed tokens are safer. Top 10 holding <30% is preferred.'
   },
-
   'Liquidity Depth': {
     title: 'Trading Liquidity Depth',
     shortDesc: 'Available liquidity for trading',
@@ -272,7 +255,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Higher liquidity = easier exits. Low liquidity makes selling difficult.'
   },
-
   'Copycat Token': {
     title: 'Copycat/Impersonator Token',
     shortDesc: 'Token copies a popular project',
@@ -280,7 +262,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'critical',
     whatToDo: 'Verify the official contract address from the real project\'s website.'
   },
-
   'Low Liquidity': {
     title: 'Insufficient Liquidity',
     shortDesc: 'Very low trading liquidity',
@@ -288,7 +269,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Only invest small amounts. Large positions will be impossible to exit.'
   },
-
   'Single LP': {
     title: 'Single Liquidity Provider',
     shortDesc: 'One wallet provides all liquidity',
@@ -296,7 +276,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'critical',
     whatToDo: 'Extreme risk. The LP provider can rug at any moment.'
   },
-
   'Unlocked Liquidity': {
     title: 'Liquidity Not Locked',
     shortDesc: 'LP tokens can be withdrawn',
@@ -304,7 +283,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'critical',
     whatToDo: 'Verify LP lock on trusted platforms. Unlocked LP = rug risk.'
   },
-
   'Mutable Metadata': {
     title: 'Mutable Token Metadata',
     shortDesc: 'Token info can be changed',
@@ -321,7 +299,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'This is a positive indicator, but always do your own research.'
   },
-
   'Freezeable': {
     title: 'Token is Freezeable',
     shortDesc: 'Authority can freeze tokens',
@@ -329,15 +306,13 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Check if freeze authority is revoked. Some tokens legitimately need this feature.'
   },
-
   'Closable Program': {
     title: 'Closable Program',
     shortDesc: 'Program can be permanently closed',
     detailedExplanation: 'The Solana program that controls this token can be closed by the authority. If closed, the token becomes completely unusable - a permanent rug pull.',
     impact: 'critical',
-    whatToDo: 'DO NOT invest. Closable programs are extreme rug pull risks.'
+    whatToDo: 'Do not invest. Closable programs are extreme rug pull risks.'
   },
-
   'Upgradeable': {
     title: 'Upgradeable Program',
     shortDesc: 'Program logic can be changed',
@@ -345,7 +320,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Check if there\'s a multisig or timelock for upgrades. Otherwise, proceed with caution.'
   },
-
   'Transfer Fee': {
     title: 'Transfer Fee',
     shortDesc: 'Fee charged on every transfer',
@@ -353,15 +327,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Check the fee percentage. Fees above 5% significantly impact profitability.'
   },
-
-  'Non-Transferable': {
-    title: 'Non-Transferable Token',
-    shortDesc: 'Token CANNOT be transferred',
-    detailedExplanation: 'This token is marked as non-transferable. You cannot sell, trade, or move these tokens to another wallet. They are permanently locked.',
-    impact: 'critical',
-    whatToDo: 'DO NOT BUY. These tokens have zero liquidity by design.'
-  },
-
   'Default Frozen': {
     title: 'Default Frozen Accounts',
     shortDesc: 'New accounts start frozen',
@@ -369,7 +334,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Unusual for normal tokens. Check why this restriction exists.'
   },
-
   'Creator Holdings': {
     title: 'High Creator Holdings',
     shortDesc: 'Creator holds large supply',
@@ -377,7 +341,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Creator holding >20% is risky. Check if tokens are vested or locked.'
   },
-
   'Holders (GoPlus)': {
     title: 'Holder Count (GoPlus)',
     shortDesc: 'Number of unique holders',
@@ -385,7 +348,6 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: '1000+ holders is healthier. Under 100 holders is high risk.'
   },
-
   'Mintable (GoPlus)': {
     title: 'Mintable Token (GoPlus)',
     shortDesc: 'Supply can increase',
@@ -402,52 +364,352 @@ export const riskExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'This is a positive sign. Verify that ownership cannot be reclaimed via backdoor.'
   },
-
   'LP Lock': {
     title: 'Liquidity Pool Lock',
     shortDesc: 'Liquidity lock status',
     detailedExplanation: 'Liquidity pool tokens are locked in a timelock contract, preventing the team from removing liquidity and rug pulling during the lock period.',
     impact: 'medium',
     whatToDo: 'Longer lock periods (6+ months) are safer. Check the unlock date and locked percentage.'
-  }
+  },
+
+  // ---------------------------------------------------------------------------
+  // Exact entries for factor names emitted by onchain-data-service
+  // ---------------------------------------------------------------------------
+  'Honeypot Detected': {
+    title: 'Honeypot Flagged',
+    shortDesc: 'Selling may be blocked',
+    detailedExplanation: 'A security provider flagged this contract as blocking or restricting sells. If accurate, tokens you buy cannot be sold. This flag can come from a single source, so treat it as a serious warning rather than a final verdict.',
+    impact: 'critical',
+    whatToDo: 'Do not buy. Verify with a second independent checker or a tiny test sell before trusting it either way.'
+  },
+  'Honeypot (BSCTrace)': {
+    title: 'Honeypot Flagged by BSCTrace',
+    shortDesc: 'BSCTrace flagged this contract',
+    detailedExplanation: 'BSCTrace flagged this contract as a honeypot. This is an additional signal on top of other security data, but it is still one provider\'s assessment.',
+    impact: 'critical',
+    whatToDo: 'Do not buy. Cross-check with another tool before drawing a final conclusion.'
+  },
+  'Verified Contract': {
+    title: 'Contract Verified',
+    shortDesc: 'Source code is public',
+    detailedExplanation: 'The contract source code is verified on the blockchain explorer, allowing anyone to audit it. Verified code is not the same as safe code, but it removes one major unknown.',
+    impact: 'low',
+    whatToDo: 'This is positive. Consider whether the code has also been professionally audited.'
+  },
+  'Unverified Contract': {
+    title: 'Unverified Contract',
+    shortDesc: 'Source code hidden',
+    detailedExplanation: 'The contract source code is not verified, which prevents independent review and hides potential malicious logic.',
+    impact: 'medium',
+    whatToDo: 'Prefer verified contracts. Unverified code carries unknown risks.'
+  },
+  'High Taxes': {
+    title: 'High Transaction Tax',
+    shortDesc: 'Large percentage taken on trades',
+    detailedExplanation: 'Buy or sell tax is above 10%. That percentage is lost on every transaction, and taxes can sometimes be raised after launch.',
+    impact: 'high',
+    whatToDo: 'Calculate whether potential returns can overcome the tax burden. Watch for tax increases.'
+  },
+  'Moderate Taxes': {
+    title: 'Moderate Transaction Tax',
+    shortDesc: 'Notable fees on trades',
+    detailedExplanation: 'Buy or sell tax is between 5% and 10%. Not extreme, but it reduces profit on every trade.',
+    impact: 'medium',
+    whatToDo: 'Factor tax into your profit calculations. Check whether taxes can change.'
+  },
+  'Mintable Supply': {
+    title: 'Token is Mintable',
+    shortDesc: 'Supply can be inflated',
+    detailedExplanation: 'The contract allows new tokens to be created. This can dilute existing holders and crash the price if misused.',
+    impact: 'high',
+    whatToDo: 'Only invest if you trust the team and there are mint limits or a timelock.'
+  },
+  'Self-Destruct Risk': {
+    title: 'Self-Destruct Capability',
+    shortDesc: 'Contract can be destroyed',
+    detailedExplanation: 'The contract contains a self-destruct function. If triggered, the contract can be destroyed and the token rendered unusable.',
+    impact: 'critical',
+    whatToDo: 'Do not invest. Self-destruct is a major scam indicator.'
+  },
+  'Many Holders': {
+    title: 'Large Holder Base',
+    shortDesc: '1,000+ holders',
+    detailedExplanation: 'A large number of wallets hold this token, which generally indicates wider distribution. Holder count alone can be inflated by airdrops or many small wallets.',
+    impact: 'low',
+    whatToDo: 'Positive signal, but also check how concentrated the largest holders are.'
+  },
+  'Few Holders': {
+    title: 'Low Holder Count',
+    shortDesc: 'Few wallets hold tokens',
+    detailedExplanation: 'Very few unique wallets hold this token, indicating low adoption, potential wash trading, or early-stage risk.',
+    impact: 'medium',
+    whatToDo: 'New tokens naturally have fewer holders, but under 50 holders is a warning sign.'
+  },
+  'Liquidity Burned': {
+    title: 'Liquidity Burned',
+    shortDesc: 'LP tokens sent to a dead address',
+    detailedExplanation: 'Most liquidity pool tokens were sent to a burn address and cannot be recovered. This removes the ability to pull liquidity, which is safer than a timed lock. It does not make the token itself safe.',
+    impact: 'low',
+    whatToDo: 'Positive signal. Still check contract permissions and holder concentration.'
+  },
+  'Liquidity Locked': {
+    title: 'Liquidity Locked',
+    shortDesc: 'LP tokens held in a lock',
+    detailedExplanation: 'Most liquidity pool tokens are locked, preventing withdrawal until the lock expires. When it expires, the deployer may be able to remove liquidity.',
+    impact: 'low',
+    whatToDo: 'Check the unlock date and locked percentage. Longer locks are safer.'
+  },
+  'Partial Liquidity Protection': {
+    title: 'Partial Liquidity Protection',
+    shortDesc: 'Only part of liquidity is burned or locked',
+    detailedExplanation: 'Only a portion of liquidity is burned or locked. The unprotected remainder can still be withdrawn at any time.',
+    impact: 'medium',
+    whatToDo: 'Higher protected percentage is safer. 80%+ is preferred.'
+  },
+  'Liquidity Unlocked': {
+    title: 'Liquidity Not Locked or Burned',
+    shortDesc: 'Liquidity can be withdrawn',
+    detailedExplanation: 'No burn or lock was detected for the liquidity pool tokens. The liquidity provider may be able to remove liquidity at any time, which is the basis of a rug pull.',
+    impact: 'critical',
+    whatToDo: 'Verify LP status on trusted platforms. Unprotected LP is a rug risk.'
+  },
+  'RugCheck Critical': {
+    title: 'RugCheck: Critical Score',
+    shortDesc: 'RugCheck rates this token very low',
+    detailedExplanation: 'RugCheck\'s own score for this token is below 20/100, indicating multiple serious risk factors. This is one provider\'s assessment.',
+    impact: 'critical',
+    whatToDo: 'Treat as high risk. Review the specific factors and cross-check with other tools.'
+  },
+  'RugCheck Warning': {
+    title: 'RugCheck: Warning Score',
+    shortDesc: 'RugCheck flags notable risks',
+    detailedExplanation: 'RugCheck\'s score for this token is between 20 and 49/100, indicating notable risk factors.',
+    impact: 'high',
+    whatToDo: 'Proceed with caution and review holder, authority, and liquidity details.'
+  },
+  'RugCheck OK': {
+    title: 'RugCheck: Acceptable Score',
+    shortDesc: 'RugCheck found no major flags',
+    detailedExplanation: 'RugCheck\'s score for this token is 50/100 or higher. This is one provider\'s view and does not guarantee safety.',
+    impact: 'low',
+    whatToDo: 'Positive signal, but always do your own research.'
+  },
+  'High Concentration': {
+    title: 'High Holder Concentration',
+    shortDesc: 'Top holder owns over 50%',
+    detailedExplanation: 'The largest holder controls more than half of the supply. That wallet could sell and crash the price. Note that some top holders are liquidity pools or exchange wallets rather than individuals.',
+    impact: 'high',
+    whatToDo: 'Check who the top holder is. A single dominant wallet is a major dump risk.'
+  },
+  'Concentrated Holdings': {
+    title: 'Concentrated Holdings',
+    shortDesc: 'Top holder owns over 20%',
+    detailedExplanation: 'The largest holder controls a large share of supply, giving one wallet significant influence over price.',
+    impact: 'medium',
+    whatToDo: 'Check who the top holder is and whether tokens are vested or locked.'
+  },
+
+  // ---------------------------------------------------------------------------
+  // Exact entries for factor names emitted by market-data-service
+  // ---------------------------------------------------------------------------
+  'Strong Liquidity': {
+    title: 'Strong Liquidity',
+    shortDesc: 'Deep trading liquidity',
+    detailedExplanation: 'Liquidity is high, so trades cause less price impact. Strong liquidity says nothing about whether the contract itself is safe.',
+    impact: 'low',
+    whatToDo: 'Positive for exits, but check contract security and holder concentration separately.'
+  },
+  'Good Liquidity': {
+    title: 'Good Liquidity',
+    shortDesc: 'Healthy trading liquidity',
+    detailedExplanation: 'Liquidity is healthy for typical trade sizes. It does not indicate contract safety.',
+    impact: 'low',
+    whatToDo: 'Positive for exits, but verify security separately.'
+  },
+  'Very Low Liquidity': {
+    title: 'Very Low Liquidity',
+    shortDesc: 'Extremely thin liquidity',
+    detailedExplanation: 'Liquidity is extremely thin. Even small trades can move the price heavily, and selling may be impractical.',
+    impact: 'critical',
+    whatToDo: 'Avoid or use only tiny amounts you can afford to lose.'
+  },
+  'High Volume': {
+    title: 'High Trading Volume',
+    shortDesc: 'Strong 24h trading activity',
+    detailedExplanation: 'Trading volume over the last 24 hours is high, indicating active interest. Volume can be artificially inflated by wash trading.',
+    impact: 'low',
+    whatToDo: 'Positive signal, but do not rely on volume alone.'
+  },
+  'Low Volume': {
+    title: 'Low Trading Volume',
+    shortDesc: 'Little trading activity',
+    detailedExplanation: 'Minimal trading volume suggests low interest or possible abandonment, and makes exits harder.',
+    impact: 'medium',
+    whatToDo: 'Consider the project stage. New tokens naturally have lower volume.'
+  },
+  'Very Low Volume': {
+    title: 'Very Low Trading Volume',
+    shortDesc: 'Almost no trading activity',
+    detailedExplanation: 'There is almost no trading activity. Price discovery is poor and selling may be difficult.',
+    impact: 'high',
+    whatToDo: 'Be extremely cautious. Exits may not be possible at a reasonable price.'
+  },
+  'Active Trading': {
+    title: 'Active Trading',
+    shortDesc: 'Many transactions in 24h',
+    detailedExplanation: 'A high number of transactions in the last 24 hours indicates active trading. This is a market signal, not a security guarantee.',
+    impact: 'low',
+    whatToDo: 'Positive signal. Verify security separately.'
+  },
+  'Low Activity': {
+    title: 'Low Trading Activity',
+    shortDesc: 'Few trades in 24h',
+    detailedExplanation: 'Very few trades happened in the last 24 hours, which may indicate low interest or an inactive token.',
+    impact: 'medium',
+    whatToDo: 'Expect poor liquidity depth and difficult exits.'
+  },
+  'Sell Pressure': {
+    title: 'Heavy Sell Pressure',
+    shortDesc: 'Far more sells than buys',
+    detailedExplanation: 'Sells significantly outnumber buys over the last 24 hours, which can precede or accompany a price decline.',
+    impact: 'high',
+    whatToDo: 'Check the price chart and recent holder activity before buying.'
+  },
+  'Buy Pressure': {
+    title: 'Strong Buy Pressure',
+    shortDesc: 'Far more buys than sells',
+    detailedExplanation: 'Buys significantly outnumber sells over the last 24 hours. This can reflect real demand or coordinated hype.',
+    impact: 'low',
+    whatToDo: 'Do not chase pumps. Verify security first.'
+  },
+  'Stable Price': {
+    title: 'Stable Price',
+    shortDesc: 'Low 24h volatility',
+    detailedExplanation: 'The price moved less than 5% over the last 24 hours. Stability is a market signal, not a safety guarantee.',
+    impact: 'low',
+    whatToDo: 'Positive signal. Verify security separately.'
+  },
+  'Volatile': {
+    title: 'Volatile Price',
+    shortDesc: 'Large 24h price move',
+    detailedExplanation: 'The price moved 20-50% in the last 24 hours, indicating notable volatility.',
+    impact: 'medium',
+    whatToDo: 'Use small position sizes and expect large swings.'
+  },
+  'Extreme Volatility': {
+    title: 'Extreme Price Swings',
+    shortDesc: 'Price moved 50%+ in 24h',
+    detailedExplanation: 'The price moved more than 50% in the last 24 hours, which often indicates manipulation, a pump and dump, or extreme speculation.',
+    impact: 'high',
+    whatToDo: 'Only invest what you can afford to lose.'
+  },
+  'No Market Data': {
+    title: 'No Market Data',
+    shortDesc: 'Token not found on any DEX',
+    detailedExplanation: 'No trading pairs were found for this token, so market-based risk cannot be assessed.',
+    impact: 'high',
+    whatToDo: 'Verify the contract address and network. An untradeable token cannot be sold.'
+  },
+
+  // ---------------------------------------------------------------------------
+  // Data coverage notes (for single-source / limited-data results)
+  // ---------------------------------------------------------------------------
+  'Limited Data': {
+    title: 'Limited Data',
+    shortDesc: 'Result based on incomplete data',
+    detailedExplanation: 'Not all security checks could be completed for this token or network. The score reflects only the data that was available and should not be read as a full security assessment.',
+    impact: 'medium',
+    whatToDo: 'Do not treat this as a clean bill of health. Cross-check with other tools and do your own research.'
+  },
+  'Single Source': {
+    title: 'Single Data Source',
+    shortDesc: 'Security data from one provider',
+    detailedExplanation: 'The security assessment is based on a single provider and has not been independently corroborated by a second source.',
+    impact: 'low',
+    whatToDo: 'Consider verifying key findings, such as honeypot status and ownership, with another tool.'
+  },
+  'Security Unavailable': {
+    title: 'Security Data Unavailable',
+    shortDesc: 'No security provider responded',
+    detailedExplanation: 'No security provider returned usable data for this token, so contract-level risks such as honeypots, minting, taxes, and ownership could not be checked. Unavailable data is not the same as a safe result.',
+    impact: 'high',
+    whatToDo: 'Treat as unchecked. Verify the contract with other tools before trading.'
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Lookup helpers
+// ---------------------------------------------------------------------------
+
+// Alias phrase (lowercase) -> key in riskExplanations
+const ALIASES: Array<[string, string]> = [
+  ['lp locked', 'LP Lock'],
+  ['lp lock', 'LP Lock'],
+  ['liquidity lock', 'LP Lock'],
+  ['fixed supply', 'Fixed Supply'],
+  ['holder concentration', 'Holder Concentration'],
+  ['owner renounced', 'Ownership Renounced'],
+  ['ownership', 'Ownership'],
+  ['owner', 'Ownership'],
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Matches `needle` only at the start of a word, so "lock" does not match
+// inside "unlocked" or "block".
+function matchesAtWordStart(haystack: string, needle: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(needle)}`, 'i').test(haystack);
+}
+
+let cachedKeyCount = -1;
+let lowerCaseIndex: Map<string, string> = new Map();
+let keysLongestFirst: string[] = [];
+let aliasesLongestFirst: Array<[string, string]> = [];
+
+function ensureIndex(): void {
+  const keys = Object.keys(riskExplanations);
+  if (keys.length === cachedKeyCount) return;
+  cachedKeyCount = keys.length;
+  lowerCaseIndex = new Map(keys.map((key) => [key.toLowerCase(), key]));
+  keysLongestFirst = [...keys].sort((a, b) => b.length - a.length);
+  aliasesLongestFirst = [...ALIASES].sort((a, b) => b[0].length - a[0].length);
+}
+
 // Get explanation for a risk factor by matching key
 export function getRiskExplanation(factorName: string): RiskExplanation | null {
-// Direct match
+  if (!factorName || typeof factorName !== 'string') return null;
+  ensureIndex();
+
+  // 1. Exact match
   if (riskExplanations[factorName]) {
     return riskExplanations[factorName];
   }
-  
-  // Check aliases for structured security data format
-  const aliases: Record<string, string> = {
-    'lp lock': 'Lock',
-    'lp locked': 'Lock',
-    'liquidity lock': 'Lock',
-    'fixed supply': 'Fixed Supply',
-    'holder concentration': 'Holder Concentration',
-    'owner': 'Ownership',
-    'ownership': 'Ownership',
-    'owner renounced': 'Ownership Renounced',
-  };
-  
-  const normalizedName = factorName.toLowerCase();
-  
-  // Check aliases first
-  for (const [alias, targetKey] of Object.entries(aliases)) {
-    if (normalizedName.includes(alias)) {
-      if (riskExplanations[targetKey]) {
-        return riskExplanations[targetKey];
-      }
+
+  const normalizedName = factorName.trim().toLowerCase();
+
+  // 2. Case-insensitive exact match
+  const exactKey = lowerCaseIndex.get(normalizedName);
+  if (exactKey) {
+    return riskExplanations[exactKey];
+  }
+
+  // 3. Aliases (longest phrase first)
+  for (const [alias, targetKey] of aliasesLongestFirst) {
+    if (matchesAtWordStart(normalizedName, alias) && riskExplanations[targetKey]) {
+      return riskExplanations[targetKey];
     }
   }
-  
-  // Partial match for compound names
-  for (const [key, explanation] of Object.entries(riskExplanations)) {
-    if (normalizedName.includes(key.toLowerCase())) {
-      return explanation;
+
+  // 4. Partial match for compound names (longest key first so specific keys
+  //    like "Unverified" win over generic ones like "Verified" or "Contract")
+  for (const key of keysLongestFirst) {
+    if (matchesAtWordStart(normalizedName, key.toLowerCase())) {
+      return riskExplanations[key];
     }
   }
-  
+
   return null;
 }
 
@@ -480,7 +742,6 @@ export const bepStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'Standard token type - compatible with all BNB Chain DEXs and wallets.'
   },
-  
   'BEP-721 NFT': {
     title: 'BEP-721 Non-Fungible Token',
     shortDesc: 'NFT standard on BNB Chain',
@@ -488,7 +749,6 @@ export const bepStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Ensure you understand NFT trading risks. Verify authenticity on NFT marketplaces.'
   },
-  
   'BEP-1155 Multi-Token': {
     title: 'BEP-1155 Multi-Token Standard',
     shortDesc: 'Hybrid token standard supporting multiple types',
@@ -496,7 +756,6 @@ export const bepStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Check which token IDs represent fungible vs non-fungible assets.'
   },
-  
   'Unknown Standard': {
     title: 'Non-Standard Token Contract',
     shortDesc: 'Contract does not follow known standards',
@@ -504,7 +763,6 @@ export const bepStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'Exercise extreme caution. Non-standard tokens may not work with common tools.'
   },
-  
   'NFT Metadata': {
     title: 'NFT Metadata Extension',
     shortDesc: 'Supports token metadata',
@@ -512,7 +770,6 @@ export const bepStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'Positive feature - tokens can display rich information in wallets and marketplaces.'
   },
-  
   'Enumerable NFT': {
     title: 'Enumerable NFT Extension',
     shortDesc: 'Supports token enumeration',
@@ -520,7 +777,6 @@ export const bepStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'Positive feature - provides better transparency for collection contents.'
   },
-  
   'Token Metadata URI': {
     title: 'Token Metadata URI Support',
     shortDesc: 'Tokens have associated metadata',
@@ -542,7 +798,6 @@ export const ercStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'Standard token type - compatible with all major DEXs and wallets.'
   },
-  
   'ERC-721 NFT': {
     title: 'ERC-721 Non-Fungible Token',
     shortDesc: 'NFT standard on EVM chains',
@@ -550,7 +805,6 @@ export const ercStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Ensure you understand NFT trading risks. Verify authenticity on NFT marketplaces.'
   },
-  
   'ERC-1155 Multi-Token': {
     title: 'ERC-1155 Multi-Token Standard',
     shortDesc: 'Hybrid token standard supporting multiple types',
@@ -572,7 +826,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'Standard token type - compatible with all major Solana DEXs and wallets.'
   },
-  
   'Token-2022': {
     title: 'Token-2022 (Token Extensions)',
     shortDesc: 'Enhanced token with extensions on Solana',
@@ -580,7 +833,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Check for transfer fee extensions and other restrictions that may affect trading.'
   },
-  
   'Transfer Fee Extension': {
     title: 'Token Has Transfer Fees',
     shortDesc: 'Built-in transfer fees via Token-2022',
@@ -588,7 +840,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Verify the fee percentage before trading. Factor fees into your profit calculations.'
   },
-  
   'Non-Transferable': {
     title: 'Non-Transferable Token',
     shortDesc: 'Soulbound or restricted token',
@@ -596,7 +847,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'high',
     whatToDo: 'This token CANNOT be sold or transferred. Only acquire if intended as non-transferable.'
   },
-  
   'Permanent Delegate': {
     title: 'Permanent Delegate Risk',
     shortDesc: 'A delegate can transfer tokens without approval',
@@ -604,7 +854,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'critical',
     whatToDo: 'HIGH RISK - A permanent delegate can drain your tokens at any time without permission.'
   },
-  
   'Metaplex NFT': {
     title: 'Metaplex NFT',
     shortDesc: 'Non-fungible token on Solana',
@@ -612,7 +861,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Verify the NFT on Metaplex or marketplace. Check for proper metadata and collection verification.'
   },
-  
   'Compressed NFT': {
     title: 'Compressed NFT (cNFT)',
     shortDesc: 'Efficient NFT using merkle trees',
@@ -620,7 +868,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'medium',
     whatToDo: 'Ensure your wallet and preferred marketplace support compressed NFTs before purchasing.'
   },
-  
   'On-Chain Metadata': {
     title: 'On-Chain Metadata Available',
     shortDesc: 'NFT has verifiable metadata',
@@ -628,7 +875,6 @@ export const splStandardExplanations: Record<string, RiskExplanation> = {
     impact: 'low',
     whatToDo: 'Positive feature - metadata is verifiable and permanent on-chain.'
   },
-  
   'Master Edition': {
     title: 'Master Edition NFT',
     shortDesc: 'Original 1/1 or edition parent',
