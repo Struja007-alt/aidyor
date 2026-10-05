@@ -17,11 +17,53 @@ const BlogPost = () => {
   const post = slug ? getBlogPost(slug) : undefined;
 
   useEffect(() => {
-    if (!post) return;
+    if (!post || !slug) return;
+
     document.title = post.metaTitle;
-    const meta = document.querySelector('meta[name="description"]');
-    if (meta) meta.setAttribute("content", post.metaDescription);
-  }, [post]);
+
+    let meta = document.head.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "description";
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute("content", post.metaDescription);
+
+    const url = `https://aidyor.app/blog/${slug}`;
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.id = "blogpost-jsonld";
+    script.text = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: post.title,
+      description: post.metaDescription,
+      datePublished: post.date,
+      mainEntityOfPage: { "@type": "WebPage", "@id": url },
+      url,
+      image: "https://aidyor.app/og-image.png",
+      keywords: post.tags.join(", "),
+      articleSection: post.category,
+      author: {
+        "@type": "Organization",
+        name: "AIDYOR",
+        url: "https://aidyor.app",
+      },
+      publisher: {
+        "@type": "Organization",
+        name: "AIDYOR",
+        logo: {
+          "@type": "ImageObject",
+          url: "https://aidyor.app/icon-512.png",
+        },
+      },
+    });
+    document.head.appendChild(script);
+
+    return () => {
+      script.remove();
+    };
+  }, [post, slug]);
 
   if (!post) return <Navigate to="/blog" replace />;
 
@@ -97,76 +139,77 @@ const BlogPost = () => {
       </main>
 
       <style>{`
-        .blog-prose h2 {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 1.35rem;
-          font-weight: 700;
-          color: hsl(var(--foreground));
-          border-left: 3px solid hsl(var(--primary));
-          padding-left: 0.75rem;
-          margin-top: 2rem;
-          margin-bottom: 0.75rem;
-          line-height: 1.3;
-        }
-        .blog-prose p {
-          color: hsl(var(--muted-foreground));
-          line-height: 1.7;
-          margin-bottom: 1rem;
-        }
-        .blog-prose strong {
-          color: hsl(var(--foreground));
-          font-weight: 600;
-        }
-        .blog-prose ul {
-          list-style: none;
-          padding-left: 0;
-          margin: 1rem 0;
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-        .blog-prose li {
-          color: hsl(var(--muted-foreground));
-          line-height: 1.6;
-          padding-left: 1.25rem;
-          position: relative;
-        }
-        .blog-prose li::before {
-          content: '▸';
-          color: hsl(var(--primary));
-          position: absolute;
-          left: 0;
-          top: 0;
-        }
-        .blog-prose code {
-          background: hsl(var(--secondary));
-          color: hsl(var(--primary));
-          padding: 0.1rem 0.35rem;
-          border-radius: 0.25rem;
-          font-size: 0.875em;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        }
-        .blog-prose pre {
-          background: hsl(var(--secondary));
-          border: 1px solid hsl(var(--border));
-          border-radius: 0.5rem;
-          padding: 1rem;
-          margin: 1rem 0;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-          max-width: 100%;
-        }
-        .blog-prose pre code {
-          background: none;
-          color: hsl(var(--foreground));
-          padding: 0;
-          border-radius: 0;
-          font-size: 0.8rem;
-          line-height: 1.6;
-          white-space: pre;
-          display: block;
-        }
+.blog-prose h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  border-left: 3px solid hsl(var(--primary));
+  padding-left: 0.75rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.3;
+}
+.blog-prose p {
+  color: hsl(var(--muted-foreground));
+  line-height: 1.7;
+  margin-bottom: 1rem;
+}
+.blog-prose strong {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+.blog-prose ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.blog-prose li {
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
+  padding-left: 1.25rem;
+  position: relative;
+}
+.blog-prose li::before {
+  content: '▸';
+  color: hsl(var(--primary));
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.blog-prose code {
+  background: hsl(var(--secondary));
+  color: hsl(var(--primary));
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.blog-prose pre {
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+.blog-prose pre code {
+  background: none;
+  color: hsl(var(--foreground));
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  white-space: pre;
+  display: block;
+}
       `}</style>
+
       <Footer />
     </div>
   );
