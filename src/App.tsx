@@ -13,6 +13,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
 import { InstallBanner } from "@/components/InstallBanner";
 import { Analytics } from "@vercel/analytics/react";
+import RouteSeo from "@/components/RouteSeo";
 import Index from "./pages/Index";
 
 const Auth = lazy(() => import("./pages/Auth"));
@@ -27,8 +28,6 @@ const FAQ = lazy(() => import("./pages/FAQ"));
 const Glossary = lazy(() => import("./pages/Glossary"));
 const GlossaryTerm = lazy(() => import("./pages/GlossaryTerm"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
-const ApiAccess = lazy(() => import("./pages/ApiAccess"));
-const ApiSuccess = lazy(() => import("./pages/ApiSuccess"));
 const Subscription = lazy(() => import("./pages/Subscription"));
 const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
 const Blog = lazy(() => import("./pages/Blog"));
@@ -61,6 +60,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <RouteSeo />
             <Suspense fallback={<div className="min-h-screen bg-background" />}>
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -75,8 +75,6 @@ const App = () => (
                 <Route path="/glossary" element={<Glossary />} />
                 <Route path="/glossary/:slug" element={<GlossaryTerm />} />
                 <Route path="/api-docs" element={<ApiDocs />} />
-                <Route path="/api" element={<ApiAccess />} />
-                <Route path="/api/success" element={<ApiSuccess />} />
                 <Route path="/subscription" element={<Subscription />} />
                 <Route path="/ocr-dashboard" element={<OCRDashboard />} />
                 <Route path="/blog" element={<Blog />} />
