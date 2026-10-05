@@ -401,6 +401,15 @@ const GlossaryTerm = () => {
 
   useEffect(() => {
     document.title = term ? `${term.term} | AIDYOR Glossary` : "Glossary | AIDYOR";
+    if (term) {
+      const meta = document.querySelector('meta[name="description"]');
+      if (meta) {
+        meta.setAttribute(
+          "content",
+          `${term.definition} Free crypto glossary by AIDYOR.`
+        );
+      }
+    }
   }, [term]);
 
   if (!term) {
@@ -419,7 +428,7 @@ const GlossaryTerm = () => {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Glossary
           </Link>
-          
+
           <div className="flex items-start gap-4 mb-4">
             <div className={`p-3 rounded-xl border ${categoryColors[term.category]}`}>
               {categoryIcons[term.category]}
