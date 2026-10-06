@@ -1,6 +1,7 @@
 import { Shield } from "lucide-react";
 import { TrezorAffiliateCard } from "./TrezorAffiliateCard";
 import { Link } from "react-router-dom";
+import { chains } from "@/data/chains";
 
 const footerLinks = {
   Features: [
@@ -91,9 +92,30 @@ export const Footer = () => (
           </div>
         ))}
       </div>
-<div className="mb-10">
+
+      {/* Supported networks */}
+      <div className="mb-10 pt-8 border-t border-border/40">
+        <h3 className="text-xs font-semibold text-foreground uppercase tracking-widest mb-3">
+          Supported networks
+        </h3>
+        <ul className="flex flex-wrap gap-x-5 gap-y-2">
+          {chains.map((chain) => (
+            <li key={chain.slug}>
+              <Link
+                to={`/chains/${chain.slug}`}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                {chain.name} Scanner
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mb-10">
         <TrezorAffiliateCard mergedScore={100} />
       </div>
+
       {/* Bottom bar */}
       <div className="border-t border-border/40 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
