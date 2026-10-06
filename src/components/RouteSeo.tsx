@@ -11,6 +11,7 @@ const PUBLIC_ROUTES = [
   /^\/subscription$/,
   /^\/transparency$/,
   /^\/blog(\/[a-z0-9-]+)?$/,
+  /^\/chains\/[a-z0-9-]+$/,
   /^\/privacy-policy$/,
   /^\/terms-of-service$/,
   /^\/cookie-policy$/,
