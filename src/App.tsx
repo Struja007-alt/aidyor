@@ -33,6 +33,7 @@ const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
 const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
+const ChainLanding = lazy(() => import("./pages/ChainLanding"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,6 +80,7 @@ const App = () => (
                 <Route path="/ocr-dashboard" element={<OCRDashboard />} />
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/chains/:slug" element={<ChainLanding />} />
                 <Route path="/admin/marketing" element={<AdminMarketing />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
