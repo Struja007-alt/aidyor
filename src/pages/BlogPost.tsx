@@ -155,6 +155,14 @@ const BlogPost = () => {
   line-height: 1.7;
   margin-bottom: 1rem;
 }
+.blog-prose a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.blog-prose a:hover {
+  opacity: 0.8;
+}
 .blog-prose strong {
   color: hsl(var(--foreground));
   font-weight: 600;
