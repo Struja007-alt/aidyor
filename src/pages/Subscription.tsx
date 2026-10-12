@@ -9,22 +9,36 @@ import { Separator } from '@/components/ui/separator';
 import { Check, Crown, Zap, Anchor, RefreshCw, ExternalLink, ArrowLeft, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const PAGE_TITLE = 'AIDYOR Pro Pricing: Unlimited Crypto Token Scans';
+const PAGE_DESCRIPTION =
+  'Compare AIDYOR plans. Free token scans, Pro for unlimited scans and AI risk explanations ($9.99/mo), and Whale Pro for unlimited whale alerts.';
+
 export default function Subscription() {
+  // SEO: set title + meta description so Google no longer sees "Sign In | AIDYOR"
   useEffect(() => {
-    document.title = "Subscription Plans | AIDYOR";
+    document.title = PAGE_TITLE;
+
+    let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'description';
+      document.head.appendChild(meta);
+    }
+    meta.content = PAGE_DESCRIPTION;
   }, []);
+
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const { 
-    status, 
-    loading, 
+  const { user } = useAuth();
+  const {
+    status,
+    loading,
     checkoutLoading,
-    checkSubscription, 
-    startCheckout, 
+    checkSubscription,
+    startCheckout,
     openCustomerPortal,
     isPro,
-    isWhalePro 
+    isWhalePro
   } = useStripeSubscription();
 
   // Handle success/canceled redirects
@@ -37,20 +51,14 @@ export default function Subscription() {
     }
   }, [searchParams, checkSubscription]);
 
-  // Redirect to auth if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
+  // Pricing is public (so Google can index it). Login is only required at checkout.
+  const handleSubscribe = (plan: 'pro' | 'whale_pro') => {
+    if (!user) {
       navigate('/auth?redirect=/subscription');
+      return;
     }
-  }, [user, authLoading, navigate]);
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+    startCheckout(plan);
+  };
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return null;
@@ -77,20 +85,22 @@ export default function Subscription() {
                 Choose the plan that fits your trading needs
               </p>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => checkSubscription()}
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh Status
-            </Button>
+            {user && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => checkSubscription()}
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Refresh Status
+              </Button>
+            )}
           </div>
         </div>
 
         {/* Current Status */}
-        {status && (status.has_pro || status.has_whale_pro) && (
+        {user && status && (status.has_pro || status.has_whale_pro) && (
           <Card className="mb-8 border-primary/50 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -162,9 +172,15 @@ export default function Subscription() {
               </ul>
             </CardContent>
             <CardFooter>
-              <Button variant="outline" className="w-full" disabled>
-                Current Plan
-              </Button>
+              {user ? (
+                <Button variant="outline" className="w-full" disabled>
+                  Current Plan
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full" asChild>
+                  <Link to="/">Scan a Token Free</Link>
+                </Button>
+              )}
             </CardFooter>
           </Card>
 
@@ -211,9 +227,9 @@ export default function Subscription() {
                   Manage Plan
                 </Button>
               ) : (
-                <Button 
-                  className="w-full" 
-                  onClick={() => startCheckout('pro')}
+                <Button
+                  className="w-full"
+                  onClick={() => handleSubscribe('pro')}
                   disabled={checkoutLoading}
                 >
                   {checkoutLoading ? (
@@ -221,8 +237,10 @@ export default function Subscription() {
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Processing...
                     </>
-                  ) : (
+                  ) : user ? (
                     'Subscribe to Pro'
+                  ) : (
+                    'Sign In to Subscribe'
                   )}
                 </Button>
               )}
@@ -271,10 +289,10 @@ export default function Subscription() {
                   Manage Plan
                 </Button>
               ) : (
-                <Button 
-                  variant="secondary" 
-                  className="w-full" 
-                  onClick={() => startCheckout('whale_pro')}
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => handleSubscribe('whale_pro')}
                   disabled={!isPro || checkoutLoading}
                 >
                   {checkoutLoading ? (
