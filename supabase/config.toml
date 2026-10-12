@@ -24,6 +24,9 @@ verify_jwt = false
 [functions.onchain-data-service]
 verify_jwt = false
 
+[functions.autoseo-webhook]
+verify_jwt = false
+
 [functions.simulation-engine]
 verify_jwt = false
 
