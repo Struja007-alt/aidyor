@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { getBlogPost } from "@/data/blogPosts";
+import { fetchAutoseoPost, type DisplayPost } from "@/lib/autoseoPosts";
 import { cn } from "@/lib/utils";
 
 const categoryStyles: Record<string, string> = {
@@ -14,56 +15,70 @@ const categoryStyles: Record<string, string> = {
 
 const BlogPost = () => {
   const { slug } = useParams<{ slug: string }>();
-  const post = slug ? getBlogPost(slug) : undefined;
+  const staticPost = slug ? getBlogPost(slug) : undefined;
+
+  const [dbPost, setDbPost] = useState<DisplayPost | null>(null);
+  const [loading, setLoading] = useState<boolean>(!staticPost);
+
+  // Static posts win; otherwise look the slug up in autoseo_posts.
+  useEffect(() => {
+    if (!slug || staticPost) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetchAutoseoPost(slug).then((p) => {
+      if (!cancelled) {
+        setDbPost(p);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, staticPost]);
+
+  const post = (staticPost as DisplayPost | undefined) ?? dbPost ?? undefined;
 
   useEffect(() => {
-    if (!post || !slug) return;
-
+    if (!post) return;
     document.title = post.metaTitle;
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute("content", post.metaDescription);
+  }, [post]);
 
-    let meta = document.head.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.setAttribute("content", post.metaDescription);
-
-    const url = `https://aidyor.app/blog/${slug}`;
+  // FAQ structured data (AutoSEO posts only)
+  useEffect(() => {
+    if (!post?.faq?.length) return;
     const script = document.createElement("script");
     script.type = "application/ld+json";
-    script.id = "blogpost-jsonld";
     script.text = JSON.stringify({
       "@context": "https://schema.org",
-      "@type": "BlogPosting",
-      headline: post.title,
-      description: post.metaDescription,
-      datePublished: post.date,
-      mainEntityOfPage: { "@type": "WebPage", "@id": url },
-      url,
-      image: "https://aidyor.app/og-image.png",
-      keywords: post.tags.join(", "),
-      articleSection: post.category,
-      author: {
-        "@type": "Organization",
-        name: "AIDYOR",
-        url: "https://aidyor.app",
-      },
-      publisher: {
-        "@type": "Organization",
-        name: "AIDYOR",
-        logo: {
-          "@type": "ImageObject",
-          url: "https://aidyor.app/icon-512.png",
-        },
-      },
+      "@type": "FAQPage",
+      mainEntity: post.faq.map((f) => ({
+        "@type": "Question",
+        name: f.question,
+        acceptedAnswer: { "@type": "Answer", text: f.answer },
+      })),
     });
     document.head.appendChild(script);
-
     return () => {
-      script.remove();
+      document.head.removeChild(script);
     };
-  }, [post, slug]);
+  }, [post]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-4 py-16">
+          <p className="text-center text-muted-foreground">Loading article…</p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   if (!post) return <Navigate to="/blog" replace />;
 
@@ -106,10 +121,27 @@ const BlogPost = () => {
             {post.title}
           </h1>
 
+          {post.heroImageUrl && (
+            <img
+              src={post.heroImageUrl}
+              alt={post.heroImageAlt || post.title}
+              className="w-full rounded-lg mb-8"
+            />
+          )}
+
           <article
             className="blog-prose"
             dangerouslySetInnerHTML={{ __html: post.content }}
           />
+
+          {post.infographicImageUrl && (
+            <img
+              src={post.infographicImageUrl}
+              alt={`${post.title} infographic`}
+              loading="lazy"
+              className="w-full rounded-lg mt-8"
+            />
+          )}
 
           <div className="mt-10 flex flex-wrap gap-2">
             {post.tags.map((tag) => (
@@ -150,6 +182,14 @@ const BlogPost = () => {
   margin-bottom: 0.75rem;
   line-height: 1.3;
 }
+.blog-prose h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.3;
+}
 .blog-prose p {
   color: hsl(var(--muted-foreground));
   line-height: 1.7;
@@ -158,14 +198,32 @@ const BlogPost = () => {
 .blog-prose a {
   color: hsl(var(--primary));
   text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.blog-prose a:hover {
-  opacity: 0.8;
 }
 .blog-prose strong {
   color: hsl(var(--foreground));
   font-weight: 600;
+}
+.blog-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+.blog-prose blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: hsl(var(--muted-foreground));
+}
+.blog-prose ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
 }
 .blog-prose ul {
   list-style: none;
@@ -181,7 +239,10 @@ const BlogPost = () => {
   padding-left: 1.25rem;
   position: relative;
 }
-.blog-prose li::before {
+.blog-prose ol li {
+  padding-left: 0.25rem;
+}
+.blog-prose ul li::before {
   content: '▸';
   color: hsl(var(--primary));
   position: absolute;
@@ -216,8 +277,20 @@ const BlogPost = () => {
   white-space: pre;
   display: block;
 }
-      `}</style>
-
+.blog-prose table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.blog-prose th, .blog-prose td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem 0.75rem;
+  color: hsl(var(--muted-foreground));
+  text-align: left;
+}
+`}</style>
       <Footer />
     </div>
   );
