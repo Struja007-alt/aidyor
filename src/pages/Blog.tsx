@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { blogPosts } from "@/data/blogPosts";
+import { fetchAutoseoPosts, type DisplayPost } from "@/lib/autoseoPosts";
 import { cn } from "@/lib/utils";
 
 const categoryStyles: Record<string, string> = {
@@ -11,65 +12,37 @@ const categoryStyles: Record<string, string> = {
   Development: "bg-purple-500/15 text-purple-300 border-purple-500/30",
 };
 
-const glossaryLinks = [
-  { slug: "honeypot", label: "Honeypot" },
-  { slug: "rug-pull", label: "Rug Pull" },
-  { slug: "liquidity-lock", label: "Liquidity Lock" },
-  { slug: "renounced-contract", label: "Renounced Contract" },
-  { slug: "tokenomics", label: "Tokenomics" },
-  { slug: "smart-contract", label: "Smart Contract" },
-];
-
-const PAGE_TITLE = "Crypto Security Blog: Honeypot & Rug Pull Guides | AIDYOR";
-const PAGE_DESCRIPTION =
-  "Crypto security guides from AIDYOR: how to detect honeypots and rug pulls, check token safety, and avoid scam tokens. Free research for DeFi investors.";
-
-const sortedPosts = [...blogPosts].sort(
-  (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-);
-
 const Blog = () => {
+  const [autoseoPosts, setAutoseoPosts] = useState<DisplayPost[]>([]);
+
   useEffect(() => {
-    document.title = PAGE_TITLE;
-
-    let meta = document.head.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
+    document.title = "Security Blog | AIDYOR";
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) {
+      meta.setAttribute(
+        "content",
+        "Crypto security guides, honeypot detection tutorials, and DeFi safety research from the AIDYOR team."
+      );
     }
-    meta.setAttribute("content", PAGE_DESCRIPTION);
+  }, []);
 
-    const script = document.createElement("script");
-    script.type = "application/ld+json";
-    script.id = "blog-jsonld";
-    script.text = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "Blog",
-      name: "AIDYOR Security Blog",
-      url: "https://aidyor.app/blog",
-      description: PAGE_DESCRIPTION,
-      publisher: {
-        "@type": "Organization",
-        name: "AIDYOR",
-        logo: {
-          "@type": "ImageObject",
-          url: "https://aidyor.app/icon-512.png",
-        },
-      },
-      blogPost: sortedPosts.map((post) => ({
-        "@type": "BlogPosting",
-        headline: post.title,
-        url: `https://aidyor.app/blog/${post.slug}`,
-        datePublished: post.date,
-      })),
+  useEffect(() => {
+    let cancelled = false;
+    fetchAutoseoPosts().then((posts) => {
+      if (!cancelled) setAutoseoPosts(posts);
     });
-    document.head.appendChild(script);
-
     return () => {
-      script.remove();
+      cancelled = true;
     };
   }, []);
+
+  const posts = useMemo(() => {
+    const staticSlugs = new Set(blogPosts.map((p) => p.slug));
+    const extra = autoseoPosts.filter((p) => !staticSlugs.has(p.slug));
+    return ([...blogPosts, ...extra] as DisplayPost[]).sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [autoseoPosts]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -88,12 +61,20 @@ const Blog = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sortedPosts.map((post) => (
+          {posts.map((post) => (
             <Link
               key={post.slug}
               to={`/blog/${post.slug}`}
               className="glass-card p-6 flex flex-col gap-3 hover:border-primary/40 transition-colors group"
             >
+              {post.heroImageUrl && (
+                <img
+                  src={post.heroImageUrl}
+                  alt={post.heroImageAlt || post.title}
+                  loading="lazy"
+                  className="w-full aspect-video object-cover rounded-md"
+                />
+              )}
               <div className="flex items-center gap-2">
                 <span
                   className={cn(
@@ -136,38 +117,6 @@ const Blog = () => {
             </Link>
           ))}
         </div>
-
-        <section className="glass-card p-6 md:p-8 mt-14">
-          <h2 className="font-display text-xl font-semibold text-foreground mb-2">
-            New to crypto security?
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Learn the key terms in our glossary, then check any token for free.
-          </p>
-          <div className="flex flex-wrap gap-2 mb-5">
-            {glossaryLinks.map((item) => (
-              <Link
-                key={item.slug}
-                to={`/glossary/${item.slug}`}
-                className="inline-flex items-center rounded-full bg-secondary/40 border border-border/40 px-3 py-1 text-xs text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
-              >
-                {item.label}
-              </Link>
-            ))}
-            <Link
-              to="/glossary"
-              className="inline-flex items-center rounded-full border border-primary/30 px-3 py-1 text-xs text-primary hover:bg-primary/10 transition-colors"
-            >
-              All terms →
-            </Link>
-          </div>
-          <Link
-            to="/#scanner"
-            className="text-sm text-primary hover:underline underline-offset-4"
-          >
-            Open the free token scanner →
-          </Link>
-        </section>
       </main>
       <Footer />
     </div>
