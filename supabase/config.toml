@@ -59,3 +59,6 @@ verify_jwt = false
 
 [functions.bug-scanner]
 verify_jwt = false
+
+[functions.autoseo-webhook]
+verify_jwt = false
