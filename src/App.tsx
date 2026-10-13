@@ -12,6 +12,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { prefetchCoinGeckoTokens } from "@/lib/api/coingecko";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { CookieConsent } from "@/components/CookieConsent";
 import { lazy, Suspense } from "react";
 import { InstallBanner } from "@/components/InstallBanner";
 import { Analytics } from "@vercel/analytics/react";
@@ -85,6 +86,7 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
+            <CookieConsent />
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>
