@@ -1,150 +1,88 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <!-- Consent Mode v2 defaults (must run BEFORE GTM) -->
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('consent', 'default', {
-        ad_storage: 'denied',
-        ad_user_data: 'denied',
-        ad_personalization: 'denied',
-        analytics_storage: 'denied',
-        wait_for_update: 500
-      });
-      gtag('consent', 'default', {
-        analytics_storage: 'granted',
-        region: ['US', 'AU', 'JP']
-      });
-      try {
-        var c = localStorage.getItem('aidyor_consent');
-        if (c === 'granted' || c === 'denied') {
-          gtag('consent', 'update', { analytics_storage: c });
-        }
-      } catch (e) {}
-      gtag('set', 'ads_data_redaction', true);
-    </script>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-MFDSK5TH');</script>
-    <!-- End Google Tag Manager -->
+<!-- Preload critical fonts for faster LCP -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" /></noscript>
 
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/icon-512.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<meta name="theme-color" content="#1a1a2e" />
 
-    <!-- Preload critical fonts for faster LCP -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" /></noscript>
+<title>AIDYOR — Crypto Token Risk Scanner | Do Your Own Research</title>
+<meta name="description" content="Free honeypot checker and crypto token risk scanner. Detect rug pulls, scam tokens, and hidden taxes across 9 chains — ETH, BNB, Solana, Polygon, Arbitrum, Base & more. AI-powered, no wallet needed." />
+<meta name="author" content="AIDYOR" />
+<meta name="keywords" content="honeypot checker, crypto token scanner, rug pull detector, token risk analysis, scam token detector, honeypot detector, DeFi security, crypto safety, smart contract audit" />
+<meta name="robots" content="index, follow" />
+<link rel="canonical" href="https://aidyor.app/" />
 
-    <link rel="icon" type="image/png" href="/icon-512.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#1a1a2e" />
+<meta property="og:title" content="AIDYOR — Crypto Token Risk Scanner | Do Your Own Research" />
+<meta property="og:description" content="Free honeypot checker and multichain token risk scanner. Detect rug pulls and scam tokens across 9 chains. AI-powered, no wallet needed." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://aidyor.app/" />
+<meta property="og:image" content="https://aidyor.app/icon-512.png" />
 
-    <title>AIDYOR — Crypto Token Risk Scanner | Do Your Own Research</title>
-    <meta name="description" content="Free honeypot checker and crypto token risk scanner. Detect rug pulls, scam tokens, and hidden taxes across 9 chains — ETH, BNB, Solana, Polygon, Arbitrum, Base & more. AI-powered, no wallet needed." />
-    <meta name="author" content="AIDYOR" />
-    <meta name="keywords" content="honeypot checker, crypto token scanner, rug pull detector, token risk analysis, scam token detector, honeypot detector, DeFi security, crypto safety, smart contract audit" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://aidyor.app/" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@aidyor33641" />
+<meta name="twitter:title" content="AIDYOR — Crypto Token Risk Scanner | Do Your Own Research" />
+<meta name="twitter:description" content="AI-powered crypto token scanner with risk analysis and screenshot-based token detection. Do Your Own Research." />
+<meta name="twitter:image" content="https://aidyor.app/icon-512.png" />
 
-    <meta property="og:title" content="AIDYOR — Crypto Token Risk Scanner | Do Your Own Research" />
-    <meta property="og:description" content="Free honeypot checker and multichain token risk scanner. Detect rug pulls and scam tokens across 9 chains. AI-powered, no wallet needed." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://aidyor.app/" />
-    <meta property="og:image" content="https://aidyor.app/icon-512.png" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@aidyor33641" />
-    <meta name="twitter:title" content="AIDYOR — Crypto Token Risk Scanner | Do Your Own Research" />
-    <meta name="twitter:description" content="AI-powered crypto token scanner with risk analysis and screenshot-based token detection. Do Your Own Research." />
-    <meta name="twitter:image" content="https://aidyor.app/icon-512.png" />
-
-    <!-- Schema.org structured data -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "AIDYOR",
-      "alternateName": "AI Do Your Own Research",
-      "description": "AI-powered multichain crypto token scanner. Detect honeypots, rug pulls, and scam tokens across 9 blockchain networks with real-time risk analysis, OCR screenshot scanning, and smart contract bug detection.",
-      "url": "https://aidyor.app",
-      "applicationCategory": "FinanceApplication",
-      "operatingSystem": "Web Browser",
-      "browserRequirements": "Requires JavaScript",
-      "offers": [
-        {
-          "@type": "Offer",
-          "name": "Free",
-          "price": "0",
-          "priceCurrency": "USD",
-          "description": "10 scans per day, basic risk score"
-        },
-        {
-          "@type": "Offer",
-          "name": "Pro",
-          "price": "9.99",
-          "priceCurrency": "USD",
-          "billingIncrement": "P1M",
-          "description": "Unlimited scans, AI explanations, Smart Contract Bug Scanner"
-        }
-      ],
-      "featureList": [
-        "Multichain token risk scanner (9 networks)",
-        "AI-powered risk explanations",
-        "OCR screenshot-to-scan pipeline",
-        "Smart Contract Bug Scanner",
-        "Whale activity alerts",
-        "Crypto security news feed",
-        "Cloud watchlist"
-      ],
-      "screenshot": "https://aidyor.app/icon-512.png",
-      "author": {
-        "@type": "Organization",
-        "name": "AIDYOR",
-        "url": "https://aidyor.app",
-        "email": "aidyor.app@gmail.com"
-      }
-    }
-    </script>
-  </head>
-
-  <body>
-    <!-- Google Tag Manager (noscript) -->
-    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MFDSK5TH"
-    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-    <!-- End Google Tag Manager (noscript) -->
-
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-
-    <!-- Minimal consent banner -->
-    <script>
-      (function () {
-        try { if (localStorage.getItem('aidyor_consent')) return; } catch (e) {}
-        var b = document.createElement('div');
-        b.setAttribute('role', 'dialog');
-        b.setAttribute('aria-label', 'Cookie consent');
-        b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#1a1a2e;color:#fff;font:14px/1.4 Inter,system-ui,sans-serif;padding:14px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-top:1px solid #333;';
-        b.innerHTML = '<span style="flex:1 1 260px">We use analytics cookies to improve AIDYOR. You can accept or decline.</span>' +
-          '<span style="display:flex;gap:8px">' +
-          '<button id="aidyor-decline" style="padding:8px 14px;border-radius:6px;border:1px solid #666;background:transparent;color:#fff;cursor:pointer">Decline</button>' +
-          '<button id="aidyor-accept" style="padding:8px 14px;border-radius:6px;border:0;background:#00d4ff;color:#000;font-weight:600;cursor:pointer">Accept</button>' +
-          '</span>';
-        function choose(v) {
-          try { localStorage.setItem('aidyor_consent', v); } catch (e) {}
-          gtag('consent', 'update', { analytics_storage: v });
-          b.remove();
-        }
-        document.body.appendChild(b);
-        document.getElementById('aidyor-accept').onclick = function () { choose('granted'); };
-        document.getElementById('aidyor-decline').onclick = function () { choose('denied'); };
-      })();
-    </script>
-  </body>
+<!-- Schema.org structured data -->
+<script type="application/ld+json">
+{
+"@context": "https://schema.org",
+"@type": "SoftwareApplication",
+"name": "AIDYOR",
+"alternateName": "AI Do Your Own Research",
+"description": "AI-powered multichain crypto token scanner. Detect honeypots, rug pulls, and scam tokens across 9 blockchain networks with real-time risk analysis, OCR screenshot scanning, and smart contract bug detection.",
+"url": "https://aidyor.app",
+"applicationCategory": "FinanceApplication",
+"operatingSystem": "Web Browser",
+"browserRequirements": "Requires JavaScript",
+"offers": [
+{
+"@type": "Offer",
+"name": "Free",
+"price": "0",
+"priceCurrency": "USD",
+"description": "10 scans per day, basic risk score"
+},
+{
+"@type": "Offer",
+"name": "Pro",
+"price": "9.99",
+"priceCurrency": "USD",
+"billingIncrement": "P1M",
+"description": "Unlimited scans, AI explanations, Smart Contract Bug Scanner"
+}
+],
+"featureList": [
+"Multichain token risk scanner (9 networks)",
+"AI-powered risk explanations",
+"OCR screenshot-to-scan pipeline",
+"Smart Contract Bug Scanner",
+"Whale activity alerts",
+"Crypto security news feed",
+"Cloud watchlist"
+],
+"screenshot": "https://aidyor.app/icon-512.png",
+"author": {
+"@type": "Organization",
+"name": "AIDYOR",
+"url": "https://aidyor.app",
+"email": "aidyor.app@gmail.com"
+}
+}
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
 </html>
