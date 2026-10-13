@@ -2,6 +2,7 @@
  * @fileoverview Main App component with optimized React Query configuration
  * CoinGecko prefetch is called at module level for immediate loading
  */
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,10 +11,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { prefetchCoinGeckoTokens } from "@/lib/api/coingecko";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ScrollToTop } from "@/components/ScrollToTop";
 import { lazy, Suspense } from "react";
 import { InstallBanner } from "@/components/InstallBanner";
 import { Analytics } from "@vercel/analytics/react";
-import RouteSeo from "@/components/RouteSeo";
 import Index from "./pages/Index";
 
 const Auth = lazy(() => import("./pages/Auth"));
@@ -33,7 +34,6 @@ const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
 const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
-const ChainLanding = lazy(() => import("./pages/ChainLanding"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,7 +61,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <RouteSeo />
+            <ScrollToTop />
             <Suspense fallback={<div className="min-h-screen bg-background" />}>
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -80,7 +80,6 @@ const App = () => (
                 <Route path="/ocr-dashboard" element={<OCRDashboard />} />
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
-                <Route path="/chains/:slug" element={<ChainLanding />} />
                 <Route path="/admin/marketing" element={<AdminMarketing />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
