@@ -1,6 +1,10 @@
-import { useEffect } from "react";
-import { Link, useParams, Navigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, AlertTriangle, TrendingUp, Coins, Landmark, Info } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import type { ReactNode } from "react";
+import { BookOpen, AlertTriangle, TrendingUp, Coins, Landmark, Info } from "lucide-react";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
+import { useSeo } from "@/hooks/useSeo";
+import NotFound from "./NotFound";
 
 interface TermDetail {
   term: string;
@@ -379,7 +383,7 @@ const termDetails: Record<string, TermDetail> = {
   }
 };
 
-const categoryIcons: Record<string, React.ReactNode> = {
+const categoryIcons: Record<string, ReactNode> = {
   security: <AlertTriangle className="w-5 h-5" />,
   trading: <TrendingUp className="w-5 h-5" />,
   tokenomics: <Coins className="w-5 h-5" />,
@@ -395,53 +399,38 @@ const categoryColors: Record<string, string> = {
   general: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 };
 
-const GlossaryTerm = () => {
-  const { slug } = useParams<{ slug: string }>();
-  const term = slug ? termDetails[slug] : null;
-
-  useEffect(() => {
-    document.title = term ? `${term.term} | AIDYOR Glossary` : "Glossary | AIDYOR";
-    if (term) {
-      const meta = document.querySelector('meta[name="description"]');
-      if (meta) {
-        meta.setAttribute(
-          "content",
-          `${term.definition} Free crypto glossary by AIDYOR.`
-        );
-      }
-    }
-  }, [term]);
-
-  if (!term) {
-    return <Navigate to="/glossary" replace />;
-  }
+const TermPage = ({ slug, term }: { slug: string; term: TermDetail }) => {
+  useSeo({
+    title: `What Is ${term.term}? Crypto Glossary | AIDYOR`,
+    description: `${term.definition} Free crypto glossary by AIDYOR.`,
+    path: `/glossary/${slug}`,
+  });
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <Link
-            to="/glossary"
-            className="inline-flex items-center text-muted-foreground hover:text-primary transition-colors mb-6"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Glossary
-          </Link>
+      <Header />
 
-          <div className="flex items-start gap-4 mb-4">
-            <div className={`p-3 rounded-xl border ${categoryColors[term.category]}`}>
-              {categoryIcons[term.category]}
+      <main className="max-w-3xl mx-auto px-4 py-8">
+        <Link
+          to="/glossary"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors mb-6"
+        >
+          ← Back to Glossary
+        </Link>
+
+        {/* Title */}
+        <div className="flex items-start gap-4 mb-8">
+          <div className={`p-3 rounded-xl border ${categoryColors[term.category]}`}>
+            {categoryIcons[term.category]}
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <h1 className="text-3xl font-bold">{term.term}</h1>
+              <span className={`px-2 py-0.5 rounded text-xs border ${categoryColors[term.category]}`}>
+                {term.category === "defi" ? "DeFi" : term.category}
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h1 className="text-3xl font-bold">{term.term}</h1>
-                <span className={`px-2 py-0.5 rounded text-xs border ${categoryColors[term.category]}`}>
-                  {term.category === "defi" ? "DeFi" : term.category}
-                </span>
-              </div>
-              <p className="text-lg text-muted-foreground">{term.definition}</p>
-            </div>
+            <p className="text-lg text-muted-foreground">{term.definition}</p>
           </div>
         </div>
 
@@ -499,18 +488,15 @@ const GlossaryTerm = () => {
         <section className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Related Terms</h2>
           <div className="flex flex-wrap gap-2">
-            {term.relatedTerms.map((related) => {
-              const relatedTerm = termDetails[related];
-              return (
-                <Link
-                  key={related}
-                  to={`/glossary/${related}`}
-                  className="px-3 py-1.5 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors text-sm"
-                >
-                  {relatedTerm?.term || related}
-                </Link>
-              );
-            })}
+            {term.relatedTerms.map((related) => (
+              <Link
+                key={related}
+                to={`/glossary/${related}`}
+                className="px-3 py-1.5 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors text-sm"
+              >
+                {termDetails[related]?.term || related}
+              </Link>
+            ))}
           </div>
         </section>
 
@@ -518,29 +504,33 @@ const GlossaryTerm = () => {
         <div className="bg-card border border-border rounded-lg p-6 text-center">
           <h3 className="font-semibold mb-2">Ready to analyze a token?</h3>
           <p className="text-muted-foreground text-sm mb-4">
-            Use our scanner to check for {term.category === "security" ? "these security risks" : "potential issues"} automatically.
+            Use our scanner to check for{" "}
+            {term.category === "security" ? "these security risks" : "potential issues"}{" "}
+            automatically.
           </p>
-          <Link
-            to="/#scanner"
+          <a
+            href="/#scanner"
             className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
           >
             Open Token Scanner
-          </Link>
+          </a>
         </div>
+      </main>
 
-        {/* Footer */}
-        <footer className="mt-16 pt-8 border-t border-border text-center text-sm text-muted-foreground">
-          <div className="flex flex-wrap justify-center gap-4 mb-4">
-            <Link to="/glossary" className="hover:text-primary transition-colors">Glossary</Link>
-            <Link to="/faq" className="hover:text-primary transition-colors">FAQ</Link>
-            <Link to="/transparency" className="hover:text-primary transition-colors">Transparency</Link>
-            <Link to="/disclaimer" className="hover:text-primary transition-colors">Disclaimer</Link>
-          </div>
-          <p>© {new Date().getFullYear()} AIDyor. All rights reserved.</p>
-        </footer>
-      </div>
+      <Footer />
     </div>
   );
+};
+
+const GlossaryTerm = () => {
+  const { slug } = useParams<{ slug: string }>();
+  const key = (slug ?? "").trim().toLowerCase();
+  const term = termDetails[key];
+
+  // Unknown slug: show a real 404 (noindex) instead of silently redirecting
+  if (!term) return <NotFound />;
+
+  return <TermPage slug={key} term={term} />;
 };
 
 export default GlossaryTerm;
