@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { Header } from '@/components/Header';
 import { useOCRDashboard } from '@/hooks/useOCRDashboard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,21 +7,41 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { 
+import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { 
-  Eye, CheckCircle, AlertTriangle, Clock, TrendingUp, 
-  Camera, Zap, Target, BarChart3 
+import {
+  Eye, CheckCircle, AlertTriangle, Clock, TrendingUp,
+  Camera, Zap, Target, BarChart3
 } from 'lucide-react';
 
-const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))'];
+const PIE_COLORS = [
+  'hsl(var(--primary))',
+  'hsl(var(--accent))',
+  'hsl(var(--warning))',
+];
+
+const tooltipStyle = {
+  backgroundColor: 'hsl(var(--card))',
+  border: '1px solid hsl(var(--border))',
+  borderRadius: '8px',
+};
 
 const OCRDashboard = () => {
   useEffect(() => {
     document.title = "OCR Analytics Dashboard | AIDYOR";
+
+    // Internal page: keep it out of search engines
+    const robots = document.querySelector('meta[name="robots"]');
+    const previous = robots?.getAttribute("content") ?? null;
+    robots?.setAttribute("content", "noindex, nofollow");
+
+    return () => {
+      if (robots && previous !== null) robots.setAttribute("content", previous);
+    };
   }, []);
+
   const [days, setDays] = useState(30);
   const { data, isLoading, error } = useOCRDashboard(days);
 
@@ -40,9 +61,16 @@ const OCRDashboard = () => {
     );
   }
 
+  const pieData = [
+    { name: 'VLM', value: data?.methodDistribution.vlm || 0 },
+    { name: 'Tesseract', value: data?.methodDistribution.tesseract || 0 },
+    { name: 'VLM→Tesseract', value: data?.methodDistribution.vlm_fallback_tesseract || 0 },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
       <main className="container mx-auto px-4 py-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -64,64 +92,24 @@ const OCRDashboard = () => {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <SummaryCard
-            title="Total Scans"
-            value={data?.summary.totalScans}
-            icon={<Camera className="w-4 h-4" />}
-            isLoading={isLoading}
-          />
-          <SummaryCard
-            title="VLM Success Rate"
-            value={data?.summary.vlmSuccessRate}
-            suffix="%"
-            icon={<Eye className="w-4 h-4" />}
-            isLoading={isLoading}
-          />
-          <SummaryCard
-            title="Correction Rate"
-            value={data?.summary.correctionRate}
-            suffix="%"
-            icon={<CheckCircle className="w-4 h-4" />}
-            isLoading={isLoading}
-          />
-          <SummaryCard
-            title="Avg Processing Time"
-            value={data?.summary.avgProcessingTime}
-            suffix="ms"
-            icon={<Clock className="w-4 h-4" />}
-            isLoading={isLoading}
-          />
+          <SummaryCard title="Total Scans" value={data?.summary.totalScans} icon={<Camera className="w-4 h-4" />} isLoading={isLoading} />
+          <SummaryCard title="VLM Success Rate" value={data?.summary.vlmSuccessRate} suffix="%" icon={<Eye className="w-4 h-4" />} isLoading={isLoading} />
+          <SummaryCard title="Correction Rate" value={data?.summary.correctionRate} suffix="%" icon={<CheckCircle className="w-4 h-4" />} isLoading={isLoading} />
+          <SummaryCard title="Avg Processing Time" value={data?.summary.avgProcessingTime} suffix="ms" icon={<Clock className="w-4 h-4" />} isLoading={isLoading} />
         </div>
 
         {/* Additional Metrics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <SummaryCard
-            title="Exact Match Rate"
-            value={data?.summary.exactMatchRate}
-            suffix="%"
-            icon={<Target className="w-4 h-4" />}
-            isLoading={isLoading}
-          />
+          <SummaryCard title="Exact Match Rate" value={data?.summary.exactMatchRate} suffix="%" icon={<Target className="w-4 h-4" />} isLoading={isLoading} />
           <SummaryCard
             title="Avg Confidence"
-            value={data?.summary.avgConfidence ? data.summary.avgConfidence * 100 : undefined}
+            value={data?.summary.avgConfidence !== undefined && data?.summary.avgConfidence !== null ? data.summary.avgConfidence * 100 : undefined}
             suffix="%"
             icon={<TrendingUp className="w-4 h-4" />}
             isLoading={isLoading}
           />
-          <SummaryCard
-            title="Addresses Found"
-            value={data?.summary.totalAddressesFound}
-            icon={<BarChart3 className="w-4 h-4" />}
-            isLoading={isLoading}
-          />
-          <SummaryCard
-            title="Validation Rate"
-            value={data?.summary.validationRate}
-            suffix="%"
-            icon={<Zap className="w-4 h-4" />}
-            isLoading={isLoading}
-          />
+          <SummaryCard title="Addresses Found" value={data?.summary.totalAddressesFound} icon={<BarChart3 className="w-4 h-4" />} isLoading={isLoading} />
+          <SummaryCard title="Validation Rate" value={data?.summary.validationRate} suffix="%" icon={<Zap className="w-4 h-4" />} isLoading={isLoading} />
         </div>
 
         {/* Charts */}
@@ -146,42 +134,20 @@ const OCRDashboard = () => {
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={data?.timeSeries || []}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="date" 
+                      <XAxis
+                        dataKey="date"
                         tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         className="text-muted-foreground"
                       />
                       <YAxis className="text-muted-foreground" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'hsl(var(--card))', 
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px'
-                        }}
+                      <Tooltip
+                        contentStyle={tooltipStyle}
                         labelFormatter={(v) => new Date(v).toLocaleDateString()}
                       />
                       <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="scans" 
-                        stroke="hsl(var(--primary))" 
-                        strokeWidth={2}
-                        name="Total Scans"
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="corrections" 
-                        stroke="hsl(var(--warning))" 
-                        strokeWidth={2}
-                        name="Corrections Applied"
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="exactMatches" 
-                        stroke="hsl(var(--success))" 
-                        strokeWidth={2}
-                        name="Exact Matches"
-                      />
+                      <Line type="monotone" dataKey="scans" stroke="hsl(var(--primary))" strokeWidth={2} name="Total Scans" />
+                      <Line type="monotone" dataKey="corrections" stroke="hsl(var(--warning))" strokeWidth={2} name="Corrections Applied" />
+                      <Line type="monotone" dataKey="exactMatches" stroke="hsl(var(--success))" strokeWidth={2} name="Exact Matches" />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
@@ -203,11 +169,7 @@ const OCRDashboard = () => {
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
                         <Pie
-                          data={[
-                            { name: 'VLM', value: data?.methodDistribution.vlm || 0 },
-                            { name: 'Tesseract', value: data?.methodDistribution.tesseract || 0 },
-                            { name: 'VLM→Tesseract', value: data?.methodDistribution.vlm_fallback_tesseract || 0 },
-                          ]}
+                          data={pieData}
                           cx="50%"
                           cy="50%"
                           labelLine={false}
@@ -216,11 +178,11 @@ const OCRDashboard = () => {
                           fill="hsl(var(--primary))"
                           dataKey="value"
                         >
-                          {COLORS.map((color, index) => (
-                            <Cell key={`cell-${index}`} fill={color} />
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${entry.name}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip contentStyle={tooltipStyle} />
                       </PieChart>
                     </ResponsiveContainer>
                   )}
@@ -283,13 +245,7 @@ const OCRDashboard = () => {
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="range" className="text-muted-foreground" />
                       <YAxis className="text-muted-foreground" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'hsl(var(--card))', 
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px'
-                        }}
-                      />
+                      <Tooltip contentStyle={tooltipStyle} />
                       <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -312,14 +268,8 @@ const OCRDashboard = () => {
                     <BarChart data={data.errorTypes} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis type="number" className="text-muted-foreground" />
-                      <YAxis dataKey="type" type="category" width={150} className="text-muted-foreground" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'hsl(var(--card))', 
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px'
-                        }}
-                      />
+                      <YAxis dataKey="type" type="category" width={110} className="text-muted-foreground" />
+                      <Tooltip contentStyle={tooltipStyle} />
                       <Bar dataKey="count" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -336,7 +286,7 @@ const OCRDashboard = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Character Error Rate Info */}
+        {/* Quality Metrics Info */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -360,6 +310,7 @@ const OCRDashboard = () => {
                   </span>
                 )}
               </div>
+
               <div className="p-4 rounded-lg bg-secondary/50">
                 <h4 className="font-semibold text-foreground mb-1">Exact Match Rate</h4>
                 <p className="text-sm text-muted-foreground mb-2">
@@ -373,6 +324,7 @@ const OCRDashboard = () => {
                   </span>
                 )}
               </div>
+
               <div className="p-4 rounded-lg bg-secondary/50">
                 <h4 className="font-semibold text-foreground mb-1">Validation Rate</h4>
                 <p className="text-sm text-muted-foreground mb-2">
@@ -395,32 +347,32 @@ const OCRDashboard = () => {
 };
 
 // Summary Card Component
-const SummaryCard = ({ 
-  title, 
-  value, 
-  suffix = '', 
-  icon, 
-  isLoading 
-}: { 
-  title: string; 
-  value?: number; 
+const SummaryCard = ({
+  title,
+  value,
+  suffix = '',
+  icon,
+  isLoading,
+}: {
+  title: string;
+  value?: number;
   suffix?: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   isLoading: boolean;
 }) => (
   <Card>
     <CardContent className="pt-6">
       <div className="flex items-center justify-between">
-        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-          {icon}
-        </div>
+        <div className="p-2 rounded-lg bg-primary/10 text-primary">{icon}</div>
       </div>
       <div className="mt-3">
         {isLoading ? (
           <Skeleton className="h-8 w-24" />
         ) : (
           <p className="text-2xl font-bold text-foreground">
-            {value !== undefined ? (typeof value === 'number' ? value.toFixed(value % 1 === 0 ? 0 : 1) : value) : '—'}
+            {value !== undefined && value !== null
+              ? value.toFixed(value % 1 === 0 ? 0 : 1)
+              : '—'}
             {suffix}
           </p>
         )}
