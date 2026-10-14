@@ -1,7 +1,10 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft, BookOpen, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
+import { useSeo } from "@/hooks/useSeo";
 
 interface GlossaryTerm {
   term: string;
@@ -52,16 +55,22 @@ const categoryColors: Record<string, string> = {
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 const Glossary = () => {
-  useEffect(() => {
-    document.title = "Glossary | AIDYOR";
-  }, []);
+  useSeo({
+    title: "Crypto Glossary: Honeypot, Rug Pull, DEX & More | AIDYOR",
+    description:
+      "Plain-English crypto glossary covering honeypots, rug pulls, liquidity locks, slippage, tokenomics and more. Learn the terms that protect you from scam tokens.",
+    path: "/glossary",
+  });
+
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   const filteredTerms = useMemo(() => {
+    const q = searchQuery.toLowerCase();
     return glossaryTerms.filter((term) => {
-      const matchesSearch = term.term.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        term.shortDefinition.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch =
+        term.term.toLowerCase().includes(q) ||
+        term.shortDefinition.toLowerCase().includes(q);
       const matchesFilter = !activeFilter || term.category === activeFilter;
       return matchesSearch && matchesFilter;
     });
@@ -81,25 +90,19 @@ const Glossary = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <Link
-            to="/"
-            className="inline-flex items-center text-muted-foreground hover:text-primary transition-colors mb-6"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to App
-          </Link>
-          
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 rounded-xl bg-primary/20 border border-primary/30">
-              <BookOpen className="w-8 h-8 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold">Crypto Glossary</h1>
-              <p className="text-muted-foreground">Essential terms every crypto investor should know</p>
-            </div>
+      <Header />
+
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* Title */}
+        <div className="flex items-center gap-3 mb-8">
+          <div className="p-3 rounded-xl bg-primary/20 border border-primary/30">
+            <BookOpen className="w-8 h-8 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">Crypto Glossary</h1>
+            <p className="text-muted-foreground">
+              Essential terms every crypto investor should know
+            </p>
           </div>
         </div>
 
@@ -114,12 +117,14 @@ const Glossary = () => {
               className="pl-10 bg-card border-border"
             />
           </div>
-          
+
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setActiveFilter(null)}
               className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                !activeFilter ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:border-primary/50"
+                !activeFilter
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card border-border hover:border-primary/50"
               }`}
             >
               All
@@ -129,7 +134,9 @@ const Glossary = () => {
                 key={cat}
                 onClick={() => setActiveFilter(activeFilter === cat ? null : cat)}
                 className={`px-3 py-1 rounded-full text-sm border transition-colors capitalize ${
-                  activeFilter === cat ? categoryColors[cat] : "bg-card border-border hover:border-primary/50"
+                  activeFilter === cat
+                    ? categoryColors[cat]
+                    : "bg-card border-border hover:border-primary/50"
                 }`}
               >
                 {cat === "defi" ? "DeFi" : cat}
@@ -139,30 +146,39 @@ const Glossary = () => {
         </div>
 
         {/* A-Z Navigation */}
-        <div className="mb-6 flex flex-wrap gap-1 justify-center bg-card/50 rounded-lg p-3 border border-border">
-          {alphabet.map((letter) => (
-            <a
-              key={letter}
-              href={availableLetters.includes(letter) ? `#letter-${letter}` : undefined}
-              className={`w-8 h-8 flex items-center justify-center rounded text-sm font-medium transition-colors ${
-                availableLetters.includes(letter)
-                  ? "bg-primary/20 text-primary hover:bg-primary hover:text-primary-foreground"
-                  : "text-muted-foreground/30 cursor-default"
-              }`}
-            >
-              {letter}
-            </a>
-          ))}
-        </div>
+        <nav
+          aria-label="Jump to letter"
+          className="mb-6 flex flex-wrap gap-1 justify-center bg-card/50 rounded-lg p-3 border border-border"
+        >
+          {alphabet.map((letter) =>
+            availableLetters.includes(letter) ? (
+              <a
+                key={letter}
+                href={`#letter-${letter}`}
+                className="w-8 h-8 flex items-center justify-center rounded text-sm font-medium transition-colors bg-primary/20 text-primary hover:bg-primary hover:text-primary-foreground"
+              >
+                {letter}
+              </a>
+            ) : (
+              <span
+                key={letter}
+                aria-hidden="true"
+                className="w-8 h-8 flex items-center justify-center rounded text-sm font-medium text-muted-foreground/30"
+              >
+                {letter}
+              </span>
+            )
+          )}
+        </nav>
 
         {/* Terms List */}
         <div className="space-y-8">
           {alphabet.map((letter) => {
             const terms = groupedTerms[letter];
             if (!terms) return null;
-            
+
             return (
-              <div key={letter} id={`letter-${letter}`} className="scroll-mt-20">
+              <section key={letter} id={`letter-${letter}`} className="scroll-mt-24">
                 <h2 className="text-2xl font-bold text-primary mb-4 border-b border-border pb-2">
                   {letter}
                 </h2>
@@ -175,11 +191,13 @@ const Glossary = () => {
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
                             <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
                               {term.term}
                             </h3>
-                            <span className={`px-2 py-0.5 rounded text-xs border ${categoryColors[term.category]}`}>
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs border ${categoryColors[term.category]}`}
+                            >
                               {term.category === "defi" ? "DeFi" : term.category}
                             </span>
                           </div>
@@ -187,12 +205,12 @@ const Glossary = () => {
                             {term.shortDefinition}
                           </p>
                         </div>
-                        <ArrowLeft className="w-4 h-4 text-muted-foreground rotate-180 group-hover:text-primary transition-colors" />
+                        <ArrowLeft className="w-4 h-4 mt-1 text-muted-foreground rotate-180 group-hover:text-primary transition-colors shrink-0" />
                       </div>
                     </Link>
                   ))}
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>
@@ -203,18 +221,9 @@ const Glossary = () => {
             <p>No terms found matching your search.</p>
           </div>
         )}
+      </main>
 
-        {/* Footer */}
-        <footer className="mt-16 pt-8 border-t border-border text-center text-sm text-muted-foreground">
-          <div className="flex flex-wrap justify-center gap-4 mb-4">
-            <Link to="/transparency" className="hover:text-primary transition-colors">Transparency</Link>
-            <Link to="/faq" className="hover:text-primary transition-colors">FAQ</Link>
-            <Link to="/disclaimer" className="hover:text-primary transition-colors">Disclaimer</Link>
-            <Link to="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</Link>
-          </div>
-          <p>© {new Date().getFullYear()} AIDyor. All rights reserved.</p>
-        </footer>
-      </div>
+      <Footer />
     </div>
   );
 };
