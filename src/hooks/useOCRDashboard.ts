@@ -36,6 +36,15 @@ interface OCRDashboardData {
   periodDays: number;
 }
 
+class OCRDashboardError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'OCRDashboardError';
+    this.status = status;
+  }
+}
+
 export const useOCRDashboard = (days: number = 30) => {
   return useQuery<OCRDashboardData>({
     queryKey: ['ocr-dashboard', days],
@@ -44,7 +53,7 @@ export const useOCRDashboard = (days: number = 30) => {
       const accessToken = sessionData.session?.access_token;
 
       if (!accessToken) {
-        throw new Error('You must be signed in to view this.');
+        throw new OCRDashboardError('You must be signed in to view this.', 401);
       }
 
       const response = await fetch(
@@ -59,17 +68,23 @@ export const useOCRDashboard = (days: number = 30) => {
       );
 
       if (response.status === 401) {
-        throw new Error('You must be signed in to view this.');
+        throw new OCRDashboardError('You must be signed in to view this.', 401);
       }
       if (response.status === 403) {
-        throw new Error('You do not have access to this dashboard.');
+        throw new OCRDashboardError('You do not have access to this dashboard.', 403);
       }
       if (!response.ok) {
-        throw new Error('Failed to fetch OCR analytics');
+        throw new OCRDashboardError('Failed to fetch OCR analytics', response.status);
       }
 
       return response.json();
     },
     staleTime: 5 * 60 * 1000,
+    // Don't retry auth failures; retry other errors up to 2 times
+    retry: (failureCount, error) => {
+      const status = (error as OCRDashboardError).status;
+      if (status === 401 || status === 403) return false;
+      return failureCount < 2;
+    },
   });
 };
