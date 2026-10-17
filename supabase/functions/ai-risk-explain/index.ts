@@ -2,6 +2,31 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "npm:stripe@17";
 
+// ---------- Gemini model config (override via Supabase secrets) ----------
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
+const GEMINI_FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.6-flash";
+
+async function fetchGemini(apiKey: string, body: unknown, primary: string = GEMINI_MODEL): Promise<Response> {
+  const models = [primary, GEMINI_FALLBACK_MODEL].filter((m, i, a) => m && a.indexOf(m) === i);
+  let last: Response | null = null;
+  for (const model of models) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(body),
+      }
+    );
+    if (res.ok) return res;
+    last = res;
+    // Only try the fallback for model-level failures (retired model / server error)
+    if (res.status !== 404 && res.status < 500) return res;
+    console.warn(`[gemini] model ${model} failed with status ${res.status}`);
+  }
+  return last as Response;
+}
+
 const PRODUCT_IDS = {
   pro: "prod_TsmarvHsLfmOgX",
   whale_pro: "prod_TsmahG5mQUlguv",
@@ -14,13 +39,13 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8080',
 ];
 
-function isAllowedOrigin(origin: string | null): boolean {
+function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin);
 }
 
-function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+function getCorsHeaders(origin) {
+  const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -28,41 +53,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
-interface RiskFactor {
-  name: string;
-  status: "safe" | "warning" | "danger";
-  description: string;
-}
-
-interface TokenData {
-  name: string;
-  symbol: string;
-  network: string;
-  riskScore: number;
-  riskFactors: RiskFactor[];
-  marketData?: {
-    price: number;
-    liquidity: number;
-    volume24h: number;
-    marketCap: number;
-  };
-  securityData?: {
-    isHoneypot: boolean;
-    isVerified: boolean;
-    buyTax: number;
-    sellTax: number;
-    holderCount: number;
-    isMintable: boolean;
-    hasHiddenOwner: boolean;
-  };
-  lockInfo?: {
-    isLocked: boolean;
-    lockPercentage: number;
-    unlockDate: string;
-  };
-}
-
-function validateTokenData(data: any): data is TokenData {
+function validateTokenData(data) {
   if (!data || typeof data !== 'object') return false;
   if (typeof data.name !== 'string' || data.name.length > 200) return false;
   if (typeof data.symbol !== 'string' || data.symbol.length > 50) return false;
@@ -86,7 +77,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
+    const supabase = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_ANON_KEY'));
 
     const token = authHeader.replace('Bearer ', '');
     const { data: { user } } = await supabase.auth.getUser(token);
@@ -105,7 +96,7 @@ serve(async (req) => {
             const subs = await stripe.subscriptions.list({ customer: customers.data[0].id, status: 'active' });
             for (const s of subs.data) {
               for (const item of s.items.data) {
-                const pid = item.price.product as string;
+                const pid = item.price.product;
                 if (pid === PRODUCT_IDS.pro || pid === PRODUCT_IDS.whale_pro) hasPro = true;
               }
             }
@@ -123,7 +114,7 @@ serve(async (req) => {
       }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { tokenData } = await req.json() as { tokenData: TokenData };
+    const { tokenData } = await req.json();
 
     if (!tokenData || !tokenData.riskFactors || !validateTokenData(tokenData)) {
       return new Response(JSON.stringify({ error: "Invalid request format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -185,18 +176,11 @@ ${safeFactors.length > 0 ? safeFactors.map(f => `- ${f.name}: ${f.description}`)
 
 Provide a clear, actionable explanation of the risks.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-          generationConfig: { maxOutputTokens: 500, temperature: 0.2 },
-        }),
-      }
-    );
+    const response = await fetchGemini(GEMINI_API_KEY, {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: { maxOutputTokens: 500, temperature: 0.2 },
+    });
 
     if (!response.ok) {
       const status = response.status;
@@ -209,7 +193,7 @@ Provide a clear, actionable explanation of the risks.`;
     }
 
     const data = await response.json();
-    const explanation = (data.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("");
+    const explanation = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
 
     if (!explanation) {
       console.error("[ai-risk-explain] No explanation generated");
