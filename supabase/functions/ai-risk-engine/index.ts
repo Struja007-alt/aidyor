@@ -1,6 +1,31 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
 
+// ---------- Gemini model config (override via Supabase secrets) ----------
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
+const GEMINI_FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.6-flash";
+
+async function fetchGemini(apiKey: string, body: unknown, primary: string = GEMINI_MODEL): Promise<Response> {
+  const models = [primary, GEMINI_FALLBACK_MODEL].filter((m, i, a) => m && a.indexOf(m) === i);
+  let last: Response | null = null;
+  for (const model of models) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(body),
+      }
+    );
+    if (res.ok) return res;
+    last = res;
+    // Only try the fallback for model-level failures (retired model / server error)
+    if (res.status !== 404 && res.status < 500) return res;
+    console.warn(`[gemini] model ${model} failed with status ${res.status}`);
+  }
+  return last as Response;
+}
+
 const ALLOWED_ORIGINS = [
   'https://aidyor.app',
   'https://www.aidyor.app',
@@ -8,13 +33,13 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8080',
 ];
 
-function isAllowedOrigin(origin: string | null): boolean {
+function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin);
 }
 
-function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+function getCorsHeaders(origin) {
+  const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -22,59 +47,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
-interface RiskFactor {
-  name: string;
-  status: "safe" | "warning" | "danger";
-  description: string;
-}
-
-interface AIRiskRequest {
-  tokenData: {
-    name: string;
-    symbol: string;
-    network: string;
-    riskScore: number;
-    riskFactors: RiskFactor[];
-    marketData?: {
-      price: number;
-      liquidity: number;
-      volume24h: number;
-      marketCap: number;
-    };
-    securityData?: {
-      isHoneypot: boolean;
-      isVerified: boolean;
-      buyTax: number;
-      sellTax: number;
-      holderCount: number;
-      isMintable: boolean;
-      hasHiddenOwner: boolean;
-    };
-    lockInfo?: {
-      isLocked: boolean;
-      lockPercentage: number;
-      unlockDate: string;
-    };
-    pumpDumpStatus?: string;
-  };
-}
-
-interface AIRiskResponse {
-  success: boolean;
-  data?: {
-    explanation: string;
-    riskLevel: string;
-    dangerCount: number;
-    warningCount: number;
-    safeCount: number;
-    keyTakeaways: string[];
-    recommendation: "avoid" | "caution" | "acceptable" | "low_risk";
-  };
-  error?: string;
-  timestamp: string;
-}
-
-function validateTokenData(data: any): boolean {
+function validateTokenData(data) {
   if (!data || typeof data !== 'object') return false;
   if (typeof data.name !== 'string' || data.name.length > 200) return false;
   if (typeof data.symbol !== 'string' || data.symbol.length > 50) return false;
@@ -84,7 +57,7 @@ function validateTokenData(data: any): boolean {
   return true;
 }
 
-function buildPrompt(tokenData: AIRiskRequest["tokenData"]): string {
+function buildPrompt(tokenData) {
   const { name, symbol, network, riskScore, riskFactors, marketData, securityData, lockInfo, pumpDumpStatus } = tokenData;
 
   const dangerFactors = riskFactors.filter(f => f.status === "danger");
@@ -164,14 +137,14 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: "Unauthorized", timestamp: new Date().toISOString() }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
+    const supabase = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_ANON_KEY'));
 
     const token = authHeader.replace('Bearer ', '');
     const { data: { user } } = await supabase.auth.getUser(token);
 
     console.log(`[AI Risk Engine] Request from ${user ? `user: ${user.id}` : 'anonymous visitor'}`);
 
-    const { tokenData }: AIRiskRequest = await req.json();
+    const { tokenData } = await req.json();
 
     if (!tokenData || !validateTokenData(tokenData)) {
       return new Response(JSON.stringify({ success: false, error: "Invalid request format", timestamp: new Date().toISOString() }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -202,18 +175,11 @@ FORMAT:
 - Keep response under 200 words
 - End with: "Recommendation: [AVOID/CAUTION/ACCEPTABLE/LOW RISK]"`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 500 },
-        }),
-      }
-    );
+    const response = await fetchGemini(GEMINI_API_KEY, {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 500 },
+    });
 
     if (!response.ok) {
       const status = response.status;
@@ -226,13 +192,13 @@ FORMAT:
     }
 
     const aiResponse = await response.json();
-    const explanation = (aiResponse.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "Unable to generate analysis.";
+    const explanation = (aiResponse.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("") || "Unable to generate analysis.";
 
     const dangerCount = tokenData.riskFactors.filter(f => f.status === "danger").length;
     const warningCount = tokenData.riskFactors.filter(f => f.status === "warning").length;
     const safeCount = tokenData.riskFactors.filter(f => f.status === "safe").length;
 
-    let recommendation: "avoid" | "caution" | "acceptable" | "low_risk" = "caution";
+    let recommendation = "caution";
     const lowerExplanation = explanation.toLowerCase();
     if (lowerExplanation.includes("avoid") || tokenData.securityData?.isHoneypot) {
       recommendation = "avoid";
@@ -242,7 +208,7 @@ FORMAT:
       recommendation = "acceptable";
     }
 
-    const keyTakeaways: string[] = [];
+    const keyTakeaways = [];
     if (tokenData.securityData?.isHoneypot) keyTakeaways.push("Honeypot detected - cannot sell");
     if (dangerCount > 0) keyTakeaways.push(`${dangerCount} critical risk(s) found`);
     if (tokenData.lockInfo?.isLocked) keyTakeaways.push(`Liquidity locked (${tokenData.lockInfo.lockPercentage}%)`);
@@ -250,7 +216,7 @@ FORMAT:
       keyTakeaways.push("Strong liquidity");
     }
 
-    const result: AIRiskResponse = {
+    const result = {
       success: true,
       data: {
         explanation,
