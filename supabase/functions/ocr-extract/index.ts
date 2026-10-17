@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
 
+// ---------- Gemini model config (override via Supabase secrets) ----------
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
+const GEMINI_PRO_MODEL = Deno.env.get("GEMINI_OCR_PRO_MODEL") || "gemini-3.1-pro-preview";
+const GEMINI_FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.6-flash";
+
 const ALLOWED_ORIGINS = [
   'https://aidyor.app',
   'https://www.aidyor.app',
@@ -8,13 +13,13 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8080',
 ];
 
-function isAllowedOrigin(origin: string | null): boolean {
+function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin);
 }
 
-function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+function getCorsHeaders(origin) {
+  const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -26,7 +31,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MAX_RETRIES = 2;
 const RETRY_DELAYS = [1000, 2500];
 
-const CHAR_CORRECTIONS: Record<string, string> = {
+const CHAR_CORRECTIONS = {
   'O': '0', 'o': '0', 'Q': '0',
   'l': '1', 'I': '1', 'i': '1', '|': '1', '!': '1',
   'Z': '2', 'z': '2',
@@ -40,14 +45,7 @@ const CHAR_CORRECTIONS: Record<string, string> = {
 
 const HEX_CHARS = new Set('0123456789abcdefABCDEF');
 
-interface CorrectionResult {
-  corrected: string;
-  confidence: number;
-  corrections: string[];
-  type: 'ethereum' | 'solana' | 'tron' | 'unknown';
-}
-
-function applyBasicCorrections(text: string): string {
+function applyBasicCorrections(text) {
   let result = '';
   for (const char of text) {
     if (HEX_CHARS.has(char)) {
@@ -59,7 +57,7 @@ function applyBasicCorrections(text: string): string {
   return result;
 }
 
-function countDifferences(a: string, b: string): number {
+function countDifferences(a, b) {
   let diff = Math.abs(a.length - b.length);
   for (let i = 0; i < Math.min(a.length, b.length); i++) {
     if (a[i].toLowerCase() !== b[i].toLowerCase()) {
@@ -69,8 +67,8 @@ function countDifferences(a: string, b: string): number {
   return diff;
 }
 
-function correctEthAddress(rawAddress: string): CorrectionResult {
-  const corrections: string[] = [];
+function correctEthAddress(rawAddress) {
+  const corrections = [];
   let normalized = rawAddress
     .replace(/^Ox/i, '0x')
     .replace(/^\bx(?=[a-fA-F0-9])/i, '0x');
@@ -106,11 +104,11 @@ function correctEthAddress(rawAddress: string): CorrectionResult {
   };
 }
 
-function correctSolanaAddress(rawAddress: string): CorrectionResult {
-  const corrections: string[] = [];
+function correctSolanaAddress(rawAddress) {
+  const corrections = [];
   const BASE58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   const BASE58_SET = new Set(BASE58_CHARS);
-  const SOLANA_CORRECTIONS: Record<string, string> = {
+  const SOLANA_CORRECTIONS = {
     '0': 'o', 'O': 'o', 'I': '1', 'l': '1',
   };
 
@@ -134,8 +132,8 @@ function correctSolanaAddress(rawAddress: string): CorrectionResult {
   return { corrected, confidence, corrections, type: 'solana' };
 }
 
-function correctTronAddress(rawAddress: string): CorrectionResult {
-  const corrections: string[] = [];
+function correctTronAddress(rawAddress) {
+  const corrections = [];
   let normalized = rawAddress;
   if (!normalized.startsWith('T')) {
     if (normalized.startsWith('t')) {
@@ -146,7 +144,7 @@ function correctTronAddress(rawAddress: string): CorrectionResult {
     }
   }
 
-  const TRON_CORRECTIONS: Record<string, string> = { '0': 'O', 'O': 'o', 'I': '1', 'l': '1' };
+  const TRON_CORRECTIONS = { '0': 'O', 'O': 'o', 'I': '1', 'l': '1' };
   let corrected = 'T';
   let changesCount = 0;
   for (let i = 1; i < normalized.length; i++) {
@@ -168,7 +166,7 @@ function correctTronAddress(rawAddress: string): CorrectionResult {
   return { corrected, confidence, corrections, type: 'tron' };
 }
 
-function correctAddress(rawAddress: string): CorrectionResult {
+function correctAddress(rawAddress) {
   const trimmed = rawAddress.trim();
   if (/^[0O]x/i.test(trimmed)) return correctEthAddress(trimmed);
   if (trimmed.startsWith('T') || trimmed.startsWith('t')) return correctTronAddress(trimmed);
@@ -179,33 +177,27 @@ function correctAddress(rawAddress: string): CorrectionResult {
   return { type: 'unknown', corrected: trimmed, confidence: 0, corrections: ['Unable to determine address type'] };
 }
 
-function parseDataUrl(input: string): { mimeType: string; data: string } {
+function parseDataUrl(input) {
   const match = input.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]*)$/);
   if (match) return { mimeType: match[1], data: match[2] };
   return { mimeType: 'image/png', data: input };
 }
 
-async function callGemini(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userText: string,
-  imageInline: { mimeType: string; data: string } | null,
-  maxTokens: number,
-  temperature: number,
-  attempt: number = 0
-): Promise<{ ok: boolean; status: number; text?: string; error?: string }> {
+// Calls Gemini. Retries 5xx on the same model, and if the model is retired (404)
+// or keeps failing with 5xx, makes one attempt with the fallback model.
+async function callGemini(apiKey, model, systemPrompt, userText, imageInline, maxTokens, temperature, attempt = 0, triedFallback = false) {
+  const canFallback = !triedFallback && !!GEMINI_FALLBACK_MODEL && model !== GEMINI_FALLBACK_MODEL;
   try {
-    const parts: any[] = [{ text: userText }];
+    const parts = [{ text: userText }];
     if (imageInline) {
       parts.push({ inline_data: { mime_type: imageInline.mimeType, data: imageInline.data } });
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: "user", parts }],
@@ -216,7 +208,7 @@ async function callGemini(
 
     if (response.ok) {
       const data = await response.json();
-      const text = (data.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("");
+      const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
       return { ok: true, status: response.status, text };
     }
 
@@ -224,10 +216,22 @@ async function callGemini(
       return { ok: false, status: response.status, error: `Status ${response.status}` };
     }
 
+    // Model retired / not found: go straight to the fallback model
+    if (response.status === 404 && canFallback) {
+      console.warn(`[ocr-extract] model ${model} returned 404, falling back to ${GEMINI_FALLBACK_MODEL}`);
+      return callGemini(apiKey, GEMINI_FALLBACK_MODEL, systemPrompt, userText, imageInline, maxTokens, temperature, 0, true);
+    }
+
     if (attempt < MAX_RETRIES && response.status >= 500) {
       const delay = RETRY_DELAYS[attempt] || 2500;
       await new Promise((resolve) => setTimeout(resolve, delay));
-      return callGemini(apiKey, model, systemPrompt, userText, imageInline, maxTokens, temperature, attempt + 1);
+      return callGemini(apiKey, model, systemPrompt, userText, imageInline, maxTokens, temperature, attempt + 1, triedFallback);
+    }
+
+    // Retries exhausted on a server error: one last try with the fallback model
+    if (response.status >= 500 && canFallback) {
+      console.warn(`[ocr-extract] model ${model} kept failing with ${response.status}, falling back to ${GEMINI_FALLBACK_MODEL}`);
+      return callGemini(apiKey, GEMINI_FALLBACK_MODEL, systemPrompt, userText, imageInline, maxTokens, temperature, 0, true);
     }
 
     const errorText = await response.text().catch(() => 'Unknown error');
@@ -237,7 +241,7 @@ async function callGemini(
     if (attempt < MAX_RETRIES) {
       const delay = RETRY_DELAYS[attempt] || 2500;
       await new Promise((resolve) => setTimeout(resolve, delay));
-      return callGemini(apiKey, model, systemPrompt, userText, imageInline, maxTokens, temperature, attempt + 1);
+      return callGemini(apiKey, model, systemPrompt, userText, imageInline, maxTokens, temperature, attempt + 1, triedFallback);
     }
     return { ok: false, status: 0, error: err instanceof Error ? err.message : 'Network error' };
   }
@@ -247,38 +251,134 @@ const PRIMARY_SYSTEM_PROMPT = `You are a specialized blockchain contract address
 
 SUPPORTED ADDRESS FORMATS:
 - Ethereum/EVM: 0x followed by EXACTLY 40 hex characters (0-9, a-f, A-F)
+  Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
 - Solana: Base58 encoded, 32-44 characters (no 0, O, I, l)
+  Example: So11111111111111111111111111111112
 - Tron: T followed by 33 alphanumeric characters
+  Example: T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
 
 CRITICAL INSTRUCTIONS:
 1. Read the contract address VERY CAREFULLY character by character
-2. Pay special attention to similar-looking characters
-3. The address MUST be exactly the right length
-4. EXTRACT ALL ADDRESSES VISIBLE
-5. Return results one item per line
-6. If you see 'contract:' or similar labels, the address follows it
+2. Pay special attention to similar-looking characters:
+   - 0 (zero) vs O (letter O) vs o (lowercase o)
+   - 1 (one) vs l (lowercase L) vs I (uppercase i)
+   - 8 (eight) vs B (letter B)
+   - 5 (five) vs S (letter S)
+   - 6 (six) vs G (letter G) vs b (letter b)
+   - 2 (two) vs Z (letter Z)
+3. The address MUST be exactly the right length (40 hex chars for ETH after 0x)
+4. EXTRACT ALL ADDRESSES VISIBLE — do not stop after the first one. A screenshot
+   may contain multiple tokens (lists, comparisons, swap pairs, portfolio views).
+5. Return results in this EXACT format (one item per line):
+   - Full valid addresses: just the address on its own line
+   - If an address is TRUNCATED (shows "..." or "…" or only shows start and end), output: TRUNCATED:visible_start...visible_end
+   - Token name if visible: TOKEN_NAME:the_token_name
+   - Token symbol if visible: TOKEN_SYMBOL:the_symbol
+   - Blockchain network if visible anywhere (a network tab, chain badge, or label such as BSC, BNB Chain, Ethereum, Solana, Base, Polygon, Arbitrum, Optimism, Avalanche, Tron): NETWORK:the_network_name
+6. If you see "contract:" or similar labels, the address follows it
 7. If no addresses AND no token info found, return "NONE"
-8. Do NOT include explanations, markdown, or formatting`;
+8. Do NOT include explanations, markdown, or formatting
 
-const ENHANCED_SYSTEM_PROMPT = `You are an expert blockchain address reader with forensic-level visual analysis skills. Extract ALL contract addresses from this cryptocurrency screenshot, checking labels, small text, and ambiguous characters carefully. OUTPUT FORMAT (one per line, no markdown): full address, TRUNCATED:start...end, TOKEN_NAME:name, TOKEN_SYMBOL:symbol, or NONE.`;
+EXAMPLE OUTPUT for a screenshot showing "SUBHUB" token on BSC with truncated address "0x9efd...25068c":
+TOKEN_NAME:SUBHUB
+TOKEN_SYMBOL:SUBHUB
+NETWORK:BSC
+TRUNCATED:0x9efd...25068c
 
-const USER_PROMPT = "Extract all contract addresses and token info from this screenshot. Include full addresses, truncated address fragments (with TRUNCATED: prefix), and any visible token name (TOKEN_NAME:) and symbol (TOKEN_SYMBOL:).";
+EXAMPLE OUTPUT for a full address with token info:
+TOKEN_NAME:Pepe
+TOKEN_SYMBOL:PEPE
+0x6982508145454Ce325dDbE47a25d4ec3d2311933`;
 
-const ENHANCED_USER_PROMPT = "I need you to very carefully extract contract addresses from this image. The previous attempt found nothing - please look harder at every part of the image. Check headers, footers, sidebars, small text, QR codes, and any data fields. Even partial or truncated addresses are useful. Also extract any token name or symbol visible.";
+const ENHANCED_SYSTEM_PROMPT = `You are an expert blockchain address reader with forensic-level visual analysis skills.
 
-const PIXEL_LEVEL_SYSTEM_PROMPT = `You are a raw character transcription engine with pixel-level visual analysis. Transcribe EVERY identifiable character into raw strings, then scan for blockchain address patterns (ETH 0x+40hex, Solana Base58 32-44, Tron T+33). OUTPUT: RAW_TEXT:text, address lines, TRUNCATED:, TOKEN_NAME:, TOKEN_SYMBOL:, or NONE.`;
+Your task: Extract ALL contract addresses from this cryptocurrency screenshot. Focus on accuracy above all else.
+
+STEP-BY-STEP APPROACH:
+1. First scan the ENTIRE image for any text that looks like a blockchain address
+2. Look for common UI patterns: "Contract:", "Token Address:", "CA:", copy buttons next to addresses
+3. Read each character individually - zoom into the address mentally
+4. Cross-check ambiguous characters using context (hex addresses only use 0-9 and a-f)
+5. Verify the address length is correct before outputting
+
+SUPPORTED FORMATS:
+- Ethereum/EVM: 0x + exactly 40 hex chars → Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
+- Solana: Base58, 32-44 chars (excludes 0, O, I, l) → Example: So11111111111111111111111111111112
+- Tron: T + 33 Base58 chars → Example: T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
+
+COMMON OCR TRAPS TO AVOID:
+- "rn" can look like "m" → read carefully
+- "cl" can look like "d" → verify
+- Dark mode screenshots may have inverted contrast
+- Small/low-res text needs extra care on hex chars
+
+OUTPUT FORMAT (one per line, no markdown, no explanation):
+- Full address: the address itself
+- Truncated: TRUNCATED:visible_start...visible_end
+- Token name: TOKEN_NAME:name
+- Token symbol: TOKEN_SYMBOL:symbol
+- Network, if a chain name or badge is visible (BSC, Ethereum, Solana, Base, ...): NETWORK:name
+- Nothing found: NONE`;
+
+const USER_PROMPT = "Extract all contract addresses and token info from this screenshot. Include full addresses, truncated address fragments (with TRUNCATED: prefix), any visible token name (TOKEN_NAME:) and symbol (TOKEN_SYMBOL:), and the blockchain network if shown (NETWORK:).";
+
+const ENHANCED_USER_PROMPT = "I need you to very carefully extract contract addresses from this image. The previous attempt found nothing - please look harder at every part of the image. Check headers, footers, sidebars, small text, QR codes, and any data fields. Even partial or truncated addresses are useful. Also extract any token name, symbol, or blockchain network visible.";
+
+const PIXEL_LEVEL_SYSTEM_PROMPT = `You are a raw character transcription engine with pixel-level visual analysis.
+
+CRITICAL DIRECTIVE: Analyze this image pixel by pixel. Ignore ALL graphical elements — icons, logos, charts, borders, backgrounds, gradients, and decorative shapes. Focus SOLELY on alphanumeric characters rendered as text anywhere in the image.
+
+Even if the text is:
+- Blurry or low resolution
+- Upside down or rotated
+- Partially obscured or cropped
+- In dark mode with low contrast
+- Very small or compressed
+- Overlapping with other elements
+
+...transcribe EVERY identifiable character into raw strings.
+
+AFTER raw transcription, scan your output for anything matching these blockchain address patterns:
+- Ethereum/EVM: 0x followed by 40 hex characters (0-9, a-f, A-F)
+- Solana: Base58 string, 32-44 characters (characters: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz)
+- Tron: T followed by 33 Base58 characters
+
+CHARACTER DISAMBIGUATION RULES (apply during transcription):
+- If context is a hex address: O→0, I→1, l→1, S→5, G→6, Z→2
+- If context is Base58: 0→o, O→o, I→1, l→1
+- Adjacent character patterns help: "0x" prefix means hex follows
+- "T" at position 0 followed by 33 alphanumerics = Tron
+
+OUTPUT FORMAT (one per line, no markdown, no explanation):
+- RAW_TEXT:the_raw_transcribed_text (for each text block found)
+- Full valid address on its own line
+- TRUNCATED:visible_start...visible_end
+- TOKEN_NAME:name
+- TOKEN_SYMBOL:symbol
+- NETWORK:name (if a blockchain network name is visible)
+- NONE if absolutely nothing found`;
 
 const PIXEL_LEVEL_USER_PROMPT = "Two previous AI passes failed to extract any addresses from this image. Perform a pixel-by-pixel analysis: transcribe ALL visible alphanumeric text first as raw strings, then identify any blockchain addresses or token info within the transcribed text. Include even partial or low-confidence matches.";
 
-interface ParsedVLMResponse {
-  rawAddresses: string[];
-  truncatedFragments: string[];
-  tokenName: string | null;
-  tokenSymbol: string | null;
+// Maps whatever network text the model saw to a stable lowercase key
+function normalizeNetwork(raw) {
+  if (!raw) return null;
+  const s = String(raw).toLowerCase().trim();
+  if (!s) return null;
+  if (/\b(bsc|bnb|binance)\b/.test(s)) return 'bsc';
+  if (/\b(eth|ethereum)\b/.test(s)) return 'ethereum';
+  if (/\b(sol|solana)\b/.test(s)) return 'solana';
+  if (/\b(polygon|matic|pol)\b/.test(s)) return 'polygon';
+  if (/\barbitrum\b|\barb\b/.test(s)) return 'arbitrum';
+  if (/\bbase\b/.test(s)) return 'base';
+  if (/\boptimism\b|\bop\b/.test(s)) return 'optimism';
+  if (/\b(avalanche|avax)\b/.test(s)) return 'avalanche';
+  if (/\b(tron|trx)\b/.test(s)) return 'tron';
+  return s.slice(0, 30);
 }
 
-function extractAddressesFromRawText(text: string): string[] {
-  const found: string[] = [];
+function extractAddressesFromRawText(text) {
+  const found = [];
   const ethMatches = text.match(/0x[a-fA-F0-9]{40}/g);
   if (ethMatches) found.push(...ethMatches);
   const solMatches = text.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g);
@@ -288,13 +388,14 @@ function extractAddressesFromRawText(text: string): string[] {
   return found;
 }
 
-function parseVLMResponse(content: string): ParsedVLMResponse {
+function parseVLMResponse(content) {
   const lines = content.split("\n").map((l) => l.trim()).filter((l) => l && l !== "NONE");
 
-  const rawAddresses: string[] = [];
-  const truncatedFragments: string[] = [];
-  let tokenName: string | null = null;
-  let tokenSymbol: string | null = null;
+  const rawAddresses = [];
+  const truncatedFragments = [];
+  let tokenName = null;
+  let tokenSymbol = null;
+  let networkHint = null;
 
   for (const line of lines) {
     const cleaned = line.replace(/[`*\[\]]/g, "").trim();
@@ -305,6 +406,10 @@ function parseVLMResponse(content: string): ParsedVLMResponse {
     }
     if (cleaned.startsWith("TOKEN_SYMBOL:")) {
       tokenSymbol = cleaned.replace("TOKEN_SYMBOL:", "").trim();
+      continue;
+    }
+    if (cleaned.startsWith("NETWORK:")) {
+      networkHint = normalizeNetwork(cleaned.replace("NETWORK:", "").trim());
       continue;
     }
     if (cleaned.startsWith("TRUNCATED:")) {
@@ -320,24 +425,12 @@ function parseVLMResponse(content: string): ParsedVLMResponse {
     if (cleaned.length >= 10) rawAddresses.push(cleaned);
   }
 
-  return { rawAddresses, truncatedFragments, tokenName, tokenSymbol };
+  return { rawAddresses, truncatedFragments, tokenName, tokenSymbol, networkHint };
 }
 
-interface ProcessedAddress {
-  original: string;
-  corrected: string;
-  type: string;
-  confidence: number;
-  corrections: string[];
-}
-
-function processAddresses(rawAddresses: string[]): {
-  validAddresses: string[];
-  processedAddresses: ProcessedAddress[];
-  totalCorrections: number;
-} {
-  const processedAddresses: ProcessedAddress[] = [];
-  const validAddresses: string[] = [];
+function processAddresses(rawAddresses) {
+  const processedAddresses = [];
+  const validAddresses = [];
   let totalCorrections = 0;
 
   for (const rawAddr of rawAddresses) {
@@ -382,7 +475,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
+    const supabase = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_ANON_KEY'));
 
     const token = authHeader.replace('Bearer ', '');
     const { data: { user } } = await supabase.auth.getUser(token);
@@ -411,10 +504,12 @@ serve(async (req) => {
 
     const imageInline = parseDataUrl(imageBase64);
 
-    console.log("[ocr-extract] Pass 1 (parallel): gemini-3.1-pro-preview + gemini-3.8-flash");
+    console.log(`[ocr-extract] Pass 1 (parallel): ${GEMINI_PRO_MODEL} + ${GEMINI_MODEL}`);
 
-    const proCall = callGemini(GEMINI_API_KEY, "gemini-3.1-pro-preview", PRIMARY_SYSTEM_PROMPT, USER_PROMPT, imageInline, 600, 0.1);
-    const flashCall = callGemini(GEMINI_API_KEY, "gemini-3.8-flash", PRIMARY_SYSTEM_PROMPT, USER_PROMPT, imageInline, 600, 0.1);
+    // Token limits are generous because Gemini 3.x models can spend part of the
+    // output budget on internal reasoning before writing the answer.
+    const proCall = callGemini(GEMINI_API_KEY, GEMINI_PRO_MODEL, PRIMARY_SYSTEM_PROMPT, USER_PROMPT, imageInline, 2048, 0.1);
+    const flashCall = callGemini(GEMINI_API_KEY, GEMINI_MODEL, PRIMARY_SYSTEM_PROMPT, USER_PROMPT, imageInline, 2048, 0.1);
 
     const [proResult, flashResult] = await Promise.all([proCall, flashCall]);
 
@@ -426,7 +521,7 @@ serve(async (req) => {
     const proProcessed = processAddresses(proParsed.rawAddresses);
     const flashProcessed = processAddresses(flashParsed.rawAddresses);
 
-    const addressMap = new Map<string, ProcessedAddress>();
+    const addressMap = new Map();
     for (const p of [...proProcessed.processedAddresses, ...flashProcessed.processedAddresses]) {
       const key = p.corrected.toLowerCase();
       const existing = addressMap.get(key);
@@ -440,6 +535,7 @@ serve(async (req) => {
       truncatedFragments: Array.from(new Set([...proParsed.truncatedFragments, ...flashParsed.truncatedFragments])),
       tokenName: proParsed.tokenName || flashParsed.tokenName,
       tokenSymbol: proParsed.tokenSymbol || flashParsed.tokenSymbol,
+      networkHint: proParsed.networkHint || flashParsed.networkHint,
     };
     let content = proContent || flashContent;
 
@@ -458,7 +554,7 @@ serve(async (req) => {
     let pass2Attempted = false;
     if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
       pass2Attempted = true;
-      const pass2Result = await callGemini(GEMINI_API_KEY, "gemini-3.1-pro-preview", ENHANCED_SYSTEM_PROMPT, ENHANCED_USER_PROMPT, imageInline, 800, 0.2);
+      const pass2Result = await callGemini(GEMINI_API_KEY, GEMINI_PRO_MODEL, ENHANCED_SYSTEM_PROMPT, ENHANCED_USER_PROMPT, imageInline, 2048, 0.2);
 
       if (pass2Result.ok) {
         const pass2Content = pass2Result.text || "";
@@ -477,6 +573,7 @@ serve(async (req) => {
 
         if (!parsed.tokenName && pass2Parsed.tokenName) parsed.tokenName = pass2Parsed.tokenName;
         if (!parsed.tokenSymbol && pass2Parsed.tokenSymbol) parsed.tokenSymbol = pass2Parsed.tokenSymbol;
+        if (!parsed.networkHint && pass2Parsed.networkHint) parsed.networkHint = pass2Parsed.networkHint;
         if (parsed.truncatedFragments.length === 0 && pass2Parsed.truncatedFragments.length > 0) {
           parsed.truncatedFragments = pass2Parsed.truncatedFragments;
         }
@@ -486,7 +583,7 @@ serve(async (req) => {
     let pass3Attempted = false;
     if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
       pass3Attempted = true;
-      const pass3Result = await callGemini(GEMINI_API_KEY, "gemini-3.1-pro-preview", PIXEL_LEVEL_SYSTEM_PROMPT, PIXEL_LEVEL_USER_PROMPT, imageInline, 1000, 0.3);
+      const pass3Result = await callGemini(GEMINI_API_KEY, GEMINI_PRO_MODEL, PIXEL_LEVEL_SYSTEM_PROMPT, PIXEL_LEVEL_USER_PROMPT, imageInline, 3000, 0.3);
 
       if (pass3Result.ok) {
         const pass3Content = pass3Result.text || "";
@@ -505,6 +602,7 @@ serve(async (req) => {
 
         if (!parsed.tokenName && pass3Parsed.tokenName) parsed.tokenName = pass3Parsed.tokenName;
         if (!parsed.tokenSymbol && pass3Parsed.tokenSymbol) parsed.tokenSymbol = pass3Parsed.tokenSymbol;
+        if (!parsed.networkHint && pass3Parsed.networkHint) parsed.networkHint = pass3Parsed.networkHint;
         if (parsed.truncatedFragments.length === 0 && pass3Parsed.truncatedFragments.length > 0) {
           parsed.truncatedFragments = pass3Parsed.truncatedFragments;
         }
@@ -513,8 +611,10 @@ serve(async (req) => {
 
     const passCount = pass3Attempted ? 3 : (pass2Attempted ? 2 : 1);
     const modelUsed = pass3Attempted
-      ? "gemini-3.1-pro+3.8-flash(parallel)+3.1-pro-forensic+3.1-pro-pixel"
-      : (pass2Attempted ? "gemini-3.1-pro+3.8-flash(parallel)+3.1-pro-forensic" : "gemini-3.1-pro+3.8-flash(parallel)");
+      ? `${GEMINI_PRO_MODEL}+${GEMINI_MODEL}(parallel)+${GEMINI_PRO_MODEL}-forensic+${GEMINI_PRO_MODEL}-pixel`
+      : (pass2Attempted ? `${GEMINI_PRO_MODEL}+${GEMINI_MODEL}(parallel)+${GEMINI_PRO_MODEL}-forensic` : `${GEMINI_PRO_MODEL}+${GEMINI_MODEL}(parallel)`);
+
+    console.log(`[ocr-extract] Final: ${validAddresses.length} valid, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, network: ${parsed.networkHint}, passes: ${passCount}`);
 
     const addressConfidences = validAddresses.map((addr) => {
       const p = addressMap.get(addr.toLowerCase());
@@ -527,6 +627,7 @@ serve(async (req) => {
       raw: content,
       tokenName: parsed.tokenName || null,
       tokenSymbol: parsed.tokenSymbol || null,
+      networkHint: parsed.networkHint || null,
       truncatedAddresses: parsed.truncatedFragments.length > 0 ? parsed.truncatedFragments : null,
       corrections: { applied: totalCorrections > 0, count: totalCorrections, details: processedAddresses },
       metadata: { model: modelUsed, passes: passCount, parallel: true }
