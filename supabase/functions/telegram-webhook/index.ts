@@ -33,9 +33,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
-const WEB_APP_URL = "https://aidyor.app";
-const EXAMPLE_ADDRESS = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
-
 async function getWebhookSecret() {
   const data = new TextEncoder().encode(`telegram-webhook:${TELEGRAM_BOT_TOKEN}`);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -46,29 +43,33 @@ async function getWebhookSecret() {
 }
 
 function safeEqual(a, b) {
-  if (!a || a.length !== b.length) return false;
+  if (!a || !b || a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
 
-// Admin-only actions (set_webhook, get_webhook_info, setup_bot) require the service role key.
+// Admin-only actions (e.g. send_alert) require the service role key as Bearer token.
 function isAdminRequest(req) {
-  if (!SUPABASE_SERVICE_ROLE_KEY) return false;
-  const auth = req.headers.get("Authorization") || "";
-  return safeEqual(auth, `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`);
-}
-
-function esc(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const header = req.headers.get("Authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  return !!SUPABASE_SERVICE_ROLE_KEY && safeEqual(token, SUPABASE_SERVICE_ROLE_KEY);
 }
 
 const PREMIUM_PRICE_STARS = 750;
 const PREMIUM_DURATION_DAYS = 30;
-const FREE_DAILY_SCAN_LIMIT = 10;
+const FREE_DAILY_SCAN_LIMIT = 5;
+
+const VALID_NETWORKS = [
+  "ethereum",
+  "bsc",
+  "polygon",
+  "arbitrum",
+  "base",
+  "optimism",
+  "avalanche",
+  "solana",
+];
 
 const RISK_EMOJIS = {
   LOW: "✅",
@@ -77,37 +78,12 @@ const RISK_EMOJIS = {
   CRITICAL: "☠️",
 };
 
-// ---------- Keyboards ----------
-
-const startKeyboard = {
-  inline_keyboard: [
-    [{ text: "🔍 Try an example", callback_data: "example" }],
-    [
-      { text: "🌐 Open Web App", url: WEB_APP_URL },
-      { text: "⭐ Go Pro", callback_data: "upgrade" },
-    ],
-  ],
-};
-
-const upgradeKeyboard = {
-  inline_keyboard: [
-    [{ text: `⭐ Go Pro (${PREMIUM_PRICE_STARS} Stars / month)`, callback_data: "upgrade" }],
-  ],
-};
-
-const scanResultKeyboard = {
-  inline_keyboard: [
-    [{ text: "🌐 Full report in Web App", url: WEB_APP_URL }],
-  ],
-};
-
-const webAppKeyboard = {
-  inline_keyboard: [
-    [{ text: "🌐 Open Web App", url: WEB_APP_URL }],
-  ],
-};
-
-// ---------- Telegram helpers ----------
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 async function sendTelegramMessage(chatId, text, options = {}) {
   try {
@@ -119,8 +95,6 @@ async function sendTelegramMessage(chatId, text, options = {}) {
         text,
         parse_mode: options.parseMode || "HTML",
         reply_to_message_id: options.replyToMessageId,
-        reply_markup: options.replyMarkup,
-        link_preview_options: { is_disabled: true },
       }),
     });
 
@@ -138,22 +112,22 @@ async function sendTelegramMessage(chatId, text, options = {}) {
   }
 }
 
-async function answerCallbackQuery(callbackQueryId, text) {
+async function telegramCall(method, payload) {
   try {
-    const response = await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+    const response = await fetch(`${TELEGRAM_API}/${method}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        callback_query_id: callbackQueryId,
-        text,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       const error = await response.text();
-      console.error("[Telegram] Failed to answer callback query:", error);
+      console.error(`[Telegram] ${method} failed:`, error);
+      return false;
     }
+    return true;
   } catch (error) {
-    console.error("[Telegram] Error answering callback query:", error);
+    console.error(`[Telegram] ${method} error:`, error);
+    return false;
   }
 }
 
@@ -340,8 +314,6 @@ async function handleSuccessfulPayment(message) {
   );
 }
 
-// ---------- Subscription / usage ----------
-
 async function checkPremiumStatus(userId) {
   const { data: sub, error } = await supabase
     .from("premium_subscriptions")
@@ -429,8 +401,6 @@ async function canUserScan(userId) {
   };
 }
 
-// ---------- Scanning ----------
-
 async function scanToken(address, network) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
@@ -468,12 +438,12 @@ function formatScanResult(result) {
   const { token, riskAssessment, marketData, securityData, simulation, aiExplanation } = result.data;
   const emoji = RISK_EMOJIS[riskAssessment.riskLevel] || "❓";
 
-  let message = `${emoji} <b>${esc(token.name)} (${esc(token.symbol)})</b>\n`;
+  let message = `${emoji} <b>${escapeHtml(token.name)} (${escapeHtml(token.symbol)})</b>\n`;
   message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-  message += `📊 <b>Risk Score:</b> ${riskAssessment.overallScore}/100 (${esc(riskAssessment.riskLevel)})\n`;
-  message += `📈 <b>Trend:</b> ${esc(riskAssessment.trend)}\n`;
-  message += `🔗 <b>Network:</b> ${esc(token.network)}\n\n`;
+  message += `📊 <b>Risk Score:</b> ${riskAssessment.overallScore}/100 (${escapeHtml(riskAssessment.riskLevel)})\n`;
+  message += `📈 <b>Trend:</b> ${escapeHtml(riskAssessment.trend)}\n`;
+  message += `🔗 <b>Network:</b> ${escapeHtml(token.network)}\n\n`;
 
   message += `💰 <b>Market Data</b>\n`;
   message += `• Price: $${marketData.price < 0.01 ? marketData.price.toExponential(2) : marketData.price.toFixed(4)}\n`;
@@ -492,12 +462,12 @@ function formatScanResult(result) {
   }
   message += "\n";
 
-  message += `🎰 <b>Activity:</b> ${esc(String(simulation.pumpDumpStatus).toUpperCase())}\n`;
-  message += `${esc(simulation.recommendation)}\n\n`;
+  message += `🎰 <b>Activity:</b> ${escapeHtml(String(simulation.pumpDumpStatus).toUpperCase())}\n`;
+  message += `${escapeHtml(simulation.recommendation)}\n\n`;
 
   if (aiExplanation) {
     message += `🤖 <b>AI Analysis</b>\n`;
-    message += `${esc(aiExplanation.recommendation)}\n`;
+    message += `${escapeHtml(aiExplanation.recommendation)}\n`;
   }
 
   message += `\n⏱️ <i>Scanned in ${(result.processingTime / 1000).toFixed(1)}s</i>`;
@@ -526,115 +496,172 @@ function isValidSolanaAddress(address) {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
 }
 
-// Whole message is an address, or (private chats only) an EVM address is found inside the text.
-function extractAddress(text, isPrivate) {
-  const t = text.trim();
-  if (isValidEvmAddress(t) || isValidSolanaAddress(t)) return t;
-  if (isPrivate) {
-    const match = t.match(/0x[a-fA-F0-9]{40}/);
-    if (match) return match[0];
-  }
-  return null;
+// ---------------------------------------------------------------------------
+// Inline mode: @AIDYOR_BOT <address> [network]
+// ---------------------------------------------------------------------------
+
+const INLINE_KEYBOARD = {
+  inline_keyboard: [[{ text: "🛡️ Open AIDYOR", url: "https://aidyor.app" }]],
+};
+
+function shortAddress(address) {
+  return `${address.slice(0, 10)}...${address.slice(-6)}`;
 }
 
-// Single scan flow used by /scan, plain-address messages, and the example button.
-async function runScan(chatId, userId, address, network, replyToMessageId) {
-  if (userId) {
-    const { allowed, isPremium } = await canUserScan(userId);
+function parseInlineQuery(query) {
+  const parts = (query || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  const address = parts[0];
+  if (!isValidEvmAddress(address) && !isValidSolanaAddress(address)) return null;
+  const maybeNetwork = parts[1]?.toLowerCase();
+  const network = maybeNetwork && VALID_NETWORKS.includes(maybeNetwork) ? maybeNetwork : undefined;
+  return { address, network };
+}
 
-    if (!allowed) {
-      await sendTelegramMessage(
-        chatId,
-        `🚫 <b>Daily Limit Reached</b>\n\n` +
-        `You've used all ${FREE_DAILY_SCAN_LIMIT} free scans for today.\n\n` +
-        `<b>Options:</b>\n` +
-        `• Wait until tomorrow for more free scans\n` +
-        `• Upgrade to Pro for <b>unlimited scans</b>`,
-        { replyToMessageId, replyMarkup: upgradeKeyboard }
-      );
-      return;
-    }
+async function handleInlineQuery(inlineQuery) {
+  if (!inlineQuery) return;
 
-    if (!isPremium) {
-      await incrementScanCount(userId);
-    }
+  const parsed = parseInlineQuery(inlineQuery.query);
+  let results;
+
+  if (parsed) {
+    // result id format: <network or -> : <address>  (must stay under 64 bytes)
+    const resultId = `${parsed.network || "-"}:${parsed.address}`;
+    results = [
+      {
+        type: "article",
+        id: resultId,
+        title: "🔍 Scan this token",
+        description: `${shortAddress(parsed.address)}${parsed.network ? ` · ${parsed.network}` : ""}`,
+        input_message_content: {
+          message_text:
+            `🔍 <b>Scanning...</b>\n\nAnalyzing <code>${shortAddress(parsed.address)}</code>\n\nThis may take a few seconds.`,
+          parse_mode: "HTML",
+        },
+        reply_markup: INLINE_KEYBOARD,
+      },
+    ];
+  } else {
+    results = [
+      {
+        type: "article",
+        id: "help",
+        title: "Paste a token address",
+        description: "EVM (0x...) or Solana address. Optional: add a network, e.g. bsc",
+        input_message_content: {
+          message_text:
+            `🛡️ <b>AIDYOR Bot</b>\n\nType <code>@AIDYOR_BOT &lt;token address&gt;</code> in any chat to scan a token for honeypots and rug pull risks.`,
+          parse_mode: "HTML",
+        },
+        reply_markup: INLINE_KEYBOARD,
+      },
+    ];
   }
 
-  await sendTelegramMessage(
-    chatId,
-    `🔍 <b>Scanning...</b>\n\nAnalyzing <code>${address.slice(0, 10)}...${address.slice(-6)}</code>\n\nThis may take a few seconds.`,
-    { replyToMessageId }
-  );
-
-  const scanResult = await scanToken(address, network);
-  let output = formatScanResult(scanResult);
-
-  if (userId) {
-    const { remaining: scansLeft, isPremium } = await canUserScan(userId);
-    if (!isPremium && scansLeft >= 0) {
-      output += `\n\n📊 <i>Free scans remaining today: ${scansLeft}/${FREE_DAILY_SCAN_LIMIT}</i>`;
-    }
-  }
-
-  if (scanResult?.success) {
-    output += `\n\n🛡️ <a href="https://t.me/AIDYOR_BOT">@AIDYOR_BOT</a>`;
-  }
-
-  await sendTelegramMessage(chatId, output, {
-    replyMarkup: scanResult?.success ? scanResultKeyboard : undefined,
+  await telegramCall("answerInlineQuery", {
+    inline_query_id: inlineQuery.id,
+    results,
+    cache_time: 5,
+    is_personal: true,
   });
 }
 
-async function handleUpgrade(chatId, userId) {
-  if (!userId) {
-    await sendTelegramMessage(chatId, "❌ Could not identify your user ID. Please try again.");
-    return;
-  }
+async function editInlineMessage(inlineMessageId, text) {
+  const payload = {
+    inline_message_id: inlineMessageId,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: INLINE_KEYBOARD,
+  };
 
-  const { isPremium, expiresAt } = await checkPremiumStatus(userId);
-  if (isPremium && expiresAt) {
-    await sendTelegramMessage(
-      chatId,
-      `⭐ <b>You're already an AIDYOR Pro user!</b>\n\n` +
-      `Your subscription expires on <b>${expiresAt.toLocaleDateString()}</b>\n\n` +
-      `Want to extend? Use /upgrade again after expiry.`
-    );
-    return;
+  let ok = await telegramCall("editMessageText", payload);
+  if (!ok) {
+    // The inline message can occasionally not be editable for a moment; retry once.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    ok = await telegramCall("editMessageText", payload);
   }
-
-  const sent = await sendInvoice(chatId, userId);
-  if (!sent) {
-    await sendTelegramMessage(
-      chatId,
-      `❌ <b>Failed to create invoice</b>\n\nPlease try again later.`
-    );
-  }
+  return ok;
 }
 
-// ---------- Handlers ----------
+async function handleChosenInlineResult(chosen) {
+  if (!chosen) return;
+
+  const inlineMessageId = chosen.inline_message_id;
+  if (!inlineMessageId) {
+    console.warn("[Telegram] chosen_inline_result without inline_message_id (is inline feedback enabled?)");
+    return;
+  }
+
+  if (!chosen.result_id || chosen.result_id === "help") return;
+
+  const separatorIndex = chosen.result_id.indexOf(":");
+  if (separatorIndex === -1) return;
+  const networkPart = chosen.result_id.slice(0, separatorIndex);
+  const address = chosen.result_id.slice(separatorIndex + 1);
+  const network = networkPart !== "-" && VALID_NETWORKS.includes(networkPart) ? networkPart : undefined;
+
+  if (!isValidEvmAddress(address) && !isValidSolanaAddress(address)) return;
+
+  const userId = chosen.from?.id;
+  if (!userId) return;
+
+  console.log(`[Telegram] Inline scan by user ${userId}`);
+
+  const { allowed, isPremium } = await canUserScan(userId);
+
+  if (!allowed) {
+    await editInlineMessage(
+      inlineMessageId,
+      `🚫 <b>Daily Limit Reached</b>\n\n` +
+      `You've used all ${FREE_DAILY_SCAN_LIMIT} free scans for today.\n\n` +
+      `Open <a href="https://t.me/AIDYOR_BOT">@AIDYOR_BOT</a> and use /upgrade for unlimited scans (${PREMIUM_PRICE_STARS} ⭐/month).`
+    );
+    return;
+  }
+
+  if (!isPremium) {
+    await incrementScanCount(userId);
+  }
+
+  const scanResult = await scanToken(address, network);
+  let text = formatScanResult(scanResult);
+
+  const { remaining: scansLeft, isPremium: stillPremium } = await canUserScan(userId);
+  if (!stillPremium && scansLeft >= 0) {
+    text += `\n\n📊 <i>Free scans remaining today: ${scansLeft}/${FREE_DAILY_SCAN_LIMIT}</i>`;
+  }
+
+  await editInlineMessage(inlineMessageId, text);
+}
+
+// ---------------------------------------------------------------------------
 
 async function handleCommand(message) {
   const text = message.text || "";
   const chatId = message.chat.id;
   const userId = message.from?.id;
-  const isPrivate = message.chat.type === "private";
   const { command, args } = parseCommand(text);
 
   console.log(`[Telegram] Command: ${command}, Args: ${args.join(", ")}, Chat: ${chatId}, User: ${userId}`);
 
   switch (command) {
     case "/start":
-      if (args[0]) {
-        console.log(`[Telegram] Start payload: ${String(args[0]).slice(0, 64)}`);
-      }
       await sendTelegramMessage(
         chatId,
-        `🛡️ <b>Is this token a scam?</b>\n\n` +
-          `Paste a token address and get a risk score in seconds: honeypots, rug pulls, liquidity locks, taxes.\n\n` +
-          `🌐 EVM chains + Solana · ${FREE_DAILY_SCAN_LIMIT} free scans/day · no signup\n` +
-          `📸 Screenshot scanning is available in the Web App\n\n` +
-          `<i>Not financial advice. Always DYOR.</i>`,
-        { replyMarkup: startKeyboard }
+        `🛡️ <b>Welcome to AIDYOR Bot!</b>\n\n` +
+          `I help you analyze crypto tokens for risks before you invest.\n\n` +
+          `<b>Commands:</b>\n` +
+          `/scan &lt;address&gt; - Analyze a token\n` +
+          `/scan &lt;address&gt; &lt;network&gt; - Analyze on specific chain\n` +
+          `/upgrade - Get AIDYOR Pro subscription\n` +
+          `/status - Check your subscription status\n` +
+          `/help - Show this help message\n` +
+          `/networks - List supported networks\n\n` +
+          `<b>Example:</b>\n` +
+          `<code>/scan 0xdAC17F958D2ee523a2206206994597C13D831ec7</code>\n\n` +
+          `💡 <b>Tip:</b> In any chat or group, type <code>@AIDYOR_BOT &lt;address&gt;</code> to scan without adding the bot.\n\n` +
+          `🔗 <a href="https://aidyor.app">Use Web App</a>`
       );
       break;
 
@@ -644,11 +671,13 @@ async function handleCommand(message) {
         `📖 <b>AIDYOR Bot Help</b>\n\n` +
           `<b>How to scan a token:</b>\n` +
           `1. Copy the token's contract address\n` +
-          `2. Paste it here, or send: <code>/scan &lt;address&gt;</code>\n\n` +
+          `2. Send: <code>/scan &lt;address&gt;</code>\n\n` +
           `<b>Optional: Specify network</b>\n` +
           `<code>/scan &lt;address&gt; ethereum</code>\n` +
           `<code>/scan &lt;address&gt; bsc</code>\n` +
           `<code>/scan &lt;address&gt; solana</code>\n\n` +
+          `<b>Inline mode (works in any chat):</b>\n` +
+          `<code>@AIDYOR_BOT &lt;address&gt;</code>\n\n` +
           `<b>Premium Commands:</b>\n` +
           `/upgrade - Get AIDYOR Pro (${PREMIUM_PRICE_STARS} ⭐/month)\n` +
           `/status - Check subscription status\n\n` +
@@ -657,8 +686,7 @@ async function handleCommand(message) {
           `⚠️ 40-69: Medium Risk\n` +
           `🔴 20-39: High Risk\n` +
           `☠️ 0-19: Critical Risk\n\n` +
-          `<i>Always DYOR - this is not financial advice!</i>`,
-        { replyMarkup: webAppKeyboard }
+          `<i>Always DYOR - this is not financial advice!</i>`
       );
       break;
 
@@ -680,9 +708,32 @@ async function handleCommand(message) {
       );
       break;
 
-    case "/upgrade":
-      await handleUpgrade(chatId, userId);
+    case "/upgrade": {
+      if (!userId) {
+        await sendTelegramMessage(chatId, "❌ Could not identify your user ID. Please try again.");
+        return;
+      }
+
+      const { isPremium, expiresAt } = await checkPremiumStatus(userId);
+      if (isPremium && expiresAt) {
+        await sendTelegramMessage(
+          chatId,
+          `⭐ <b>You're already an AIDYOR Pro user!</b>\n\n` +
+          `Your subscription expires on <b>${expiresAt.toLocaleDateString()}</b>\n\n` +
+          `Want to extend? Use /upgrade again after expiry.`
+        );
+        return;
+      }
+
+      const sent = await sendInvoice(chatId, userId);
+      if (!sent) {
+        await sendTelegramMessage(
+          chatId,
+          `❌ <b>Failed to create invoice</b>\n\nPlease try again later.`
+        );
+      }
       break;
+    }
 
     case "/status": {
       if (!userId) {
@@ -717,8 +768,8 @@ async function handleCommand(message) {
           `<b>Upgrade to Pro for:</b>\n` +
           `• Unlimited token scans\n` +
           `• Priority whale & security alerts\n` +
-          `• Advanced AI risk analysis`,
-          { replyMarkup: upgradeKeyboard }
+          `• Advanced AI risk analysis\n\n` +
+          `Use /upgrade to get started! (${PREMIUM_PRICE_STARS} ⭐/month)`
         );
       }
       break;
@@ -746,59 +797,101 @@ async function handleCommand(message) {
         return;
       }
 
-      await runScan(chatId, userId, address, network, message.message_id);
+      if (userId) {
+        const { allowed, remaining, isPremium } = await canUserScan(userId);
+
+        if (!allowed) {
+          await sendTelegramMessage(
+            chatId,
+            `🚫 <b>Daily Limit Reached</b>\n\n` +
+            `You've used all ${FREE_DAILY_SCAN_LIMIT} free scans for today.\n\n` +
+            `<b>Options:</b>\n` +
+            `• Wait until tomorrow for more free scans\n` +
+            `• Upgrade to Pro for <b>unlimited scans</b>\n\n` +
+            `Use /upgrade to get Pro (${PREMIUM_PRICE_STARS} ⭐/month)`,
+            { replyToMessageId: message.message_id }
+          );
+          return;
+        }
+
+        if (!isPremium) {
+          await incrementScanCount(userId);
+        }
+      }
+
+      await sendTelegramMessage(
+        chatId,
+        `🔍 <b>Scanning...</b>\n\nAnalyzing <code>${address.slice(0, 10)}...${address.slice(-6)}</code>\n\nThis may take a few seconds.`,
+        { replyToMessageId: message.message_id }
+      );
+
+      const scanResult = await scanToken(address, network);
+      const formattedResult = formatScanResult(scanResult);
+
+      if (userId) {
+        const { remaining: scansLeft, isPremium } = await canUserScan(userId);
+        if (!isPremium && scansLeft >= 0) {
+          await sendTelegramMessage(
+            chatId,
+            formattedResult + `\n\n📊 <i>Free scans remaining today: ${scansLeft}/${FREE_DAILY_SCAN_LIMIT}</i>`
+          );
+        } else {
+          await sendTelegramMessage(chatId, formattedResult);
+        }
+      } else {
+        await sendTelegramMessage(chatId, formattedResult);
+      }
       break;
     }
 
-    default: {
-      if (command.startsWith("/")) {
-        await sendTelegramMessage(
-          chatId,
-          `❓ Unknown command: ${esc(command)}\n\nUse /help to see available commands.`
-        );
-        break;
-      }
-
-      const found = extractAddress(text, isPrivate);
-      if (found) {
-        await runScan(chatId, userId, found, undefined, message.message_id);
-      } else if (isPrivate) {
-        await sendTelegramMessage(
-          chatId,
-          `👋 Send me a token contract address (0x… or Solana) and I'll scan it.`,
-          { replyMarkup: startKeyboard }
-        );
-      }
-    }
-  }
-}
-
-async function handlePhoto(message) {
-  if (message.chat.type !== "private") return;
-  await sendTelegramMessage(
-    message.chat.id,
-    `📸 <b>Screenshot scanning</b> is available in the Web App.\n\n` +
-    `Here in Telegram, paste the token's contract address and I'll scan it.`,
-    { replyMarkup: webAppKeyboard }
-  );
-}
-
-async function handleCallbackQuery(callbackQuery) {
-  const chatId = callbackQuery.message?.chat?.id;
-  const userId = callbackQuery.from?.id;
-
-  await answerCallbackQuery(callbackQuery.id);
-  if (!chatId) return;
-
-  switch (callbackQuery.data) {
-    case "example":
-      await runScan(chatId, userId, EXAMPLE_ADDRESS, undefined, undefined);
-      break;
-    case "upgrade":
-      await handleUpgrade(chatId, userId);
-      break;
     default:
-      console.log(`[Telegram] Unknown callback data: ${String(callbackQuery.data).slice(0, 32)}`);
+      if (isValidEvmAddress(text) || isValidSolanaAddress(text)) {
+        if (userId) {
+          const { allowed, isPremium } = await canUserScan(userId);
+
+          if (!allowed) {
+            await sendTelegramMessage(
+              chatId,
+              `🚫 <b>Daily Limit Reached</b>\n\n` +
+              `You've used all ${FREE_DAILY_SCAN_LIMIT} free scans for today.\n\n` +
+              `Use /upgrade to get unlimited scans!`,
+              { replyToMessageId: message.message_id }
+            );
+            return;
+          }
+
+          if (!isPremium) {
+            await incrementScanCount(userId);
+          }
+        }
+
+        await sendTelegramMessage(
+          chatId,
+          `🔍 <b>Scanning...</b>\n\nAnalyzing <code>${text.slice(0, 10)}...${text.slice(-6)}</code>`,
+          { replyToMessageId: message.message_id }
+        );
+        const quickResult = await scanToken(text);
+        const quickFormatted = formatScanResult(quickResult);
+
+        if (userId) {
+          const { remaining: scansLeft, isPremium } = await canUserScan(userId);
+          if (!isPremium && scansLeft >= 0) {
+            await sendTelegramMessage(
+              chatId,
+              quickFormatted + `\n\n📊 <i>Free scans remaining today: ${scansLeft}/${FREE_DAILY_SCAN_LIMIT}</i>`
+            );
+          } else {
+            await sendTelegramMessage(chatId, quickFormatted);
+          }
+        } else {
+          await sendTelegramMessage(chatId, quickFormatted);
+        }
+      } else if (text.startsWith("/")) {
+        await sendTelegramMessage(
+          chatId,
+          `❓ Unknown command: ${escapeHtml(command)}\n\nUse /help to see available commands.`
+        );
+      }
   }
 }
 
@@ -877,7 +970,13 @@ async function setWebhook(url) {
       body: JSON.stringify({
         url,
         secret_token: secretToken,
-        allowed_updates: ["message", "edited_message", "pre_checkout_query", "callback_query"],
+        allowed_updates: [
+          "message",
+          "edited_message",
+          "pre_checkout_query",
+          "inline_query",
+          "chosen_inline_result",
+        ],
       }),
     });
     const data = await response.json();
@@ -892,54 +991,6 @@ async function setWebhook(url) {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-}
-
-// Sets the command menu, description (shown before /start) and short description (shown on the bot profile).
-async function setupBot() {
-  const calls = [
-    ["setMyCommands", {
-      commands: [
-        { command: "scan", description: "Scan a token: /scan <address> [network]" },
-        { command: "networks", description: "List supported networks" },
-        { command: "status", description: "Your plan and daily scans" },
-        { command: "upgrade", description: "Get AIDYOR Pro" },
-        { command: "help", description: "How to use the bot" },
-      ],
-    }],
-    ["setMyDescription", {
-      description:
-        "Is this token a scam? Paste any token address and get a risk score in seconds: honeypot check, rug-pull signals, liquidity locks, taxes and holder concentration. EVM chains + Solana. Free daily scans, no signup.",
-    }],
-    ["setMyShortDescription", {
-      short_description: "AI crypto token risk scanner. Paste an address, get a scam check in seconds.",
-    }],
-  ];
-
-  const results = [];
-  for (const [method, payload] of calls) {
-    try {
-      const response = await fetch(`${TELEGRAM_API}/${method}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      results.push({ method, ok: data.ok === true, description: data.description });
-    } catch (error) {
-      results.push({ method, ok: false, description: "request failed" });
-    }
-  }
-
-  return new Response(JSON.stringify({ success: results.every((r) => r.ok), results }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
-function forbidden() {
-  return new Response(
-    JSON.stringify({ success: false, error: "Forbidden" }),
-    { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
 }
 
 serve(async (req) => {
@@ -963,7 +1014,11 @@ serve(async (req) => {
 
     const isTelegramUpdate =
       typeof body.update_id === "number" &&
-      (body.message || body.edited_message || body.pre_checkout_query || body.callback_query);
+      (body.message ||
+        body.edited_message ||
+        body.pre_checkout_query ||
+        body.inline_query ||
+        body.chosen_inline_result);
 
     if (isTelegramUpdate) {
       const expected = await getWebhookSecret();
@@ -978,8 +1033,9 @@ serve(async (req) => {
     }
 
     const logSafeType = body.pre_checkout_query ? 'pre_checkout_query' :
-                        body.callback_query ? 'callback_query' :
                         body.message?.successful_payment ? 'successful_payment' :
+                        body.inline_query ? 'inline_query' :
+                        body.chosen_inline_result ? 'chosen_inline_result' :
                         body.update_id ? 'telegram_update' :
                         body.action || 'unknown';
     console.log("[Telegram] Incoming request type:", logSafeType);
@@ -991,8 +1047,26 @@ serve(async (req) => {
       });
     }
 
-    if (body.callback_query) {
-      await handleCallbackQuery(body.callback_query);
+    if (body.update_id && body.inline_query) {
+      await handleInlineQuery(body.inline_query);
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (body.update_id && body.chosen_inline_result) {
+      // Respond to Telegram immediately and finish the scan in the background,
+      // so slow scans don't cause Telegram to retry the update (double scan).
+      const task = handleChosenInlineResult(body.chosen_inline_result).catch((error) => {
+        console.error("[Telegram] Inline scan failed:", error);
+      });
+      // deno-lint-ignore no-explicit-any
+      const runtime = (globalThis as any).EdgeRuntime;
+      if (runtime && typeof runtime.waitUntil === "function") {
+        runtime.waitUntil(task);
+      } else {
+        await task;
+      }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -1003,19 +1077,15 @@ serve(async (req) => {
 
       if (update.message?.successful_payment) {
         await handleSuccessfulPayment(update.message);
-      } else if (update.message?.text) {
-        await handleCommand(update.message);
-      } else if (update.message?.photo) {
-        await handlePhoto(update.message);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+      if (update.message?.text) {
+        await handleCommand(update.message);
+      }
 
-    // Other Telegram updates (e.g. edited_message): acknowledge so Telegram does not retry.
-    if (isTelegramUpdate) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -1025,21 +1095,23 @@ serve(async (req) => {
 
     switch (action) {
       case "send_alert":
+        // Locked: arbitrary messages to any chat must be admin-only.
+        if (!isAdminRequest(req)) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Unauthorized" }),
+            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
         return await handleSendAlert(body);
 
       case "get_webhook_info":
-        if (!isAdminRequest(req)) return forbidden();
         return await getWebhookInfo();
 
       case "set_webhook": {
-        if (!isAdminRequest(req)) return forbidden();
-        const webhookUrl = body.url || `${SUPABASE_URL}/functions/v1/telegram-webhook`;
+        // Always registers this function's own URL; a custom URL can no longer be supplied.
+        const webhookUrl = `${SUPABASE_URL}/functions/v1/telegram-webhook`;
         return await setWebhook(webhookUrl);
       }
-
-      case "setup_bot":
-        if (!isAdminRequest(req)) return forbidden();
-        return await setupBot();
 
       case "test": {
         if (!body.chatId) {
@@ -1076,7 +1148,7 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             success: false,
-            error: "Unknown action. Valid actions: send_alert, get_webhook_info, set_webhook, setup_bot, test, check_premium",
+            error: "Unknown action. Valid actions: send_alert, get_webhook_info, set_webhook, test, check_premium",
           }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
