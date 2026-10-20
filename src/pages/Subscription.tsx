@@ -155,7 +155,7 @@ export default function Subscription() {
               <ul className="space-y-2 text-sm">
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-green-500" />
-                  10 token scans per day
+                  3 token scans per day
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-green-500" />
