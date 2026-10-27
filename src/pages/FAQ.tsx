@@ -8,6 +8,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+const SITE = "https://aidyor.app";
+const PAGE_URL = `${SITE}/faq`;
 const PAGE_TITLE = "Crypto Scam FAQ: Rug Pulls, Honeypots & Red Flags | AIDYOR";
 const PAGE_DESCRIPTION =
   "Answers to common crypto scam questions: what rug pulls, honeypots and locked liquidity are, how to spot red flags, and how to stay safe. Free guide from AIDYOR.";
@@ -174,27 +176,53 @@ const faqCategories = [
 ];
 
 const FAQ = () => {
-  // SEO: title, meta description, canonical, and FAQPage structured data
   useEffect(() => {
+    const previousTitle = document.title;
     document.title = PAGE_TITLE;
 
-    let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.content = PAGE_DESCRIPTION;
+    // Create-or-update a <meta> tag; returns a function that restores the old value.
+    const setMeta = (attr: "name" | "property", key: string, content: string) => {
+      let el = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
+      const created = !el;
+      const previous = el?.getAttribute("content") ?? null;
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+      return () => {
+        if (!el) return;
+        if (created) el.remove();
+        else if (previous !== null) el.setAttribute("content", previous);
+      };
+    };
 
-    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    const restores = [
+      setMeta("name", "description", PAGE_DESCRIPTION),
+      setMeta("property", "og:title", PAGE_TITLE),
+      setMeta("property", "og:description", PAGE_DESCRIPTION),
+      setMeta("property", "og:url", PAGE_URL),
+      setMeta("name", "twitter:title", PAGE_TITLE),
+      setMeta("name", "twitter:description", PAGE_DESCRIPTION),
+    ];
+
+    // Canonical
+    let canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    const canonicalCreated = !canonical;
+    const previousCanonical = canonical?.getAttribute("href") ?? null;
     if (!canonical) {
       canonical = document.createElement("link");
-      canonical.rel = "canonical";
+      canonical.setAttribute("rel", "canonical");
       document.head.appendChild(canonical);
     }
-    canonical.href = `https://aidyor.app${window.location.pathname}`;
+    canonical.setAttribute("href", PAGE_URL);
 
-    const jsonLd = {
+    // FAQPage structured data
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.id = "faq-jsonld";
+    script.text = JSON.stringify({
       "@context": "https://schema.org",
       "@type": "FAQPage",
       mainEntity: faqCategories.flatMap((category) =>
@@ -204,15 +232,17 @@ const FAQ = () => {
           acceptedAnswer: { "@type": "Answer", text: item.a },
         }))
       ),
-    };
-    const script = document.createElement("script");
-    script.type = "application/ld+json";
-    script.id = "faq-jsonld";
-    script.text = JSON.stringify(jsonLd);
+    });
     document.head.appendChild(script);
 
     return () => {
-      document.getElementById("faq-jsonld")?.remove();
+      document.title = previousTitle;
+      restores.forEach((restore) => restore());
+      if (canonical) {
+        if (canonicalCreated) canonical.remove();
+        else if (previousCanonical !== null) canonical.setAttribute("href", previousCanonical);
+      }
+      script.remove();
     };
   }, []);
 
@@ -261,7 +291,6 @@ const FAQ = () => {
                 <category.icon className={`w-6 h-6 ${category.color}`} />
                 <h2 className="text-xl font-semibold">{category.title}</h2>
               </div>
-
               <Accordion type="single" collapsible className="space-y-2">
                 {category.questions.map((item, questionIndex) => (
                   <AccordionItem
@@ -272,11 +301,7 @@ const FAQ = () => {
                     <AccordionTrigger className="text-left hover:no-underline py-4">
                       <span className="font-medium text-foreground">{item.q}</span>
                     </AccordionTrigger>
-                    {/* forceMount keeps closed answers in the page HTML so search engines can read them */}
-                    <AccordionContent
-                      forceMount
-                      className="text-muted-foreground pb-4 leading-relaxed data-[state=closed]:hidden"
-                    >
+                    <AccordionContent className="text-muted-foreground pb-4 leading-relaxed">
                       {item.a}
                     </AccordionContent>
                   </AccordionItem>
