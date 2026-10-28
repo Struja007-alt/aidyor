@@ -48,6 +48,8 @@ interface OrchestratorResponse {
       riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
       confidence: number;
       trend: "IMPROVING" | "STABLE" | "WORSENING";
+      dataComplete: boolean;
+      capReasons: string[];
     };
     marketData: {
       price: number;
@@ -151,18 +153,55 @@ async function callService<T>(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Helpers: strict parsing so missing/odd data is never silently treated as safe
+// ---------------------------------------------------------------------------
+
+// Returns a clamped 0-100 number, or null if the value is missing/invalid.
+// IMPORTANT: 0 is a valid score (worst) and must NOT be treated as missing.
+function asScore(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, value));
+}
+
+// GoPlus-style flags can arrive as true, 1, "1", or "true".
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+// Fallback used only when a score is missing. Pessimistic on purpose.
+const MISSING_SCORE_FALLBACK = 40;
+
+interface RiskContext {
+  isHoneypot: boolean;
+  isMintable: boolean;
+  isUnverified: boolean;
+  dangerCount: number;
+  securityAvailable: boolean;
+  simulationAvailable: boolean;
+}
+
 function calculateOverallRisk(
-  marketScore: number,
-  securityScore: number,
-  simulationStatus: string
+  marketScore: number | null,
+  securityScore: number | null,
+  simulationStatus: string,
+  ctx: RiskContext
 ): {
   overallScore: number;
   riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   confidence: number;
   trend: "IMPROVING" | "STABLE" | "WORSENING";
+  dataComplete: boolean;
+  capReasons: string[];
 } {
-  // Weighted average: 45% security, 40% market, 15% simulation penalty
-  let baseScore = securityScore * 0.45 + marketScore * 0.40;
+  const marketKnown = marketScore !== null;
+  const securityKnown = securityScore !== null && ctx.securityAvailable;
+
+  const m = marketScore ?? MISSING_SCORE_FALLBACK;
+  const s = securityKnown ? (securityScore as number) : MISSING_SCORE_FALLBACK;
+
+  // Weighted average: 45% security, 40% market (max 85), minus simulation penalty
+  const baseScore = s * 0.45 + m * 0.4;
 
   // Simulation adjustments
   let simulationPenalty = 0;
@@ -178,10 +217,43 @@ function calculateOverallRisk(
     simulationPenalty = 5;
   }
 
-  const finalScore = Math.max(
+  let finalScore = Math.max(
     0,
     Math.min(100, Math.round(baseScore - simulationPenalty))
   );
+
+  // Hard caps: certain findings override the average.
+  // LOW starts at 70, so any cap below 70 means the token can never be LOW.
+  const caps: { max: number; reason: string }[] = [];
+
+  if (ctx.isHoneypot) {
+    caps.push({ max: 5, reason: "Honeypot detected" });
+  }
+  if (ctx.dangerCount >= 2) {
+    caps.push({ max: 30, reason: "Multiple critical risk factors" });
+  } else if (ctx.dangerCount === 1) {
+    caps.push({ max: 49, reason: "Critical risk factor present" });
+  }
+  if (!securityKnown) {
+    caps.push({ max: 60, reason: "Security data unavailable" });
+  }
+  if (ctx.isUnverified) {
+    caps.push({ max: 59, reason: "Contract not verified" });
+  }
+  if (ctx.isMintable) {
+    caps.push({ max: 69, reason: "Mintable supply" });
+  }
+
+  const capReasons: string[] = [];
+  for (const cap of caps) {
+    if (finalScore > cap.max) {
+      finalScore = cap.max;
+    }
+  }
+  // Report every cap that is binding at the final score
+  for (const cap of caps) {
+    if (finalScore <= cap.max) capReasons.push(cap.reason);
+  }
 
   let level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   if (finalScore >= 70) level = "LOW";
@@ -189,12 +261,13 @@ function calculateOverallRisk(
   else if (finalScore >= 20) level = "HIGH";
   else level = "CRITICAL";
 
-  // Confidence based on data availability
+  // Confidence reflects which data sources actually responded
   const confidence = Math.min(
     0.95,
-    0.5 +
-      (marketScore > 0 ? 0.2 : 0) +
-      (securityScore > 0 ? 0.2 : 0)
+    0.4 +
+      (marketKnown ? 0.2 : 0) +
+      (securityKnown ? 0.25 : 0) +
+      (ctx.simulationAvailable ? 0.1 : 0)
   );
 
   return {
@@ -202,6 +275,8 @@ function calculateOverallRisk(
     riskLevel: level,
     confidence,
     trend,
+    dataComplete: marketKnown && securityKnown && ctx.simulationAvailable,
+    capReasons,
   };
 }
 
@@ -218,7 +293,6 @@ serve(async (req) => {
   try {
     // Authentication check
     const authHeader = req.headers.get("Authorization");
-
     if (!authHeader) {
       return new Response(
         JSON.stringify({
@@ -312,7 +386,6 @@ serve(async (req) => {
     }
 
     const normalizedAddress = address.toLowerCase().trim();
-
     console.log(
       `[Orchestrator] Starting analysis for: ${normalizedAddress}${
         network ? ` on ${network}` : ""
@@ -385,27 +458,60 @@ serve(async (req) => {
     }[] = [];
     const sources: string[] = ["dexscreener"];
 
-    if (marketResult.data.riskMetrics?.factors) {
+    if (Array.isArray(marketResult.data.riskMetrics?.factors)) {
       allFactors.push(...marketResult.data.riskMetrics.factors);
     }
 
-    if (securityResult?.data?.factors) {
+    const securityAvailable = !!securityResult?.data;
+    const simulationAvailable = !!simulationResult?.data;
+
+    if (Array.isArray(securityResult?.data?.factors)) {
       allFactors.push(...securityResult.data.factors);
+    }
+    if (Array.isArray(securityResult?.data?.sources)) {
       sources.push(...securityResult.data.sources);
     }
 
-    // Calculate overall risk
-    const marketScore =
-      marketResult.data.riskMetrics?.overallScore || 50;
-    const securityScore =
-      securityResult?.data?.riskScore || 50;
-    const simulationStatus =
+    // Never present missing security data as a clean result
+    if (!securityAvailable) {
+      allFactors.push({
+        name: "Security data",
+        status: "warning",
+        description:
+          "Security scan unavailable. Score is capped and incomplete - do not treat as safe.",
+      });
+    }
+
+    // Parse inputs strictly (0 is a valid score, not "missing")
+    const marketScore = asScore(marketResult.data.riskMetrics?.overallScore);
+    const securityScore = asScore(securityResult?.data?.riskScore);
+    const simulationStatus: string =
       simulationResult?.data?.pumpDumpStatus || "normal";
+
+    const security = securityResult?.data?.security;
+    const isHoneypot = isTruthyFlag(security?.isHoneypot);
+    const isMintable = isTruthyFlag(security?.isMintable);
+    const isSolana = String(detectedNetwork).toLowerCase() === "solana";
+    const isUnverified =
+      securityAvailable &&
+      !isSolana &&
+      security?.isVerified !== undefined &&
+      security?.isVerified !== null &&
+      !isTruthyFlag(security.isVerified);
+    const dangerCount = allFactors.filter((f) => f.status === "danger").length;
 
     const riskAssessment = calculateOverallRisk(
       marketScore,
       securityScore,
-      simulationStatus
+      simulationStatus,
+      {
+        isHoneypot,
+        isMintable,
+        isUnverified,
+        dangerCount,
+        securityAvailable,
+        simulationAvailable,
+      }
     );
 
     // Build response
@@ -429,25 +535,17 @@ serve(async (req) => {
           chainsFound: marketResult.data.summary.chainsFound,
         },
         securityData: {
-          isHoneypot:
-            securityResult?.data?.security?.isHoneypot || false,
-          isVerified:
-            securityResult?.data?.security?.isVerified || false,
-          buyTax:
-            securityResult?.data?.security?.buyTax || 0,
-          sellTax:
-            securityResult?.data?.security?.sellTax || 0,
-          holderCount:
-            securityResult?.data?.security?.holderCount || 0,
-          isMintable:
-            securityResult?.data?.security?.isMintable || false,
-          lockInfo:
-            securityResult?.data?.lockInfo || null,
+          isHoneypot,
+          isVerified: isTruthyFlag(security?.isVerified),
+          buyTax: security?.buyTax || 0,
+          sellTax: security?.sellTax || 0,
+          holderCount: security?.holderCount || 0,
+          isMintable,
+          lockInfo: securityResult?.data?.lockInfo || null,
         },
         simulation: {
           pumpDumpStatus: simulationStatus,
-          confidence:
-            simulationResult?.data?.confidence || 0.5,
+          confidence: simulationResult?.data?.confidence || 0.5,
           recommendation:
             simulationResult?.data?.prediction?.recommendation ||
             "Standard due diligence recommended.",
@@ -492,7 +590,7 @@ serve(async (req) => {
     }
 
     console.log(
-      `[Orchestrator] Complete: score=${riskAssessment.overallScore}, level=${riskAssessment.riskLevel}, time=${Date.now() - startTime}ms`
+      `[Orchestrator] Complete: score=${riskAssessment.overallScore}, level=${riskAssessment.riskLevel}, complete=${riskAssessment.dataComplete}, time=${Date.now() - startTime}ms`
     );
 
     return new Response(JSON.stringify(response), {
