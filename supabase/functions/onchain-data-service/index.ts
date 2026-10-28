@@ -34,10 +34,11 @@ interface OnChainRequest {
 
 interface SecurityData {
   isHoneypot: boolean;
+  honeypotUnknown?: boolean;
   isVerified: boolean;
   holderCount: number;
-  buyTax: number;
-  sellTax: number;
+  buyTax: number; // percent (e.g. 5 = 5%)
+  sellTax: number; // percent
   isMintable: boolean;
   hasHiddenOwner: boolean;
   hasFreezeAuthority?: boolean;
@@ -52,18 +53,21 @@ interface LockInfo {
   lockerPlatform: string | null;
 }
 
+interface Factor {
+  name: string;
+  status: "safe" | "warning" | "danger";
+  description: string;
+}
+
 interface OnChainResponse {
   success: boolean;
   data?: {
     security: SecurityData;
     lockInfo: LockInfo | null;
     riskScore: number;
-    factors: {
-      name: string;
-      status: "safe" | "warning" | "danger";
-      description: string;
-    }[];
+    factors: Factor[];
     sources: string[];
+    partial: boolean;
   };
   error?: string;
   cached?: boolean;
@@ -80,48 +84,63 @@ const ADDRESS_PATTERNS = {
   solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
 };
 
-const VALID_NETWORKS = [
-  "eth",
-  "ethereum",
-  "bsc",
-  "polygon",
-  "arbitrum",
-  "base",
-  "optimism",
-  "avalanche",
-  "sol",
-  "solana",
-  "arb",
-  "op",
-  "avax",
-];
+// Every accepted network name maps to one canonical name.
+// DexScreener chain IDs (ethereum, solana, avalanche...) and short
+// aliases (eth, sol, avax...) both work.
+const NETWORK_ALIASES: Record<string, string> = {
+  eth: "ethereum",
+  ethereum: "ethereum",
+  bsc: "bsc",
+  bnb: "bsc",
+  polygon: "polygon",
+  matic: "polygon",
+  arbitrum: "arbitrum",
+  arb: "arbitrum",
+  base: "base",
+  optimism: "optimism",
+  op: "optimism",
+  avalanche: "avalanche",
+  avax: "avalanche",
+  fantom: "fantom",
+  ftm: "fantom",
+  solana: "solana",
+  sol: "solana",
+};
+
+// Canonical network -> GoPlus chain ID
+const networkToGoPlusChain: Record<string, string> = {
+  ethereum: "1",
+  bsc: "56",
+  polygon: "137",
+  avalanche: "43114",
+  arbitrum: "42161",
+  base: "8453",
+  optimism: "10",
+  fantom: "250",
+};
 
 function validateAddress(address: string): boolean {
   if (!address || typeof address !== "string" || address.length > 100) {
     return false;
   }
-
   return (
     ADDRESS_PATTERNS.evm.test(address) ||
     ADDRESS_PATTERNS.solana.test(address)
   );
 }
 
-function validateNetwork(network: string): boolean {
+function normalizeNetwork(network: string): string | null {
   if (!network || typeof network !== "string" || network.length > 20) {
-    return false;
+    return null;
   }
-
-  return VALID_NETWORKS.includes(network.toLowerCase());
+  return NETWORK_ALIASES[network.toLowerCase().trim()] || null;
 }
 
 function getCached(key: string): OnChainResponse | null {
   const entry = cache.get(key);
-
   if (entry && entry.expiry > Date.now()) {
     return { ...entry.data, cached: true };
   }
-
   cache.delete(key);
   return null;
 }
@@ -133,26 +152,11 @@ function setCache(key: string, data: OnChainResponse): void {
   });
 }
 
-// Network to GoPlus chain ID mapping
-const networkToGoPlusChain: Record<string, string> = {
-  eth: "1",
-  ethereum: "1",
-  bsc: "56",
-  polygon: "137",
-  avax: "43114",
-  arb: "42161",
-  arbitrum: "42161",
-  base: "8453",
-  op: "10",
-  optimism: "10",
-};
-
 async function fetchGoPlusSecurity(
   address: string,
   network: string
 ): Promise<any> {
-  const chainId = networkToGoPlusChain[network.toLowerCase()];
-
+  const chainId = networkToGoPlusChain[network];
   if (!chainId) return null;
 
   const controller = new AbortController();
@@ -171,7 +175,6 @@ async function fetchGoPlusSecurity(
     if (!response.ok) return null;
 
     const data = await response.json();
-
     return data.result?.[address.toLowerCase()] || null;
   } catch (error) {
     clearTimeout(timeout);
@@ -197,7 +200,6 @@ async function fetchBSCTraceSecurity(address: string): Promise<any> {
     if (!response.ok) return null;
 
     const data = await response.json();
-
     return data.data || null;
   } catch (error) {
     clearTimeout(timeout);
@@ -291,31 +293,34 @@ async function fetchUnicryptLock(
   }
 }
 
+// GoPlus flags arrive as "1"/"0" strings; "" or missing means unknown.
+function flag(value: unknown): boolean {
+  return value === "1" || value === 1 || value === true;
+}
+
+function hasValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
+}
+
 function analyzeSecurityData(
   goplusData: any,
   bscTraceData: any,
   rugCheckData: any,
   solanaFMData: any,
-  network: string
+  network: string // canonical
 ): {
   security: SecurityData;
   score: number;
-  factors: {
-    name: string;
-    status: "safe" | "warning" | "danger";
-    description: string;
-  }[];
+  factors: Factor[];
+  partial: boolean;
 } {
-  const factors: {
-    name: string;
-    status: "safe" | "warning" | "danger";
-    description: string;
-  }[] = [];
-
+  const factors: Factor[] = [];
   let score = 50; // Base score
+  let partial = false;
 
   const security: SecurityData = {
     isHoneypot: false,
+    honeypotUnknown: false,
     isVerified: false,
     holderCount: 0,
     buyTax: 0,
@@ -329,15 +334,40 @@ function analyzeSecurityData(
 
   // Analyze GoPlus data (EVM chains)
   if (goplusData) {
-    security.isHoneypot = goplusData.is_honeypot === "1";
-    security.isVerified = goplusData.is_open_source === "1";
+    security.isHoneypot = flag(goplusData.is_honeypot);
+    security.isVerified = flag(goplusData.is_open_source);
     security.holderCount = parseInt(goplusData.holder_count) || 0;
-    security.buyTax = parseFloat(goplusData.buy_tax) * 100 || 0;
-    security.sellTax = parseFloat(goplusData.sell_tax) * 100 || 0;
-    security.isMintable = goplusData.is_mintable === "1";
-    security.hasHiddenOwner = goplusData.hidden_owner === "1";
-    security.isProxy = goplusData.is_proxy === "1";
-    security.canSelfDestruct = goplusData.selfdestruct === "1";
+    security.isMintable = flag(goplusData.is_mintable);
+    security.hasHiddenOwner = flag(goplusData.hidden_owner);
+    security.isProxy = flag(goplusData.is_proxy);
+    security.canSelfDestruct = flag(goplusData.selfdestruct);
+
+    // Taxes: GoPlus returns fractions ("0.05"), converted to percent here.
+    // Empty string = GoPlus could not simulate, so it is unknown, not 0%.
+    const taxUnknown =
+      !hasValue(goplusData.buy_tax) || !hasValue(goplusData.sell_tax);
+    security.buyTax = (parseFloat(goplusData.buy_tax) || 0) * 100;
+    security.sellTax = (parseFloat(goplusData.sell_tax) || 0) * 100;
+
+    // Honeypot: "" or missing = simulation did not run. Unknown is not safe.
+    if (!hasValue(goplusData.is_honeypot)) {
+      security.honeypotUnknown = true;
+      factors.push({
+        name: "Honeypot Check Incomplete",
+        status: "warning",
+        description: "Sell simulation did not run - cannot confirm tradable",
+      });
+      score -= 15;
+    }
+
+    if (taxUnknown) {
+      factors.push({
+        name: "Tax Data Unavailable",
+        status: "warning",
+        description: "Buy/sell tax could not be simulated",
+      });
+      score -= 5;
+    }
 
     if (security.isHoneypot) {
       factors.push({
@@ -345,8 +375,79 @@ function analyzeSecurityData(
         status: "danger",
         description: "Cannot sell tokens",
       });
-
       score -= 50;
+    }
+
+    if (flag(goplusData.cannot_sell_all)) {
+      factors.push({
+        name: "Sell Restriction",
+        status: "danger",
+        description: "Holders cannot sell their full balance",
+      });
+      score -= 25;
+    }
+
+    if (flag(goplusData.cannot_buy)) {
+      factors.push({
+        name: "Buying Disabled",
+        status: "danger",
+        description: "Token cannot be bought",
+      });
+      score -= 20;
+    }
+
+    if (flag(goplusData.owner_change_balance)) {
+      factors.push({
+        name: "Owner Can Change Balances",
+        status: "danger",
+        description: "Owner can modify holder balances",
+      });
+      score -= 25;
+    }
+
+    if (flag(goplusData.can_take_back_ownership)) {
+      factors.push({
+        name: "Ownership Can Be Reclaimed",
+        status: "danger",
+        description: "Renounced ownership can be taken back",
+      });
+      score -= 20;
+    }
+
+    if (flag(goplusData.honeypot_with_same_creator)) {
+      factors.push({
+        name: "Creator Linked to Honeypots",
+        status: "danger",
+        description: "Same creator deployed honeypot tokens",
+      });
+      score -= 25;
+    }
+
+    if (flag(goplusData.transfer_pausable)) {
+      factors.push({
+        name: "Transfers Can Be Paused",
+        status: "warning",
+        description: "Owner can pause all transfers",
+      });
+      score -= 10;
+    }
+
+    if (flag(goplusData.is_blacklisted)) {
+      factors.push({
+        name: "Blacklist Function",
+        status: "warning",
+        description: "Owner can block addresses from trading",
+      });
+      score -= 10;
+    }
+
+    if (flag(goplusData.slippage_modifiable)) {
+      factors.push({
+        name: "Modifiable Tax",
+        status: "warning",
+        description: "Owner can change buy/sell tax",
+      });
+      score -= 10;
     }
 
     if (security.isVerified) {
@@ -355,7 +456,6 @@ function analyzeSecurityData(
         status: "safe",
         description: "Source code is public",
       });
-
       score += 10;
     } else {
       factors.push({
@@ -363,7 +463,6 @@ function analyzeSecurityData(
         status: "warning",
         description: "Source code hidden",
       });
-
       score -= 10;
     }
 
@@ -375,7 +474,6 @@ function analyzeSecurityData(
           1
         )}%, Sell: ${security.sellTax.toFixed(1)}%`,
       });
-
       score -= 20;
     } else if (security.buyTax > 5 || security.sellTax > 5) {
       factors.push({
@@ -385,7 +483,6 @@ function analyzeSecurityData(
           1
         )}%, Sell: ${security.sellTax.toFixed(1)}%`,
       });
-
       score -= 10;
     }
 
@@ -395,7 +492,6 @@ function analyzeSecurityData(
         status: "danger",
         description: "Token supply can be increased",
       });
-
       score -= 15;
     }
 
@@ -405,7 +501,6 @@ function analyzeSecurityData(
         status: "danger",
         description: "Ownership is obscured",
       });
-
       score -= 20;
     }
 
@@ -415,7 +510,6 @@ function analyzeSecurityData(
         status: "danger",
         description: "Contract can be destroyed",
       });
-
       score -= 25;
     }
 
@@ -425,7 +519,6 @@ function analyzeSecurityData(
         status: "safe",
         description: `${security.holderCount.toLocaleString()} holders`,
       });
-
       score += 10;
     } else if (security.holderCount < 50) {
       factors.push({
@@ -433,116 +526,167 @@ function analyzeSecurityData(
         status: "warning",
         description: `Only ${security.holderCount} holders`,
       });
-
       score -= 10;
     }
   }
 
   // Merge BSCTrace data for BSC
-  if (bscTraceData && network.toLowerCase() === "bsc") {
+  if (bscTraceData && network === "bsc") {
     if (bscTraceData.isHoneypot && !security.isHoneypot) {
       security.isHoneypot = true;
-
       factors.push({
         name: "Honeypot (BSCTrace)",
         status: "danger",
         description: "Confirmed by BSCTrace",
       });
-
       score -= 30;
     }
   }
 
   // Analyze RugCheck data (Solana)
-  if (rugCheckData && network.toLowerCase() === "sol") {
-    const rugScore = rugCheckData.score || 0;
-
-    if (rugScore < 20) {
+  if (network === "solana") {
+    if (!rugCheckData) {
+      // Without RugCheck there is no real Solana security signal.
+      partial = true;
       factors.push({
-        name: "RugCheck Critical",
-        status: "danger",
-        description: `Score: ${rugScore}/100`,
-      });
-
-      score = Math.min(score, 25);
-    } else if (rugScore < 50) {
-      factors.push({
-        name: "RugCheck Warning",
+        name: "RugCheck Unavailable",
         status: "warning",
-        description: `Score: ${rugScore}/100`,
+        description: "Solana security scan incomplete - not verified safe",
       });
-
-      score -= 15;
+      score = Math.min(score, 40);
     } else {
-      factors.push({
-        name: "RugCheck OK",
-        status: "safe",
-        description: `Score: ${rugScore}/100`,
-      });
-
-      score += 10;
-    }
-
-    if (rugCheckData.tokenMeta?.mintAuthority) {
-      security.isMintable = true;
-
-      factors.push({
-        name: "Mint Authority",
-        status: "danger",
-        description: "Mint authority not revoked",
-      });
-
-      score -= 15;
-    }
-
-    if (rugCheckData.tokenMeta?.freezeAuthority) {
-      security.hasFreezeAuthority = true;
-
-      factors.push({
-        name: "Freeze Authority",
-        status: "danger",
-        description: "Can freeze token transfers",
-      });
-
-      score -= 15;
-    }
-
-    // Check top holder concentration
-    if (rugCheckData.topHolders?.length > 0) {
-      const topHolderPct = rugCheckData.topHolders[0]?.pct || 0;
-
-      if (topHolderPct > 50) {
+      // RugCheck: HIGHER score = MORE risk. Use the explicit risk list and
+      // the rugged flag rather than the numeric score.
+      if (rugCheckData.rugged === true) {
         factors.push({
-          name: "High Concentration",
+          name: "Token Rugged",
           status: "danger",
-          description: `Top holder owns ${topHolderPct.toFixed(1)}%`,
+          description: "RugCheck flags this token as rugged",
         });
+        score = Math.min(score, 5);
+      }
 
-        score -= 20;
-      } else if (topHolderPct > 20) {
+      if (Array.isArray(rugCheckData.risks)) {
+        const risks = rugCheckData.risks;
+        const dangerRisks = risks.filter(
+          (r: any) => String(r?.level).toLowerCase() === "danger"
+        );
+        const warnRisks = risks.filter(
+          (r: any) => String(r?.level).toLowerCase() === "warn"
+        );
+
+        if (dangerRisks.length > 0) {
+          const names = dangerRisks
+            .slice(0, 3)
+            .map((r: any) => r?.name || "Unnamed risk")
+            .join(", ");
+          factors.push({
+            name: "RugCheck Critical",
+            status: "danger",
+            description: names,
+          });
+          score -= 25;
+          score = Math.min(score, 30);
+        } else if (warnRisks.length > 0) {
+          const names = warnRisks
+            .slice(0, 3)
+            .map((r: any) => r?.name || "Unnamed risk")
+            .join(", ");
+          factors.push({
+            name: "RugCheck Warning",
+            status: "warning",
+            description: names,
+          });
+          score -= 10;
+        } else if (rugCheckData.rugged !== true) {
+          factors.push({
+            name: "RugCheck: No Risks Flagged",
+            status: "safe",
+            description: "No risks reported by RugCheck",
+          });
+          score += 10;
+        }
+      } else {
+        // Response shape unexpected: do not treat as clean.
+        partial = true;
         factors.push({
-          name: "Concentrated Holdings",
+          name: "RugCheck Incomplete",
           status: "warning",
-          description: `Top holder owns ${topHolderPct.toFixed(1)}%`,
+          description: "RugCheck returned no risk list",
         });
+        score -= 15;
+        score = Math.min(score, 40);
+      }
 
-        score -= 10;
+      // Authorities live at the top level of the report (null when revoked)
+      const mintAuthority =
+        rugCheckData.mintAuthority ??
+        rugCheckData.token?.mintAuthority ??
+        rugCheckData.tokenMeta?.mintAuthority;
+      const freezeAuthority =
+        rugCheckData.freezeAuthority ??
+        rugCheckData.token?.freezeAuthority ??
+        rugCheckData.tokenMeta?.freezeAuthority;
+
+      if (hasValue(mintAuthority)) {
+        security.isMintable = true;
+        factors.push({
+          name: "Mint Authority",
+          status: "danger",
+          description: "Mint authority not revoked",
+        });
+        score -= 15;
+      }
+
+      if (hasValue(freezeAuthority)) {
+        security.hasFreezeAuthority = true;
+        factors.push({
+          name: "Freeze Authority",
+          status: "danger",
+          description: "Can freeze token transfers",
+        });
+        score -= 15;
+      }
+
+      // Check top holder concentration
+      if (rugCheckData.topHolders?.length > 0) {
+        const topHolderPct = rugCheckData.topHolders[0]?.pct || 0;
+        if (topHolderPct > 50) {
+          factors.push({
+            name: "High Concentration",
+            status: "danger",
+            description: `Top holder owns ${topHolderPct.toFixed(1)}%`,
+          });
+          score -= 20;
+        } else if (topHolderPct > 20) {
+          factors.push({
+            name: "Concentrated Holdings",
+            status: "warning",
+            description: `Top holder owns ${topHolderPct.toFixed(1)}%`,
+          });
+          score -= 10;
+        }
       }
     }
   }
 
   // Analyze SolanaFM data
-  if (solanaFMData && network.toLowerCase() === "sol") {
+  if (solanaFMData && network === "solana") {
     if (solanaFMData.holderCount) {
-      security.holderCount =
-        parseInt(solanaFMData.holderCount) || 0;
+      security.holderCount = parseInt(solanaFMData.holderCount) || 0;
     }
+  }
+
+  // A confirmed honeypot can never score above 10
+  if (security.isHoneypot) {
+    score = Math.min(score, 10);
   }
 
   return {
     security,
     score: Math.max(0, Math.min(100, score)),
     factors,
+    partial,
   };
 }
 
@@ -559,7 +703,6 @@ serve(async (req) => {
   try {
     // Authentication check
     const authHeader = req.headers.get("Authorization");
-
     if (!authHeader) {
       return new Response(
         JSON.stringify({
@@ -583,7 +726,6 @@ serve(async (req) => {
     );
 
     const token = authHeader.replace("Bearer ", "");
-
     const {
       data: { user },
       error: userError,
@@ -606,9 +748,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(
-      `[OnChain Data Service] Request from user: ${user.id}`
-    );
+    console.log(`[OnChain Data Service] Request from user: ${user.id}`);
 
     const { address, network }: OnChainRequest = await req.json();
 
@@ -629,7 +769,8 @@ serve(async (req) => {
       );
     }
 
-    if (!network || !validateNetwork(network)) {
+    const net = normalizeNetwork(network);
+    if (!net) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -646,21 +787,24 @@ serve(async (req) => {
       );
     }
 
-    const normalizedAddress = address.toLowerCase().trim();
+    // EVM addresses are case-insensitive. Solana (base58) addresses are
+    // case-SENSITIVE and must never be lowercased.
+    const trimmedAddress = address.trim();
+    const normalizedAddress = ADDRESS_PATTERNS.evm.test(trimmedAddress)
+      ? trimmedAddress.toLowerCase()
+      : trimmedAddress;
 
     console.log(
-      `[OnChain Data Service] Fetching security for: ${normalizedAddress} on ${network}`
+      `[OnChain Data Service] Fetching security for: ${normalizedAddress} on ${net}`
     );
 
     // Check cache
-    const cacheKey = `onchain:${network}:${normalizedAddress}`;
+    const cacheKey = `onchain:${net}:${normalizedAddress}`;
     const cached = getCached(cacheKey);
-
     if (cached) {
       console.log(
         `[OnChain Data Service] Cache hit for ${normalizedAddress}`
       );
-
       return new Response(JSON.stringify(cached), {
         headers: {
           ...corsHeaders,
@@ -678,7 +822,7 @@ serve(async (req) => {
     let solanaFMData = null;
     let lockInfo: LockInfo | null = null;
 
-    if (network.toLowerCase() === "sol") {
+    if (net === "solana") {
       // Solana: Use RugCheck + SolanaFM
       [rugCheckData, solanaFMData] = await Promise.all([
         fetchRugCheck(normalizedAddress),
@@ -690,18 +834,15 @@ serve(async (req) => {
     } else {
       // EVM: Use GoPlus + optional BSCTrace
       const promises: Promise<any>[] = [
-        fetchGoPlusSecurity(normalizedAddress, network),
+        fetchGoPlusSecurity(normalizedAddress, net),
         fetchUnicryptLock(normalizedAddress),
       ];
 
-      if (network.toLowerCase() === "bsc") {
-        promises.push(
-          fetchBSCTraceSecurity(normalizedAddress)
-        );
+      if (net === "bsc") {
+        promises.push(fetchBSCTraceSecurity(normalizedAddress));
       }
 
       const results = await Promise.all(promises);
-
       goplusData = results[0];
       lockInfo = results[1];
       bscTraceData = results[2] || null;
@@ -729,14 +870,13 @@ serve(async (req) => {
     }
 
     // Analyze security
-    const { security, score, factors } =
-      analyzeSecurityData(
-        goplusData,
-        bscTraceData,
-        rugCheckData,
-        solanaFMData,
-        network
-      );
+    const { security, score, factors, partial } = analyzeSecurityData(
+      goplusData,
+      bscTraceData,
+      rugCheckData,
+      solanaFMData,
+      net
+    );
 
     const response: OnChainResponse = {
       success: true,
@@ -746,16 +886,19 @@ serve(async (req) => {
         riskScore: score,
         factors,
         sources,
+        partial,
       },
       cached: false,
       timestamp: new Date().toISOString(),
     };
 
-    // Cache the response
-    setCache(cacheKey, response);
+    // Cache only complete results so a partial scan is not served again
+    if (!partial) {
+      setCache(cacheKey, response);
+    }
 
     console.log(
-      `[OnChain Data Service] Success: score ${score}, sources: ${sources.join(
+      `[OnChain Data Service] Success: score ${score}, partial=${partial}, sources: ${sources.join(
         ", "
       )}`
     );
