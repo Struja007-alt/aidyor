@@ -385,7 +385,12 @@ serve(async (req) => {
       );
     }
 
-    const normalizedAddress = address.toLowerCase().trim();
+    // EVM addresses are case-insensitive; Solana (base58) are case-SENSITIVE
+    // and must not be lowercased or lookups will fail.
+    const trimmedAddress = address.trim();
+    const normalizedAddress = ADDRESS_PATTERNS.evm.test(trimmedAddress)
+      ? trimmedAddress.toLowerCase()
+      : trimmedAddress;
     console.log(
       `[Orchestrator] Starting analysis for: ${normalizedAddress}${
         network ? ` on ${network}` : ""
@@ -491,7 +496,9 @@ serve(async (req) => {
     const security = securityResult?.data?.security;
     const isHoneypot = isTruthyFlag(security?.isHoneypot);
     const isMintable = isTruthyFlag(security?.isMintable);
-    const isSolana = String(detectedNetwork).toLowerCase() === "solana";
+    const isSolana = ["sol", "solana"].includes(
+      String(detectedNetwork).toLowerCase()
+    );
     const isUnverified =
       securityAvailable &&
       !isSolana &&
