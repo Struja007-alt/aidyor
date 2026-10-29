@@ -15,8 +15,9 @@ const getRiskColor = (score: number) => {
   return "text-danger";
 };
 
+// "Safe" overstated what a score can promise - nothing is guaranteed safe.
 const getRiskLabel = (score: number) => {
-  if (score >= 70) return "Safe";
+  if (score >= 70) return "Low Risk";
   if (score >= 40) return "Caution";
   return "Danger";
 };
@@ -25,7 +26,7 @@ const getRiskLabel = (score: number) => {
 const generateWatchlistSummary = (token: WatchlistToken, analysis?: PumpDumpAnalysis): string => {
   const { riskScore } = token;
   const riskLevel = riskScore >= 70 ? "Low risk" : riskScore >= 40 ? "Medium risk" : "High risk";
-  
+
   // If we have pump/dump analysis, use that info
   if (analysis) {
     if (analysis.status === 'pump') {
@@ -40,7 +41,7 @@ const generateWatchlistSummary = (token: WatchlistToken, analysis?: PumpDumpAnal
     if (analysis.status === 'dump_warning') {
       return `${riskLevel} — unusual selling pressure detected.`;
     }
-    
+
     // Use price data for context
     if (analysis.priceChange24h > 50) {
       return `${riskLevel} — up ${analysis.priceChange24h.toFixed(0)}% in 24h.`;
@@ -49,10 +50,9 @@ const generateWatchlistSummary = (token: WatchlistToken, analysis?: PumpDumpAnal
       return `${riskLevel} — down ${Math.abs(analysis.priceChange24h).toFixed(0)}% in 24h.`;
     }
   }
-  
+
   // Default based on score
-  if (riskScore >= 80) return "Low risk — strong fundamentals detected.";
-  if (riskScore >= 70) return "Low risk — no major issues detected.";
+  if (riskScore >= 70) return "Low risk at last full scan — no major issues found.";
   if (riskScore >= 50) return "Medium risk — some concerns, proceed with caution.";
   if (riskScore >= 40) return "Medium risk — multiple warning signs.";
   return "High risk — significant red flags detected.";
@@ -71,23 +71,26 @@ const getNetworkExplorer = (network: string, address: string) => {
   return explorers[network] || "#";
 };
 
-
-// Rescan a token using real DEXScreener API data
+// Rescan a token using real DEXScreener API data.
+// IMPORTANT: a rescan only sees MARKET data (liquidity, volume, trades). It
+// cannot check honeypots, mint rights or taxes, so it must never replace or
+// raise the saved score from the full scan. It can only LOWER the score when
+// the market data shows a hard problem (e.g. buys with no sells).
 const rescanToken = async (token: WatchlistToken): Promise<{ token: WatchlistToken; analysis: PumpDumpAnalysis } | null> => {
   try {
     const pairs = await getTokenByAddress(token.address);
-    
+
     if (pairs.length === 0) {
       return null;
     }
-    
-    const { score } = analyzeTokenRisk(pairs);
+
+    const { hardCap } = analyzeTokenRisk(pairs);
     const analysis = analyzePumpDump(pairs);
-    
+
     return {
       token: {
         ...token,
-        riskScore: score,
+        riskScore: Math.min(token.riskScore, hardCap),
       },
       analysis,
     };
@@ -126,16 +129,16 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
         await updateToken(token.address, { riskScore: result.token.riskScore });
         setAnalyses(prev => ({ ...prev, [token.address]: result.analysis }));
         setLastScanTime(prev => ({ ...prev, [token.address]: Date.now() }));
-        
+
         const diff = result.token.riskScore - token.riskScore;
-        
+
         // Show pump/dump alerts
         if (result.analysis.status === 'pump' || result.analysis.status === 'dump') {
           toast.warning(result.analysis.alert || `${token.name}: ${getPumpDumpLabel(result.analysis.status)}`, {
             duration: 5000,
           });
         } else if (diff !== 0) {
-          toast.success(`${token.name} updated: Risk score ${diff > 0 ? '+' : ''}${diff}`);
+          toast.warning(`${token.name}: market data shows new risks, score ${diff}`);
         } else {
           toast.info(`${token.name}: No changes detected`);
         }
@@ -151,40 +154,40 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
 
   const handleScanAll = async () => {
     if (watchlist.length === 0) return;
-    
+
     setScanningAll(true);
     let alerts: string[] = [];
-    
+
     try {
       const results = await Promise.all(
         watchlist.map(token => rescanToken(token))
       );
-      
+
       const newAnalyses: Record<string, PumpDumpAnalysis> = {};
       const newScanTimes: Record<string, number> = {};
-      
+
       results.forEach((result, index) => {
         if (result) {
           const token = watchlist[index];
           updateToken(token.address, { riskScore: result.token.riskScore });
           newAnalyses[token.address] = result.analysis;
           newScanTimes[token.address] = Date.now();
-          
+
           if (result.analysis.status === 'pump' || result.analysis.status === 'dump') {
             alerts.push(`${token.name}: ${result.analysis.alert || getPumpDumpLabel(result.analysis.status)}`);
           }
         }
       });
-      
+
       setAnalyses(prev => ({ ...prev, ...newAnalyses }));
       setLastScanTime(prev => ({ ...prev, ...newScanTimes }));
-      
+
       if (alerts.length > 0) {
         alerts.forEach(alert => {
           toast.warning(alert, { duration: 5000 });
         });
       } else {
-        toast.success(`Scanned ${watchlist.length} tokens - All stable`);
+        toast.success(`Checked ${watchlist.length} tokens - no pump or dump alerts`);
       }
     } catch (error) {
       toast.error("Scan failed");
@@ -340,14 +343,13 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
         </div>
       </div>
 
-
       {/* Token List */}
       <div className="space-y-3">
         {watchlist.map((token) => {
           const analysis = analyses[token.address];
           const scanTime = lastScanTime[token.address];
           const hasPumpDumpAlert = analysis && (
-            analysis.status === 'pump' || 
+            analysis.status === 'pump' ||
             analysis.status === 'dump' ||
             analysis.status === 'pump_warning' ||
             analysis.status === 'dump_warning'
@@ -358,7 +360,7 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
               key={token.address}
               className={cn(
                 "rounded-lg border transition-all",
-                hasPumpDumpAlert 
+                hasPumpDumpAlert
                   ? getPumpDumpBg(analysis.status)
                   : "bg-secondary/30 border-border/30 hover:border-border/50"
               )}
@@ -375,7 +377,7 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
                     </span>
                     {/* Pump/Dump Badge */}
                     {analysis && analysis.status !== 'normal' && (
-                      <span 
+                      <span
                         className={cn(
                           "px-1.5 py-0.5 text-[10px] rounded border flex items-center gap-0.5 font-bold",
                           getPumpDumpBg(analysis.status),
@@ -391,14 +393,16 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
                       </span>
                     )}
                   </div>
+
                   {/* Risk Summary */}
                   <p className={cn(
                     "text-[11px] mt-1.5 leading-tight",
-                    token.riskScore >= 70 ? "text-safe/70" : 
+                    token.riskScore >= 70 ? "text-safe/70" :
                     token.riskScore >= 40 ? "text-warning/70" : "text-danger/70"
                   )}>
                     {generateWatchlistSummary(token, analysis)}
                   </p>
+
                   <div className="flex items-center gap-2 mt-1">
                     <p className="text-xs text-muted-foreground font-mono truncate">
                       {token.address.slice(0, 8)}...{token.address.slice(-6)}
@@ -528,6 +532,9 @@ export const Watchlist = forwardRef<HTMLDivElement>((_, ref) => {
             <AlertTriangle className="w-3 h-3" /> WARNING
           </span>
         </div>
+        <p className="text-[10px] text-muted-foreground/70 mt-3">
+          Rescan checks market activity only. Scan the token again on the Scanner for a full security check.
+        </p>
       </div>
     </div>
   );
