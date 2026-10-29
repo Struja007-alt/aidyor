@@ -381,23 +381,29 @@ export async function searchTokensRanked(query: string): Promise<RankedSearchRes
   };
 }
 
-// Analyze token for risk factors.
-// IMPORTANT: this only sees market data. It cannot detect honeypots, mint
-// rights, taxes or hidden owners, so it must never produce a "safe" rating.
-// The score is hard-capped at 49 (MEDIUM at best). Use the full scan
-// (risk-orchestrator) for a real safety verdict.
+// Market-data-only risk analysis.
+// It cannot see honeypots, mint rights, taxes or hidden owners, so:
+//  - `score` is a market-health score. Never show it alone as a safety verdict.
+//  - `hardCap` is the highest FINAL score allowed given what the market data
+//    shows (buys with no sells, tiny liquidity, brand-new pair). Apply it to
+//    any final score: Math.min(finalScore, hardCap).
+//  - `marketOnlyCap` is the ceiling for a score with NO security checks behind it.
+export const MARKET_ONLY_SCORE_CAP = 49;
+
 export function analyzeTokenRisk(pairs: DexPair[]): {
   score: number;
+  hardCap: number;
+  marketOnlyCap: number;
   marketOnly: boolean;
   factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[];
 } {
   if (pairs.length === 0) {
-    return { score: 0, marketOnly: true, factors: [] };
+    return { score: 0, hardCap: 0, marketOnlyCap: MARKET_ONLY_SCORE_CAP, marketOnly: true, factors: [] };
   }
 
   const factors: { name: string; status: 'safe' | 'warning' | 'danger'; description: string }[] = [];
   let score = 50; // Start at 50
-  let cap = 49; // market data alone can never reach LOW risk
+  let hardCap = 100;
 
   // Get the best pair (highest liquidity)
   const mainPair = pairs.reduce((best, pair) =>
@@ -415,7 +421,7 @@ export function analyzeTokenRisk(pairs: DexPair[]): {
   } else {
     factors.push({ name: 'Liquidity', status: 'danger', description: `Low liquidity: $${liquidity.toFixed(0)}` });
     score -= 15;
-    cap = Math.min(cap, 39);
+    hardCap = Math.min(hardCap, 39);
   }
 
   // Volume check
@@ -449,7 +455,7 @@ export function analyzeTokenRisk(pairs: DexPair[]): {
     // Classic honeypot signature: people can buy, nobody can sell
     factors.push({ name: 'No Sells Recorded', status: 'danger', description: `${buys24h} buys and 0 sells in 24h - possible honeypot` });
     score -= 30;
-    cap = Math.min(cap, 25);
+    hardCap = Math.min(hardCap, 25);
   } else if (buys24h > 0 && sells24h > 0) {
     const ratio = buys24h / sells24h;
     if (ratio >= 0.7 && ratio <= 1.5) {
@@ -483,9 +489,10 @@ export function analyzeTokenRisk(pairs: DexPair[]): {
     const ageHours = (Date.now() - created) / 3_600_000;
     if (ageHours < 24) {
       factors.push({ name: 'Very New Pair', status: 'danger', description: `Trading pair created ${Math.max(1, Math.round(ageHours))}h ago` });
-      cap = Math.min(cap, 35);
+      hardCap = Math.min(hardCap, 35);
     } else if (ageHours < 168) {
       factors.push({ name: 'New Pair', status: 'warning', description: `Trading pair is ${Math.round(ageHours / 24)} days old` });
+      hardCap = Math.min(hardCap, 69);
     }
   }
 
@@ -495,15 +502,8 @@ export function analyzeTokenRisk(pairs: DexPair[]): {
     score += 5;
   }
 
-  // Always tell the user what this score does NOT cover
-  factors.push({
-    name: 'Security Checks',
-    status: 'warning',
-    description: 'Market data only - contract not checked for honeypots, mint rights or taxes. Run a full scan.',
-  });
+  // Normalize score (the caller applies hardCap / marketOnlyCap)
+  score = Math.max(0, Math.min(100, score));
 
-  // Normalize and cap
-  score = Math.max(0, Math.min(cap, score));
-
-  return { score, marketOnly: true, factors };
+  return { score, hardCap, marketOnlyCap: MARKET_ONLY_SCORE_CAP, marketOnly: true, factors };
 }
