@@ -381,6 +381,52 @@ export async function searchTokensRanked(query: string): Promise<RankedSearchRes
   };
 }
 
+// DexScreener returns every pair a token appears in, on EITHER side. Stablecoins
+// like USDT are usually the QUOTE token (SOL/USDT), so pairs[0].baseToken is a
+// different token. This keeps only pairs where `address` is the base token; if it
+// only ever appears as the quote side, those pairs are flipped so price, trades,
+// liquidity and every security lookup describe the token the user chose.
+export function orientPairsToToken(pairs: DexPair[], address: string): DexPair[] {
+  const target = (address || '').trim();
+  const isEvm = EVM_ADDRESS.test(target);
+  const same = (candidate?: string) =>
+    !!candidate && (isEvm ? candidate.toLowerCase() === target.toLowerCase() : candidate === target);
+
+  const asBase = pairs.filter((p) => same(p.baseToken?.address));
+  if (asBase.length > 0) return asBase;
+
+  const flipped: DexPair[] = [];
+  for (const p of pairs) {
+    if (!same(p.quoteToken?.address)) continue;
+
+    const native = parseFloat(p.priceNative);
+    const usd = parseFloat(p.priceUsd);
+    const swap = (w?: { buys: number; sells: number }) =>
+      w ? { buys: w.sells, sells: w.buys } : w;
+
+    flipped.push({
+      ...p,
+      baseToken: p.quoteToken,
+      quoteToken: p.baseToken,
+      priceNative: native > 0 ? String(1 / native) : '0',
+      priceUsd: native > 0 && usd > 0 ? String(usd / native) : '0',
+      txns: {
+        m5: swap(p.txns?.m5)!,
+        h1: swap(p.txns?.h1)!,
+        h6: swap(p.txns?.h6)!,
+        h24: swap(p.txns?.h24)!,
+      },
+      // Price change, market cap and the logo/links in `info` belong to the
+      // original base token, so they are not carried over (zeros, not guesses).
+      priceChange: { m5: 0, h1: 0, h6: 0, h24: 0 },
+      marketCap: undefined,
+      fdv: undefined,
+      info: undefined,
+    });
+  }
+  return flipped;
+}
+
 // Market-data-only risk analysis.
 // It cannot see honeypots, mint rights, taxes or hidden owners, so:
 //  - `score` is a market-health score. Never show it alone as a safety verdict.
