@@ -14,11 +14,13 @@ import { toast } from "sonner";
 import { Link, useSearchParams } from "react-router-dom";
 import { correctAddress, correctEthAddress } from "@/lib/ocr";
 import { 
-  searchTokens, 
+  searchTokensRanked, 
   getTokenByAddress, 
+  orientPairsToToken,
   analyzeTokenRisk, 
   chainIdToNetwork,
-  type DexPair 
+  type DexPair,
+  type TokenSuggestion 
 } from "@/lib/api/dexscreener";
 import { 
   getTokenSecurity, 
@@ -148,13 +150,117 @@ export const TokenScanner = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanResults, setScanResults] = useState<NetworkResult[]>([]);
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
-  const [suggestions, setSuggestions] = useState<DexPair[]>([]);
+  const [suggestions, setSuggestions] = useState<TokenSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  // Unverified copies stay collapsed unless there is no verified match at all
+  const [showWarned, setShowWarned] = useState(false);
   // Maps "chainId-address" (lowercase) -> verification result for the search dropdown.
   // true = confirmed official contract, false = confirmed mismatch (likely copycat), absent = not checked/unknown.
   const [officialTokenMap, setOfficialTokenMap] = useState<Map<string, boolean>>(new Map());
   const [isSearching, setIsSearching] = useState(false);
   const [selectedResult, setSelectedResult] = useState<NetworkResult | null>(null);
+
+  // Split dropdown results: verified tokens first, unverified copies below.
+  // CoinGecko's official-address check overrides the ranking in both directions.
+  const { trustedSuggestions, warnedSuggestions } = useMemo(() => {
+    const trusted: TokenSuggestion[] = [];
+    const warned: TokenSuggestion[] = [];
+    for (const s of suggestions) {
+      const key = `${s.chainId.toLowerCase()}-${s.token.address.toLowerCase()}`;
+      const official = officialTokenMap.get(key); // true | false | undefined
+      const isTrusted =
+        official === true ||
+        (official !== false && (s.trust === "verified" || s.trust === "established"));
+      (isTrusted ? trusted : warned).push(s);
+    }
+    return { trustedSuggestions: trusted.slice(0, 4), warnedSuggestions: warned };
+  }, [suggestions, officialTokenMap]);
+
+  const renderSuggestionRow = (s: TokenSuggestion, isTrusted: boolean, index: number) => {
+    const key = `${s.chainId.toLowerCase()}-${s.token.address.toLowerCase()}`;
+    const official = officialTokenMap.get(key);
+    // pair.info (logo, links) belongs to the pair's BASE token only
+    const isBase = s.token.address.toLowerCase() === s.pair.baseToken.address.toLowerCase();
+    const imageUrl = isBase ? s.pair.info?.imageUrl : undefined;
+    const trustLabel = official === true || s.trust === "verified" ? "Verified" : "Established";
+    const warning =
+      official === false
+        ? "Address does not match the official token"
+        : s.trust === "lookalike"
+          ? "Same name as a verified token, different address"
+          : "Not verified - check the address";
+
+    return (
+      <button
+        type="button"
+        key={`${s.chainId}-${s.token.address}-${index}`}
+        className={cn(
+          "w-full px-4 py-3 flex items-center justify-between transition-colors text-left border-b border-border/20 last:border-b-0",
+          isTrusted
+            ? "bg-emerald-500/10 hover:bg-emerald-500/20"
+            : "bg-red-500/5 hover:bg-red-500/10 opacity-80"
+        )}
+        onMouseDown={() => handleSelectSuggestion(s, isTrusted)}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative shrink-0">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={s.token.symbol}
+                className={cn(
+                  "w-9 h-9 rounded-full bg-secondary",
+                  isTrusted ? "ring-2 ring-emerald-500" : "ring-2 ring-red-500/40"
+                )}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className={cn(
+                "w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-xs font-semibold text-muted-foreground",
+                isTrusted ? "ring-2 ring-emerald-500" : "ring-2 ring-red-500/40"
+              )}>
+                {s.token.symbol.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            {isTrusted && (
+              <div className="absolute -top-1 -right-1 bg-emerald-500 rounded-full p-0.5">
+                <BadgeCheck className="w-3 h-3 text-white" />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={cn("font-medium truncate", isTrusted ? "text-emerald-400" : "text-foreground")}>
+                {s.token.name}
+              </span>
+              <span className="text-muted-foreground text-sm">({s.token.symbol})</span>
+              {isTrusted ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold uppercase tracking-wide">
+                  {trustLabel}
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold uppercase tracking-wide">
+                  Unverified
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground font-mono truncate">
+              {truncateAddress(s.token.address)}
+            </p>
+            {!isTrusted && (
+              <p className="text-[11px] text-red-400/90 mt-0.5">{warning}</p>
+            )}
+          </div>
+        </div>
+        <span className={cn(
+          "text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ml-2",
+          isTrusted ? "bg-emerald-500/20 text-emerald-400" : "bg-primary/10 text-primary"
+        )}>
+          {chainIdToNetwork[s.chainId] || s.chainId}
+        </span>
+      </button>
+    );
+  };
   
   // Screenshot state
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -972,62 +1078,30 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     setIsSearching(true);
     
     try {
-      const results = await searchTokens(searchValidation.sanitized);
+      // Ranked search: verified/established tokens first, lookalikes grouped after them
+      const ranked = await searchTokensRanked(searchValidation.sanitized);
       
       // Check if this search is still the current one (prevent race conditions)
       if (currentSearchId !== searchIdRef.current) {
         return; // A newer search has been triggered, discard these results
       }
       
-      // Filter to unique tokens by address
-      const seen = new Set<string>();
-      const unique = results.filter(pair => {
-        const key = `${pair.chainId}-${pair.baseToken.address}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      
-      // Use known original networks (hardcoded list)
-      const mergedKnownNetworks = knownOriginalNetworks;
-      
-      // Sort by: 1) Known original network match, 2) Liquidity
-      const sorted = unique.sort((a, b) => {
-        const symbolA = a.baseToken.symbol.toUpperCase();
-        const symbolB = b.baseToken.symbol.toUpperCase();
-        const chainA = a.chainId.toLowerCase();
-        const chainB = b.chainId.toLowerCase();
-        
-        // Check if either is a known token on its original network
-        const aIsOriginal = mergedKnownNetworks[symbolA]?.includes(chainA) || false;
-        const bIsOriginal = mergedKnownNetworks[symbolB]?.includes(chainB) || false;
-        
-        // Prioritize known original network tokens
-        if (aIsOriginal && !bIsOriginal) return -1;
-        if (bIsOriginal && !aIsOriginal) return 1;
-        
-        // Then sort by liquidity
-        const liqA = a.liquidity?.usd || 0;
-        const liqB = b.liquidity?.usd || 0;
-        return liqB - liqA;
-      }).slice(0, 10);
-      
-      setSuggestions(sorted);
-      setShowSuggestions(sorted.length > 0);
+      const combined = [...ranked.primary.slice(0, 4), ...ranked.warned.slice(0, 8)];
+      setSuggestions(combined);
+      // Collapse unverified copies unless there is nothing verified to show
+      setShowWarned(ranked.primary.length === 0);
+      setShowSuggestions(combined.length > 0);
 
-      // Resolve official contract addresses for the top candidates so copycats
-      // sharing the same name/symbol get flagged instead of just trusting
-      // liquidity/list-order. Runs after suggestions render so the dropdown
-      // isn't blocked on CoinGecko round-trips.
-      const topForVerification = sorted.slice(0, 8);
+      // Cross-check the top candidates against CoinGecko's official contract address
+      // so a well-funded copy can still be caught. Runs after the dropdown renders.
       try {
         const verificationResults = await Promise.all(
-          topForVerification.map(async (pair) => {
-            const network = chainIdToNetwork[pair.chainId.toLowerCase()] || pair.chainId;
-            const official = await getOfficialTokenAddress(pair.baseToken.symbol, network);
+          combined.slice(0, 8).map(async (s) => {
+            const network = chainIdToNetwork[s.chainId.toLowerCase()] || s.chainId;
+            const official = await getOfficialTokenAddress(s.token.symbol, network);
             if (!official) return null; // no official record found - stay neutral, don't accuse
-            const key = `${pair.chainId.toLowerCase()}-${pair.baseToken.address.toLowerCase()}`;
-            return { key, isOfficial: official.address === pair.baseToken.address.toLowerCase() };
+            const key = `${s.chainId.toLowerCase()}-${s.token.address.toLowerCase()}`;
+            return { key, isOfficial: official.address === s.token.address.toLowerCase() };
           })
         );
         if (currentSearchId === searchIdRef.current) {
@@ -1079,20 +1153,30 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     return () => clearTimeout(timer);
   }, [tokenQuery, searchTokensDebounced, isContractAddress]);
 
-  const handleSelectSuggestion = (pair: DexPair) => {
-    setTokenQuery(pair.baseToken.symbol);
-    setDisplayAddress(pair.baseToken.address);
+  const handleSelectSuggestion = (s: TokenSuggestion, isTrusted: boolean) => {
+    setTokenQuery(s.token.symbol);
+    setDisplayAddress(s.token.address);
     setTokenInfo({
-      name: pair.baseToken.name,
-      symbol: pair.baseToken.symbol,
-      address: pair.baseToken.address,
-      chainId: pair.chainId,
-      imageUrl: pair.info?.imageUrl,
+      name: s.token.name,
+      symbol: s.token.symbol,
+      address: s.token.address,
+      chainId: s.chainId,
+      // pair.info (logo) belongs to the pair's base token only
+      imageUrl:
+        s.token.address.toLowerCase() === s.pair.baseToken.address.toLowerCase()
+          ? s.pair.info?.imageUrl
+          : undefined,
     });
     setShowSuggestions(false);
-    
+
+    if (!isTrusted) {
+      toast.warning("Unverified token. Check the full address before trusting this result.", {
+        duration: 4000,
+      });
+    }
+
     // Auto-scan with the selected token
-    handleScanWithAddress(pair.baseToken.address);
+    handleScanWithAddress(s.token.address);
   };
 
   // Scan for token data with security validation
@@ -1109,11 +1193,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           action: {
             label: "Upgrade",
             onClick: () => window.location.href = "/subscription",
-          
-        
-     
-     
-    },
+          },
         }
       );
       return;
@@ -1140,16 +1220,16 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     
     // Use the sanitized address for API calls
     const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : correctedAddress.trim();
-                     
-
- 
     
     setIsScanning(true);
     setScanResults([]);
     setSelectedResult(null);
     
     try {
-      const pairs = await getTokenByAddress(sanitizedAddress);
+      // Keep only pairs where the scanned token is the BASE token. If it only appears
+      // as the quote side (e.g. USDT in SOL/USDT), flip those pairs so every price,
+      // trade count and security lookup below is about the token the user chose.
+      const pairs = orientPairsToToken(await getTokenByAddress(sanitizedAddress), sanitizedAddress);
       
       if (pairs.length === 0) {
         setScanResults([]);
@@ -2119,82 +2199,48 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                 </div>
               )}
               
-              {/* Suggestions Dropdown */}
+              {/* Suggestions Dropdown: verified match first, unverified copies collapsed below */}
               {showSuggestions && (
                 <div className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto">
-                  {suggestions.map((pair, index) => {
-                    const officialKey = `${pair.chainId.toLowerCase()}-${pair.baseToken.address.toLowerCase()}`;
-                    const verification = officialTokenMap.get(officialKey); // true | false | undefined
-                    // Only badge as "Original" once we've actually confirmed the address against
-                    // CoinGecko's official contract - never just because it's first in the list.
-                    const isOriginal = verification === true;
-                    const isFlaggedCopycat = verification === false;
-                    return (
-                      <button
-                        key={`${pair.chainId}-${pair.pairAddress}-${index}`}
-                        className={cn(
-                          "w-full px-4 py-3 flex items-center justify-between transition-colors text-left border-b border-border/20 last:border-b-0",
-                          isOriginal 
-                            ? "bg-emerald-500/10 hover:bg-emerald-500/20 ring-1 ring-inset ring-emerald-500/30" 
-                            : "hover:bg-primary/10"
-                        )}
-                        onMouseDown={() => handleSelectSuggestion(pair)}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="relative">
-                            {pair.info?.imageUrl && (
-                              <img 
-                                src={pair.info.imageUrl} 
-                                alt={pair.baseToken.symbol}
-                                className={cn(
-                                  "w-9 h-9 rounded-full bg-secondary",
-                                  isOriginal ? "ring-2 ring-emerald-500" : "ring-2 ring-border/30"
-                                )}
-                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                              />
-                            )}
-                            {isOriginal && (
-                              <div className="absolute -top-1 -right-1 bg-emerald-500 rounded-full p-0.5">
-                                <BadgeCheck className="w-3 h-3 text-white" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className={cn(
-                                "font-medium truncate",
-                                isOriginal ? "text-emerald-400" : "text-foreground"
-                              )}>
-                                {pair.baseToken.name}
-                              </span>
-                              <span className="text-muted-foreground text-sm">({pair.baseToken.symbol})</span>
-                              {isOriginal && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold uppercase tracking-wide">
-                                  Original
-                                </span>
-                              )}
-                              {isFlaggedCopycat && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold uppercase tracking-wide">
-                                  Unverified
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground font-mono truncate">
-                              {truncateAddress(pair.baseToken.address)}
-                            </p>
-                          </div>
+                  {/* Verified / established tokens */}
+                  {trustedSuggestions.length > 0 && (
+                    <div>
+                      <div className="px-4 py-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-400 bg-emerald-500/10 border-b border-emerald-500/20">
+                        <BadgeCheck className="w-3.5 h-3.5" />
+                        Verified match
+                      </div>
+                      {trustedSuggestions.map((s, index) => renderSuggestionRow(s, true, index))}
+                    </div>
+                  )}
+
+                  {/* Unverified copies */}
+                  {warnedSuggestions.length > 0 && (
+                    <div>
+                      {trustedSuggestions.length > 0 ? (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // keep the input focused so the list doesn't close
+                            setShowWarned((v) => !v);
+                          }}
+                          className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left text-xs bg-red-500/10 hover:bg-red-500/15 border-t border-red-500/30 text-red-400"
+                        >
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            {warnedSuggestions.length} unverified {warnedSuggestions.length === 1 ? "copy" : "copies"} with a similar name. Do not trust by name.
+                          </span>
+                          <span className="shrink-0 underline">{showWarned ? "Hide" : "Show"}</span>
+                        </button>
+                      ) : (
+                        <div className="px-4 py-2.5 flex items-center gap-1.5 text-xs text-red-400 bg-red-500/10 border-b border-red-500/20">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          No verified match found. Check the contract address before scanning.
                         </div>
-                        <span className={cn(
-                          "text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ml-2",
-                          isOriginal 
-                            ? "bg-emerald-500/20 text-emerald-400" 
-                            : "bg-primary/10 text-primary"
-                        )}>
-                          {chainIdToNetwork[pair.chainId] || pair.chainId}
-                        </span>
-                      </button>
-                    );
-                  })}
+                      )}
+                      {(showWarned || trustedSuggestions.length === 0) &&
+                        warnedSuggestions.map((s, index) => renderSuggestionRow(s, false, index))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
