@@ -5,6 +5,7 @@ const ORIGIN = "https://aidyor.app";
 
 const PUBLIC_ROUTES = [
   /^\/$/,
+  /^\/about$/,
   /^\/faq$/,
   /^\/glossary(\/[a-z0-9-]+)?$/,
   /^\/api-docs$/,
