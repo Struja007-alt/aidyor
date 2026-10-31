@@ -19,6 +19,14 @@ const SITEMAP_CANDIDATES = [
 // og:url and a title built from the URL slug, so nothing points at the homepage.
 // ---------------------------------------------------------------------------
 const PAGES = {
+  "/about": {
+    title: "About AIDYOR | AI Crypto Token Security Scanner",
+    description:
+      "AIDYOR is an AI-powered crypto token security scanner that detects honeypots, rug pulls and scam tokens across 9 blockchain networks. Learn what we check and how it works.",
+    h1: "About AIDYOR",
+    intro:
+      "AIDYOR is an AI-powered crypto token security scanner that helps you spot honeypots, rug pulls, and scam tokens before you invest.",
+  },
   "/faq": {
     title: "Crypto Scam FAQ: Rug Pulls, Honeypots & Red Flags | AIDYOR",
     description:
@@ -35,8 +43,8 @@ const PAGES = {
   //   intro: "…",
   // },
 };
-
 // ---------------------------------------------------------------------------
+
 const esc = (s) =>
   String(s)
     .replace(/&/g, "&amp;")
@@ -81,7 +89,6 @@ function buildPage(template, route) {
   const h1 = meta.h1 || humanize(lastSlug);
 
   let html = template;
-
   html = setMeta(html, /<title>[\s\S]*?<\/title>/, `<title>${esc(title)}</title>`);
   html = setMeta(html, /<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${url}" />`);
   html = setMeta(html, /<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${url}" />`);
