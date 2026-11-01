@@ -91,6 +91,22 @@ export const chains: Chain[] = [
     ],
   },
   {
+    slug: "optimism",
+    name: "Optimism",
+    token: "ETH",
+    explorer: "Optimistic Etherscan",
+    type: "an Ethereum layer-2 network (OP Mainnet)",
+    dexes: "Velodrome and Uniswap",
+    intro:
+      "Optimism is an Ethereum layer-2 network with low fees and full EVM compatibility, so tokens deploy as standard contracts and the usual scams follow. Established protocols and brand-new launches trade side by side, and bridged assets are common, so it is worth checking that you have the right contract before you buy.",
+    risks: [
+      "Honeypot contracts that allow buys but block or heavily tax sells",
+      "Lookalike versions of popular or bridged tokens",
+      "Unlocked liquidity that the deployer can withdraw at any time",
+      "Owner-controlled taxes, blacklists, or mint functions",
+    ],
+  },
+  {
     slug: "base",
     name: "Base",
     token: "ETH",
@@ -146,7 +162,7 @@ export const chains: Chain[] = [
     type: "an Arbitrum-based layer-2 network",
     dexes: "Uniswap",
     intro:
-      "Robinhood Chain is an EVM-compatible layer-2 built on Arbitrum's stack, launched on public mainnet on July 1, 2026 and aimed at tokenized real-world assets and DeFi. Alongside those, early on-chain activity included memecoins and launchpad tokens. New networks attract permissionless launches before tooling and community vetting catch up, so unverified contracts and unlocked liquidity are the main things to check.",
+      "Robinhood Chain is an EVM-compatible layer-2 built on Arbitrum's stack and aimed at tokenized real-world assets and DeFi. Alongside those, on-chain activity includes memecoins and launchpad tokens. New networks attract permissionless launches before tooling and community vetting catch up, so unverified contracts and unlocked liquidity are the main things to check. Scanner coverage on newer networks can be more limited than on established chains, so treat results as one input, not a guarantee.",
     risks: [
       "Lookalike tokens imitating official Stock Tokens or popular tickers",
       "Memecoin and launchpad tokens with unlocked liquidity",
