@@ -13,6 +13,7 @@ import { prefetchCoinGeckoTokens } from "@/lib/api/coingecko";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
 import { InstallBanner } from "@/components/InstallBanner";
+import { CookieConsent } from "@/components/CookieConsent";
 import { Analytics } from "@vercel/analytics/react";
 import Index from "./pages/Index";
 
@@ -33,7 +34,6 @@ const OCRDashboard = lazy(() => import("./pages/OCRDashboard"));
 const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
-const About = lazy(() => import("./pages/About"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,12 +79,12 @@ const App = () => (
                 <Route path="/ocr-dashboard" element={<OCRDashboard />} />
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
-                <Route path="/about" element={<About />} />
                 <Route path="/admin/marketing" element={<AdminMarketing />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
+            <CookieConsent />
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>
