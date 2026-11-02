@@ -45,8 +45,10 @@ const Index = () => {
             Real-time Token Analysis
           </div>
 
-          <h1 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-4 tracking-tight inline-flex items-center justify-center gap-3 flex-wrap">
-            Protect Your <span className="text-gradient-safe drop-shadow-[0_0_25px_hsl(var(--primary)/0.35)]">Crypto</span>
+          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 tracking-tight inline-flex items-center justify-center gap-3 flex-wrap">
+            <span>
+              Crypto Token Scanner: Detect <span className="text-gradient-safe drop-shadow-[0_0_25px_hsl(var(--primary)/0.35)]">Honeypots</span> &amp; Rug Pulls
+            </span>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -60,7 +62,7 @@ const Index = () => {
           </h1>
 
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
-            Advanced multi-chain token scanner. Paste a contract, search by name, or drop a screenshot — we surface the risk in seconds.
+            Protect your crypto with an advanced multi-chain token scanner and free honeypot checker. Paste a contract, search by name, or drop a screenshot — we surface the risk in seconds.
           </p>
 
           {/* Feature Highlights */}
