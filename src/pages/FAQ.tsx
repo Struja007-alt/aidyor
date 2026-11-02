@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, HelpCircle, AlertTriangle, Shield, Search, Coins, Lock, Users } from "lucide-react";
+import { ArrowLeft, HelpCircle, AlertTriangle, Shield, Search, Coins, Lock, Users, Info } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -8,246 +8,229 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-const SITE = "https://aidyor.app";
-const PAGE_URL = `${SITE}/faq`;
-const PAGE_TITLE = "Crypto Scam FAQ: Rug Pulls, Honeypots & Red Flags | AIDYOR";
-const PAGE_DESCRIPTION =
-  "Answers to common crypto scam questions: what rug pulls, honeypots and locked liquidity are, how to spot red flags, and how to stay safe. Free guide from AIDYOR.";
-
-const faqCategories = [
-  {
-    icon: AlertTriangle,
-    title: "Understanding Crypto Scams",
-    color: "text-danger",
-    questions: [
-      {
-        q: "What is a rug pull?",
-        a: "A rug pull is a type of crypto scam where developers abandon a project and run away with investors' funds. This typically happens when the team removes liquidity from a trading pool, making it impossible for investors to sell their tokens. Rug pulls can be sudden (hard rug) or gradual (soft rug), where developers slowly drain funds over time."
-      },
-      {
-        q: "What is a honeypot scam?",
-        a: "A honeypot is a malicious smart contract that allows users to buy tokens but prevents them from selling. The contract code contains hidden restrictions that block sell transactions while allowing buys, trapping investors' funds. Our scanner specifically checks for honeypot indicators using the GoPlus Security API."
-      },
-      {
-        q: "What are pump and dump schemes?",
-        a: "Pump and dump schemes involve artificially inflating a token's price through coordinated buying and misleading promotions, then selling (dumping) when the price peaks. The organizers profit while late investors are left holding worthless tokens. Watch for sudden price spikes with no fundamental news, excessive social media hype, and influencer promotions."
-      },
-      {
-        q: "What are fake airdrops and giveaways?",
-        a: "Scammers often impersonate legitimate projects or celebrities, promising free tokens or crypto giveaways. They may ask you to send crypto first, connect your wallet to malicious sites, or share private keys. Legitimate airdrops never require you to send money or share sensitive information."
-      },
-      {
-        q: "What is address poisoning?",
-        a: "Address poisoning involves scammers sending tiny transactions from addresses that look similar to ones you frequently interact with. When you copy an address from your transaction history, you might accidentally copy the scammer's address instead. Always verify the full address, not just the first and last characters."
-      }
-    ]
-  },
-  {
-    icon: Search,
-    title: "How to Spot Red Flags",
-    color: "text-warning",
-    questions: [
-      {
-        q: "What are the biggest red flags in a new token?",
-        a: "Key red flags include: Very low liquidity (under $10K), anonymous team with no track record, unverified or closed-source contracts, high buy/sell taxes (over 10%), concentrated token holdings (few wallets holding majority), no audit from reputable firms, unrealistic promises of returns, and pressure to invest quickly."
-      },
-      {
-        q: "How can I verify if a project team is legitimate?",
-        a: "Research team members on LinkedIn, X, and GitHub. Check if they have verifiable work history in crypto or tech. Be wary of stock photos or AI-generated profile pictures. Look for video AMAs or interviews. Remember that even doxxed teams can still rug, so this is just one factor to consider."
-      },
-      {
-        q: "What should I check before buying any token?",
-        a: "Before investing: 1) Check liquidity and trading volume on DEXScreener, 2) Verify the contract on a block explorer, 3) Look for security audits, 4) Research the team and community, 5) Read the whitepaper and tokenomics, 6) Check holder distribution for whale concentration, 7) Use our scanner to analyze risk factors, 8) Start with a small test transaction."
-      },
-      {
-        q: "How do I identify fake websites and social media accounts?",
-        a: "Check for subtle URL misspellings (e.g., 'uniswap' vs 'un1swap'). Verify official links through CoinGecko or CoinMarketCap. Look for verified badges on social media. Check account age and follower authenticity. Be suspicious of DMs offering investment opportunities. Bookmark official sites rather than clicking links."
-      },
-      {
-        q: "What does it mean if a contract is 'unverified'?",
-        a: "An unverified contract means the source code hasn't been published on the block explorer. While not automatically a scam, it prevents anyone from reviewing the code for malicious functions. Legitimate projects typically verify their contracts for transparency. Our scanner flags unverified contracts as a warning."
-      }
-    ]
-  },
-  {
-    icon: Shield,
-    title: "Security Best Practices",
-    color: "text-safe",
-    questions: [
-      {
-        q: "How should I store my crypto securely?",
-        a: "Use hardware wallets (like Ledger or Trezor) for significant holdings. Never share your seed phrase or private keys with anyone. Use unique, strong passwords for each exchange account. Enable 2FA (preferably hardware keys or authenticator apps, not SMS). Consider using a separate 'hot wallet' with limited funds for daily trading."
-      },
-      {
-        q: "What should I do if I think I've been scammed?",
-        a: "Act quickly: 1) Revoke all token approvals using tools like Revoke.cash, 2) Transfer remaining funds to a new wallet, 3) Document everything for potential legal action, 4) Report the scam to the platform and relevant authorities, 5) Warn others in community channels. Unfortunately, recovering stolen crypto is very difficult."
-      },
-      {
-        q: "How do I safely revoke token approvals?",
-        a: "Token approvals allow contracts to spend your tokens. Malicious approvals can drain your wallet. Use Revoke.cash or Etherscan's Token Approval Checker to view and revoke approvals. Regularly audit your approvals, especially after interacting with new protocols. Consider using approval limits instead of unlimited approvals."
-      },
-      {
-        q: "What is a safe way to test a new token?",
-        a: "Start with a small 'test' purchase to verify you can actually sell. Check if the buy and sell taxes match what's advertised. Monitor the transaction on a block explorer. Wait a few hours and try to sell a portion. If everything works correctly, you can consider a larger position—but never invest more than you can afford to lose."
-      },
-      {
-        q: "Should I use a VPN when trading crypto?",
-        a: "A VPN can add privacy but isn't a complete security solution. It helps protect your IP address and can bypass geo-restrictions. However, some exchanges may flag VPN usage. More important security measures include hardware wallets, 2FA, and careful verification of all transactions and addresses."
-      }
-    ]
-  },
-  {
-    icon: Coins,
-    title: "Understanding Tokenomics",
-    color: "text-primary",
-    questions: [
-      {
-        q: "What are buy and sell taxes, and when are they dangerous?",
-        a: "Buy/sell taxes are fees taken on each transaction, often used for marketing, development, or liquidity. Taxes under 5% are generally acceptable. Taxes of 5-10% require caution. Taxes over 10% are a major red flag. Some scams start with low taxes and increase them later. Our scanner monitors tax percentages from the contract."
-      },
-      {
-        q: "What does 'locked liquidity' mean and why does it matter?",
-        a: "Locked liquidity means the trading pool funds are secured in a time-locked contract, preventing the team from removing them. This protects against rug pulls. Check the lock duration (longer is better), the percentage locked (higher is better), and verify the lock on platforms like Team.Finance or UNCX. Unlocked liquidity is a major red flag."
-      },
-      {
-        q: "How do I check token holder distribution?",
-        a: "Use block explorers (Etherscan, BscScan, Solscan) to view top holders. Red flags include: single wallet holding over 10% (excluding contracts), top 10 wallets holding over 50%, recent large accumulations by few wallets. Our scanner provides holder count data from security APIs."
-      },
-      {
-        q: "What is 'max wallet' and 'max transaction' limit?",
-        a: "These are contract restrictions limiting how many tokens one wallet can hold or buy per transaction. They can prevent whale manipulation but can also be used maliciously (setting limits so low that normal users can't accumulate, while insiders are whitelisted). Check if limits are reasonable and if there are exempted addresses."
-      },
-      {
-        q: "What does it mean if a token is 'mintable'?",
-        a: "A mintable token allows the owner or contract to create new tokens after launch, potentially diluting existing holders' value. While some projects legitimately need minting capabilities, it's often a red flag for scams. Our scanner flags mintable contracts as a warning. Ideally, mint functions should be renounced or controlled by a DAO."
-      }
-    ]
-  },
-  {
-    icon: Lock,
-    title: "Contract Security",
-    color: "text-accent",
-    questions: [
-      {
-        q: "What makes a contract 'renounced' and is it always safe?",
-        a: "Renouncing ownership means the deployer gives up control over the contract's admin functions. While this prevents certain rug pull methods, it's not a guarantee of safety. Malicious code can be built in before renouncing. Some scams use 'hidden owner' functions that survive renouncement. Our scanner checks for these patterns."
-      },
-      {
-        q: "What is a proxy contract and why should I be careful?",
-        a: "Proxy contracts allow developers to update the contract logic after deployment. While useful for legitimate upgrades, they can be exploited to add malicious code later. A 'safe' contract today could become a honeypot tomorrow. Check if a contract uses proxy patterns and who controls the upgrade mechanism."
-      },
-      {
-        q: "What are 'blacklist' and 'whitelist' functions?",
-        a: "Blacklist functions allow blocking specific addresses from trading, while whitelist functions allow only approved addresses to trade. These can be used legitimately (blocking bots, compliance) or maliciously (blocking all sellers, exempting insiders from taxes). Our scanner flags contracts with these capabilities."
-      },
-      {
-        q: "How do I read a basic smart contract for red flags?",
-        a: "Look for: 1) Verified source code on the block explorer, 2) Functions like 'setTax', 'blacklist', 'pause' that give owner control, 3) Hidden or obfuscated code sections, 4) External calls to unknown contracts, 5) Unusual modifier patterns. If you're not technical, rely on audits and security scanner results like ours."
-      },
-      {
-        q: "What is a security audit and how reliable are they?",
-        a: "Security audits are professional reviews of smart contract code by firms like CertiK, Hacken, or PeckShield. They identify vulnerabilities and risks. However, audits have limitations: they're point-in-time snapshots, may not catch all issues, and some firms have varying quality. An audit is helpful but not a guarantee of safety."
-      }
-    ]
-  },
-  {
-    icon: Users,
-    title: "Community & Social Signals",
-    color: "text-muted-foreground",
-    questions: [
-      {
-        q: "How can I tell if a Telegram or Discord community is fake?",
-        a: "Red flags include: Disabled or heavily moderated chat (no questions allowed), fake member counts (bots), admins immediately DMing you, aggressive price discussion without substance, deleted messages questioning the project, and no technical discussions. Healthy communities allow skepticism and have organic conversations."
-      },
-      {
-        q: "Should I trust crypto influencers and their recommendations?",
-        a: "Be extremely cautious. Many influencers are paid to promote tokens without disclosing it. They often sell their holdings while their followers buy. Look for disclosure statements, check if they've promoted scams before, and never invest based solely on influencer recommendations. Do your own research."
-      },
-      {
-        q: "What is a 'coordinated shill campaign'?",
-        a: "Shill campaigns involve paid promoters flooding social media with positive content about a token to create artificial hype. Signs include: identical talking points across accounts, new accounts with little history, sudden flood of posts, and unrealistic profit claims. These often precede pump and dump schemes."
-      },
-      {
-        q: "How do I verify information about a crypto project?",
-        a: "Cross-reference multiple sources: official website, verified social media, CoinGecko/CoinMarketCap listings, block explorer data, audit reports, and reputable news sources. Be skeptical of information from single sources or anonymous posts. When in doubt, wait and observe before investing."
-      }
-    ]
-  }
-];
-
 const FAQ = () => {
   useEffect(() => {
-    const previousTitle = document.title;
-    document.title = PAGE_TITLE;
-
-    // Create-or-update a <meta> tag; returns a function that restores the old value.
-    const setMeta = (attr: "name" | "property", key: string, content: string) => {
-      let el = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
-      const created = !el;
-      const previous = el?.getAttribute("content") ?? null;
-      if (!el) {
-        el = document.createElement("meta");
-        el.setAttribute(attr, key);
-        document.head.appendChild(el);
-      }
-      el.setAttribute("content", content);
-      return () => {
-        if (!el) return;
-        if (created) el.remove();
-        else if (previous !== null) el.setAttribute("content", previous);
-      };
-    };
-
-    const restores = [
-      setMeta("name", "description", PAGE_DESCRIPTION),
-      setMeta("property", "og:title", PAGE_TITLE),
-      setMeta("property", "og:description", PAGE_DESCRIPTION),
-      setMeta("property", "og:url", PAGE_URL),
-      setMeta("name", "twitter:title", PAGE_TITLE),
-      setMeta("name", "twitter:description", PAGE_DESCRIPTION),
-    ];
-
-    // Canonical
-    let canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
-    const canonicalCreated = !canonical;
-    const previousCanonical = canonical?.getAttribute("href") ?? null;
-    if (!canonical) {
-      canonical = document.createElement("link");
-      canonical.setAttribute("rel", "canonical");
-      document.head.appendChild(canonical);
-    }
-    canonical.setAttribute("href", PAGE_URL);
-
-    // FAQPage structured data
-    const script = document.createElement("script");
-    script.type = "application/ld+json";
-    script.id = "faq-jsonld";
-    script.text = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      mainEntity: faqCategories.flatMap((category) =>
-        category.questions.map((item) => ({
-          "@type": "Question",
-          name: item.q,
-          acceptedAnswer: { "@type": "Answer", text: item.a },
-        }))
-      ),
-    });
-    document.head.appendChild(script);
-
-    return () => {
-      document.title = previousTitle;
-      restores.forEach((restore) => restore());
-      if (canonical) {
-        if (canonicalCreated) canonical.remove();
-        else if (previousCanonical !== null) canonical.setAttribute("href", previousCanonical);
-      }
-      script.remove();
-    };
+    document.title = "FAQ | AIDYOR";
   }, []);
+
+  const faqCategories = [
+    {
+      icon: Info,
+      title: "About AIDYOR",
+      color: "text-primary",
+      questions: [
+        {
+          q: "What is AIDYOR?",
+          a: "AIDYOR is an AI-powered crypto token security scanner that helps investors do their own research (DYOR) before buying a token. It checks smart contracts for honeypots, rug pull risks, hidden taxes, and other red flags, and explains the results in plain language. AIDYOR is available as a web app at aidyor.app, a browser extension, a Telegram bot (@AIDYOR_BOT), and a B2B API."
+        },
+        {
+          q: "How do I check if a token is a honeypot or rug pull with AIDYOR?",
+          a: "Open aidyor.app, paste the token's contract address, choose the blockchain network, and run the scan. AIDYOR analyzes the contract and returns a risk assessment covering honeypot behavior, buy and sell taxes, liquidity, holder concentration, ownership and contract permissions, and other known scam patterns. You can also scan from the browser extension or the Telegram bot."
+        },
+        {
+          q: "Which blockchains does AIDYOR support?",
+          a: "AIDYOR is multi-chain and supports 9 blockchain networks, including Ethereum, BNB Chain, Solana, Polygon, and Arbitrum. You select the network when you scan a token contract address."
+        },
+        {
+          q: "Is AIDYOR free?",
+          a: "Yes. The free plan includes 3 token scans per day on the web app, with no payment required. The Pro plan costs $9.99 per month and includes unlimited scans and advanced AI risk explanations. Whale Pro adds unlimited alerts about large-investor (whale) activity. See the subscription page for current plan details."
+        },
+        {
+          q: "Can AIDYOR guarantee that a token is safe?",
+          a: "No. AIDYOR detects technical risks in smart contracts and on-chain data, but no scanner can predict every risk. Market manipulation outside the contract code, such as coordinated dumping by early holders, cannot be detected from code alone. A low-risk result is not financial advice or a guarantee. Always do your own research and never invest more than you can afford to lose."
+        },
+        {
+          q: "How is AIDYOR different from other token scanners?",
+          a: "AIDYOR combines contract-level security checks with AI-generated explanations, so results are readable for people who are not smart contract experts. It covers 9 chains in one tool and is available across web, browser extension, Telegram, and API. For methodology and limitations, see the Transparency page."
+        }
+      ]
+    },
+    {
+      icon: AlertTriangle,
+      title: "Understanding Crypto Scams",
+      color: "text-danger",
+      questions: [
+        {
+          q: "What is a rug pull?",
+          a: "A rug pull is a type of crypto scam where developers abandon a project and run away with investors' funds. This typically happens when the team removes liquidity from a trading pool, making it impossible for investors to sell their tokens. Rug pulls can be sudden (hard rug) or gradual (soft rug), where developers slowly drain funds over time."
+        },
+        {
+          q: "What is a honeypot scam?",
+          a: "A honeypot is a malicious smart contract that allows users to buy tokens but prevents them from selling. The contract code contains hidden restrictions that block sell transactions while allowing buys, trapping investors' funds. Our scanner specifically checks for honeypot indicators using the GoPlus Security API."
+        },
+        {
+          q: "What are pump and dump schemes?",
+          a: "Pump and dump schemes involve artificially inflating a token's price through coordinated buying and misleading promotions, then selling (dumping) when the price peaks. The organizers profit while late investors are left holding worthless tokens. Watch for sudden price spikes with no fundamental news, excessive social media hype, and influencer promotions."
+        },
+        {
+          q: "What are fake airdrops and giveaways?",
+          a: "Scammers often impersonate legitimate projects or celebrities, promising free tokens or crypto giveaways. They may ask you to send crypto first, connect your wallet to malicious sites, or share private keys. Legitimate airdrops never require you to send money or share sensitive information."
+        },
+        {
+          q: "What is address poisoning?",
+          a: "Address poisoning involves scammers sending tiny transactions from addresses that look similar to ones you frequently interact with. When you copy an address from your transaction history, you might accidentally copy the scammer's address instead. Always verify the full address, not just the first and last characters."
+        }
+      ]
+    },
+    {
+      icon: Search,
+      title: "How to Spot Red Flags",
+      color: "text-warning",
+      questions: [
+        {
+          q: "What are the biggest red flags in a new token?",
+          a: "Key red flags include: Very low liquidity (under $10K), anonymous team with no track record, unverified or closed-source contracts, high buy/sell taxes (over 10%), concentrated token holdings (few wallets holding majority), no audit from reputable firms, unrealistic promises of returns, and pressure to invest quickly."
+        },
+        {
+          q: "How can I verify if a project team is legitimate?",
+          a: "Research team members on LinkedIn, X, and GitHub. Check if they have verifiable work history in crypto or tech. Be wary of stock photos or AI-generated profile pictures. Look for video AMAs or interviews. Remember that even doxxed teams can still rug, so this is just one factor to consider."
+        },
+        {
+          q: "What should I check before buying any token?",
+          a: "Before investing: 1) Check liquidity and trading volume on DEXScreener, 2) Verify the contract on a block explorer, 3) Look for security audits, 4) Research the team and community, 5) Read the whitepaper and tokenomics, 6) Check holder distribution for whale concentration, 7) Use our scanner to analyze risk factors, 8) Start with a small test transaction."
+        },
+        {
+          q: "How do I identify fake websites and social media accounts?",
+          a: "Check for subtle URL misspellings (e.g., 'uniswap' vs 'un1swap'). Verify official links through CoinGecko or CoinMarketCap. Look for verified badges on social media. Check account age and follower authenticity. Be suspicious of DMs offering investment opportunities. Bookmark official sites rather than clicking links."
+        },
+        {
+          q: "What does it mean if a contract is 'unverified'?",
+          a: "An unverified contract means the source code hasn't been published on the block explorer. While not automatically a scam, it prevents anyone from reviewing the code for malicious functions. Legitimate projects typically verify their contracts for transparency. Our scanner flags unverified contracts as a warning."
+        }
+      ]
+    },
+    {
+      icon: Shield,
+      title: "Security Best Practices",
+      color: "text-safe",
+      questions: [
+        {
+          q: "How should I store my crypto securely?",
+          a: "Use hardware wallets (like Ledger or Trezor) for significant holdings. Never share your seed phrase or private keys with anyone. Use unique, strong passwords for each exchange account. Enable 2FA (preferably hardware keys or authenticator apps, not SMS). Consider using a separate 'hot wallet' with limited funds for daily trading."
+        },
+        {
+          q: "What should I do if I think I've been scammed?",
+          a: "Act quickly: 1) Revoke all token approvals using tools like Revoke.cash, 2) Transfer remaining funds to a new wallet, 3) Document everything for potential legal action, 4) Report the scam to the platform and relevant authorities, 5) Warn others in community channels. Unfortunately, recovering stolen crypto is very difficult."
+        },
+        {
+          q: "How do I safely revoke token approvals?",
+          a: "Token approvals allow contracts to spend your tokens. Malicious approvals can drain your wallet. Use Revoke.cash or Etherscan's Token Approval Checker to view and revoke approvals. Regularly audit your approvals, especially after interacting with new protocols. Consider using approval limits instead of unlimited approvals."
+        },
+        {
+          q: "What is a safe way to test a new token?",
+          a: "Start with a small 'test' purchase to verify you can actually sell. Check if the buy and sell taxes match what's advertised. Monitor the transaction on a block explorer. Wait a few hours and try to sell a portion. If everything works correctly, you can consider a larger position—but never invest more than you can afford to lose."
+        },
+        {
+          q: "Should I use a VPN when trading crypto?",
+          a: "A VPN can add privacy but isn't a complete security solution. It helps protect your IP address and can bypass geo-restrictions. However, some exchanges may flag VPN usage. More important security measures include hardware wallets, 2FA, and careful verification of all transactions and addresses."
+        }
+      ]
+    },
+    {
+      icon: Coins,
+      title: "Understanding Tokenomics",
+      color: "text-primary",
+      questions: [
+        {
+          q: "What are buy and sell taxes, and when are they dangerous?",
+          a: "Buy/sell taxes are fees taken on each transaction, often used for marketing, development, or liquidity. Taxes under 5% are generally acceptable. Taxes of 5-10% require caution. Taxes over 10% are a major red flag. Some scams start with low taxes and increase them later. Our scanner monitors tax percentages from the contract."
+        },
+        {
+          q: "What does 'locked liquidity' mean and why does it matter?",
+          a: "Locked liquidity means the trading pool funds are secured in a time-locked contract, preventing the team from removing them. This protects against rug pulls. Check the lock duration (longer is better), the percentage locked (higher is better), and verify the lock on platforms like Team.Finance or UNCX. Unlocked liquidity is a major red flag."
+        },
+        {
+          q: "How do I check token holder distribution?",
+          a: "Use block explorers (Etherscan, BscScan, Solscan) to view top holders. Red flags include: single wallet holding over 10% (excluding contracts), top 10 wallets holding over 50%, recent large accumulations by few wallets. Our scanner provides holder count data from security APIs."
+        },
+        {
+          q: "What is 'max wallet' and 'max transaction' limit?",
+          a: "These are contract restrictions limiting how many tokens one wallet can hold or buy per transaction. They can prevent whale manipulation but can also be used maliciously (setting limits so low that normal users can't accumulate, while insiders are whitelisted). Check if limits are reasonable and if there are exempted addresses."
+        },
+        {
+          q: "What does it mean if a token is 'mintable'?",
+          a: "A mintable token allows the owner or contract to create new tokens after launch, potentially diluting existing holders' value. While some projects legitimately need minting capabilities, it's often a red flag for scams. Our scanner flags mintable contracts as a warning. Ideally, mint functions should be renounced or controlled by a DAO."
+        }
+      ]
+    },
+    {
+      icon: Lock,
+      title: "Contract Security",
+      color: "text-accent",
+      questions: [
+        {
+          q: "What makes a contract 'renounced' and is it always safe?",
+          a: "Renouncing ownership means the deployer gives up control over the contract's admin functions. While this prevents certain rug pull methods, it's not a guarantee of safety. Malicious code can be built in before renouncing. Some scams use 'hidden owner' functions that survive renouncement. Our scanner checks for these patterns."
+        },
+        {
+          q: "What is a proxy contract and why should I be careful?",
+          a: "Proxy contracts allow developers to update the contract logic after deployment. While useful for legitimate upgrades, they can be exploited to add malicious code later. A 'safe' contract today could become a honeypot tomorrow. Check if a contract uses proxy patterns and who controls the upgrade mechanism."
+        },
+        {
+          q: "What are 'blacklist' and 'whitelist' functions?",
+          a: "Blacklist functions allow blocking specific addresses from trading, while whitelist functions allow only approved addresses to trade. These can be used legitimately (blocking bots, compliance) or maliciously (blocking all sellers, exempting insiders from taxes). Our scanner flags contracts with these capabilities."
+        },
+        {
+          q: "How do I read a basic smart contract for red flags?",
+          a: "Look for: 1) Verified source code on the block explorer, 2) Functions like 'setTax', 'blacklist', 'pause' that give owner control, 3) Hidden or obfuscated code sections, 4) External calls to unknown contracts, 5) Unusual modifier patterns. If you're not technical, rely on audits and security scanner results like ours."
+        },
+        {
+          q: "What is a security audit and how reliable are they?",
+          a: "Security audits are professional reviews of smart contract code by firms like CertiK, Hacken, or PeckShield. They identify vulnerabilities and risks. However, audits have limitations: they're point-in-time snapshots, may not catch all issues, and some firms have varying quality. An audit is helpful but not a guarantee of safety."
+        }
+      ]
+    },
+    {
+      icon: Users,
+      title: "Community & Social Signals",
+      color: "text-muted-foreground",
+      questions: [
+        {
+          q: "How can I tell if a Telegram or Discord community is fake?",
+          a: "Red flags include: Disabled or heavily moderated chat (no questions allowed), fake member counts (bots), admins immediately DMing you, aggressive price discussion without substance, deleted messages questioning the project, and no technical discussions. Healthy communities allow skepticism and have organic conversations."
+        },
+        {
+          q: "Should I trust crypto influencers and their recommendations?",
+          a: "Be extremely cautious. Many influencers are paid to promote tokens without disclosing it. They often sell their holdings while their followers buy. Look for disclosure statements, check if they've promoted scams before, and never invest based solely on influencer recommendations. Do your own research."
+        },
+        {
+          q: "What is a 'coordinated shill campaign'?",
+          a: "Shill campaigns involve paid promoters flooding social media with positive content about a token to create artificial hype. Signs include: identical talking points across accounts, new accounts with little history, sudden flood of posts, and unrealistic profit claims. These often precede pump and dump schemes."
+        },
+        {
+          q: "How do I verify information about a crypto project?",
+          a: "Cross-reference multiple sources: official website, verified social media, CoinGecko/CoinMarketCap listings, block explorer data, audit reports, and reputable news sources. Be skeptical of information from single sources or anonymous posts. When in doubt, wait and observe before investing."
+        }
+      ]
+    }
+  ];
+
+  // FAQPage structured data built from the same content shown on the page
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqCategories.flatMap((category) =>
+      category.questions.map((item) => ({
+        "@type": "Question",
+        name: item.q,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: item.a,
+        },
+      }))
+    ),
+  };
+
+  const faqJsonLdString = JSON.stringify(faqJsonLd).replace(/</g, "\\u003c");
 
   return (
     <div className="min-h-screen bg-background py-12 px-4">
+      {/* FAQPage JSON-LD: rendered in the component output so prerendering captures it */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: faqJsonLdString }}
+      />
+
       <div className="max-w-4xl mx-auto">
         <Link
           to="/"
@@ -259,11 +242,11 @@ const FAQ = () => {
 
         <div className="flex items-center gap-3 mb-6">
           <HelpCircle className="w-8 h-8 text-primary" />
-          <h1 className="text-3xl md:text-4xl font-bold">Crypto Scam &amp; Token Safety FAQ</h1>
+          <h1 className="text-3xl md:text-4xl font-bold">Frequently Asked Questions</h1>
         </div>
 
         <p className="text-muted-foreground mb-8">
-          Learn how to protect yourself from crypto scams, identify red flags, and follow security best practices.
+          Learn what AIDYOR is, how to protect yourself from crypto scams, identify red flags, and follow security best practices.
         </p>
 
         {/* Quick Navigation */}
@@ -291,6 +274,7 @@ const FAQ = () => {
                 <category.icon className={`w-6 h-6 ${category.color}`} />
                 <h2 className="text-xl font-semibold">{category.title}</h2>
               </div>
+
               <Accordion type="single" collapsible className="space-y-2">
                 {category.questions.map((item, questionIndex) => (
                   <AccordionItem
