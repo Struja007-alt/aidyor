@@ -45,20 +45,21 @@ const Index = () => {
             Real-time Token Analysis
           </div>
 
-          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 tracking-tight inline-flex items-center justify-center gap-3 flex-wrap">
-            <span>
-              Crypto Token Scanner: Detect <span className="text-gradient-safe drop-shadow-[0_0_25px_hsl(var(--primary)/0.35)]">Honeypots</span> &amp; Rug Pulls
+          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 tracking-tight">
+            Crypto Token Scanner: Detect <span className="text-gradient-safe drop-shadow-[0_0_25px_hsl(var(--primary)/0.35)]">Honeypots</span> &amp;{" "}
+            <span className="whitespace-nowrap">
+              Rug&nbsp;Pulls
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="inline-block align-middle ml-2 w-5 h-5 md:w-6 md:h-6 text-muted-foreground hover:text-primary cursor-help transition-colors" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-center">
+                    <p>Analysis is informational only. No financial advice or guarantees.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="w-5 h-5 md:w-6 md:h-6 text-muted-foreground hover:text-primary cursor-help transition-colors" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs text-center">
-                  <p>Analysis is informational only. No financial advice or guarantees.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
           </h1>
 
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
