@@ -3,7 +3,7 @@
  * Provides navigation and branding for the app
  */
 
-import { Shield, Menu, Crown, Mail } from "lucide-react";
+import { Menu, Crown, Mail } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -28,9 +28,13 @@ export const Header = () => {
             className="flex items-center gap-3"
             aria-label="AIDYOR home"
           >
-            <div className="relative w-10 h-10 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center glow-safe">
-              <Shield className="w-5 h-5 text-primary" />
-            </div>
+            <img
+              src="/icon-512.png"
+              alt="AIDYOR logo"
+              width={40}
+              height={40}
+              className="w-10 h-10 rounded-xl object-contain glow-safe"
+            />
             <div>
               <div className="font-display text-xl font-bold text-foreground tracking-wide">
                 AI<span className="text-primary">DYOR</span>
