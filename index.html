@@ -82,7 +82,44 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Static fallback for crawlers and no-JS clients. React replaces everything inside #root when the app mounts. -->
+      <div style="font-family:Inter,system-ui,sans-serif;color:#e5e7eb;background:#1a1a2e;min-height:100vh;padding:24px;line-height:1.6">
+        <header>
+          <strong>AIDYOR</strong>
+          <nav aria-label="Main">
+            <a href="/faq" style="color:#9ca3af">FAQ</a> ·
+            <a href="/blog" style="color:#9ca3af">Blog</a> ·
+            <a href="/glossary" style="color:#9ca3af">Glossary</a> ·
+            <a href="/api-docs" style="color:#9ca3af">API</a> ·
+            <a href="/subscription" style="color:#9ca3af">Pricing</a> ·
+            <a href="/about" style="color:#9ca3af">About</a> ·
+            <a href="/transparency" style="color:#9ca3af">Transparency</a>
+          </nav>
+        </header>
+        <main>
+          <h1>Crypto Token Scanner: Detect Honeypots &amp; Rug Pulls</h1>
+          <p>Protect your crypto with an advanced multi-chain token scanner and free honeypot checker. Paste a contract, search by name, or drop a screenshot — we surface the risk in seconds.</p>
+          <ul>
+            <li>No wallet connection required</li>
+            <li>Real-time blockchain data</li>
+            <li>Scam pattern detection</li>
+            <li>AI-powered OCR</li>
+          </ul>
+          <h2>How It Works</h2>
+          <p>Institutional-grade crypto security analysis in three steps — no wallet, no sign-up required.</p>
+          <h3>1. Input Your Token</h3>
+          <p>Paste a contract address, search by token name, or drop a screenshot — our OCR engine extracts the address automatically.</p>
+          <h3>2. Real-Time Analysis</h3>
+          <p>We cross-check 7+ security APIs simultaneously — GoPlus, RugCheck, Unicrypt, DexScreener and more — across 9 blockchain networks.</p>
+          <h3>3. Get Your Risk Score</h3>
+          <p>Receive a 0–100 safety score with AI-powered plain-English explanations of every risk factor. No jargon, no guesswork.</p>
+          <h2>Smart Contract Bug Scanner</h2>
+          <p>Check smart contract code for common vulnerabilities before you interact with it.</p>
+          <p><small>Analysis is informational only. No financial advice or guarantees.</small></p>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
