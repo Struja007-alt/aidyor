@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+    <!-- Flash fix: mark JS-enabled clients so the static SEO fallback is not painted before React mounts -->
+    <script>
+      document.documentElement.classList.add('js');
+      // Safety net: if the app has not replaced the fallback after 8s (e.g. bundle failed to load), show the fallback again
+      setTimeout(function () {
+        if (document.querySelector('#root > .ssr-fallback')) {
+          document.documentElement.classList.remove('js');
+        }
+      }, 8000);
+    </script>
+    <style>
+      html, body { margin: 0; background: #09090b; }
+      .js #root > .ssr-fallback { visibility: hidden; }
+    </style>
+
     <!-- Preload critical fonts for faster LCP -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -84,7 +99,7 @@
   <body>
     <div id="root">
       <!-- Static fallback for crawlers and no-JS clients. React replaces everything inside #root when the app mounts. -->
-      <div style="font-family:Inter,system-ui,sans-serif;color:#e5e7eb;background:#1a1a2e;min-height:100vh;padding:24px;line-height:1.6">
+      <div class="ssr-fallback" style="font-family:Inter,system-ui,sans-serif;color:#e5e7eb;background:#1a1a2e;min-height:100vh;padding:24px;line-height:1.6">
         <header>
           <strong>AIDYOR</strong>
           <nav aria-label="Main">
