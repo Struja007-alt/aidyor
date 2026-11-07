@@ -203,17 +203,19 @@ function buildPage(template, route) {
   );
 
   // Static nav + H1 + intro inside #root (React replaces it on mount)
+  // The "ssr-fallback" class lets index.html hide this block for JS-enabled clients (no flash before React mounts)
   const introHtml = intro ? `<p>${esc(intro)}</p>` : "";
   html = html.replace(
     ROOT_RE,
-    () => `<div id="root"><div class="container mx-auto px-4 py-8">${navHtml()}<main><h1>${esc(h1)}</h1>${introHtml}</main></div></div>\n    `
+    () => `<div id="root"><div class="ssr-fallback container mx-auto px-4 py-8">${navHtml()}<main><h1>${esc(h1)}</h1>${introHtml}</main></div></div>\n    `
   );
 
   return html;
 }
 
 // Static homepage content (mirrors the visible hero and How It Works copy)
-const HOME_BLOCK = `<div class="container mx-auto px-4 py-8">${navHtml()}<main>
+// The "ssr-fallback" class lets index.html hide this block for JS-enabled clients (no flash before React mounts)
+const HOME_BLOCK = `<div class="ssr-fallback container mx-auto px-4 py-8">${navHtml()}<main>
 <h1>Crypto Token Scanner: Detect Honeypots &amp; Rug Pulls</h1>
 <p>Protect your crypto with an advanced multi-chain token scanner and free honeypot checker. Paste a contract, search by name, or drop a screenshot — we surface the risk in seconds.</p>
 <ul><li>No wallet connection required</li><li>Real-time blockchain data</li><li>Scam pattern detection</li><li>AI-powered OCR</li></ul>
