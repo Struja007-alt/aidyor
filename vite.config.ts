@@ -30,13 +30,19 @@ export default defineConfig(() => ({
         categories: ["finance", "utilities"],
         icons: [
           {
-            src: "/icon-512.png",
+            src: "/icon-pwa-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any"
+          },
+          {
+            src: "/icon-pwa-512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "any"
           },
           {
-            src: "/icon-512.png",
+            src: "/icon-maskable-512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
