@@ -1,0 +1,27 @@
+name: Crypto News Ingest
+
+on:
+  workflow_dispatch:
+  # Enable the schedule only AFTER the first manual run succeeds:
+  # schedule:
+  #   - cron: "*/15 * * * *"
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call crypto-news-ingest
+        env:
+          CRYPTONEWS_CRON_SECRET: ${{ secrets.CRYPTONEWS_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o response.json -w "%{http_code}" -X POST \
+            -H "x-cryptonews-secret: ${CRYPTONEWS_CRON_SECRET}" \
+            "https://lerromdxykuydrpttfif.supabase.co/functions/v1/crypto-news-ingest")
+          cat response.json
+          echo
+          if [ "$status" != "200" ]; then
+            echo "Ingest failed with HTTP $status"
+            exit 1
+          fi
