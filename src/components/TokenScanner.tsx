@@ -15,8 +15,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { correctAddress, correctEthAddress } from "@/lib/ocr";
 import { 
   searchTokensRanked, 
-  getTokenByAddress, 
-  orientPairsToToken,
+  getOrientedTokenPairs,
   analyzeTokenRisk, 
   chainIdToNetwork,
   type DexPair,
@@ -159,6 +158,9 @@ export const TokenScanner = () => {
   const [officialTokenMap, setOfficialTokenMap] = useState<Map<string, boolean>>(new Map());
   const [isSearching, setIsSearching] = useState(false);
   const [selectedResult, setSelectedResult] = useState<NetworkResult | null>(null);
+  // true when the last scan was refused because the free daily limit is used up.
+  // Lets the UI say "Not scanned" instead of showing an old result or "Token Not Found".
+  const [scanBlocked, setScanBlocked] = useState(false);
 
   // Split dropdown results: verified tokens first, unverified copies below.
   // CoinGecko's official-address check overrides the ranking in both directions.
@@ -261,7 +263,7 @@ export const TokenScanner = () => {
       </button>
     );
   };
-  
+
   // Screenshot state
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -274,7 +276,7 @@ export const TokenScanner = () => {
   // Structured JSON security data state
   const [structuredSecurityResult, setStructuredSecurityResult] = useState<ParsedSecurityResult | null>(null);
   const [rawJsonInput, setRawJsonInput] = useState<string>("");
-  
+
   // Merged security data state (JSON + Live API)
   const [mergedSecurityResult, setMergedSecurityResult] = useState<MergedSecurityResult | null>(null);
   const [isMerging, setIsMerging] = useState(false);
@@ -315,6 +317,8 @@ export const TokenScanner = () => {
 
   // Ref to track current search request ID to prevent race conditions
   const searchIdRef = useRef(0);
+  // Ref to track the current SCAN so a slow older scan can't overwrite a newer one
+  const scanIdRef = useRef(0);
   const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
   const { canScan, recordScan, remainingScans, scansUsedToday, dailyLimit, isPro } = useScanUsage();
   const { logOCRAnalytics } = useOCRAnalytics();
@@ -343,35 +347,35 @@ export const TokenScanner = () => {
       .replace(/[ \t]+/g, ' ')
       // Remove spaces within potential hex sequences (addresses shown with spaces)
       .replace(/0x\s*([a-fA-F0-9])/g, '0x$1');
-    
+
     // Second pass: join hex characters separated by single spaces (common in formatted addresses)
     // Match pattern like "0x ab cd ef" -> "0xabcdef"
     const hexWithSpaces = /0x(\s*[a-fA-F0-9]{2,4})+/g;
     normalized = normalized.replace(hexWithSpaces, (match) => {
       return match.replace(/\s+/g, '');
     });
-    
+
     return normalized;
   }, []);
 
   const extractAddressesFromText = useCallback((text: string): string[] => {
     const addresses = new Set<string>();
-    
+
     // First normalize the text to handle multi-line addresses
     const normalizedText = normalizeOcrText(text);
-    
+
     // Extract Ethereum-style addresses from normalized text
     const ethMatches = normalizedText.match(ADDRESS_PATTERNS.ethereum);
     if (ethMatches) {
       ethMatches.forEach(addr => addresses.add(addr.toLowerCase()));
     }
-    
+
     // Also check original text (in case normalization broke something)
     const ethMatchesOriginal = text.replace(/\n/g, '').match(ADDRESS_PATTERNS.ethereum);
     if (ethMatchesOriginal) {
       ethMatchesOriginal.forEach(addr => addresses.add(addr.toLowerCase()));
     }
-    
+
 // Fallback: Try to extract and fix corrupted ETH addresses
     // This handles OCR errors like "0xdAC17F958D2ee523a2266266994597C13D83lec?"
     if (addresses.size === 0) {
@@ -395,7 +399,7 @@ export const TokenScanner = () => {
             }
           }
         }
-        
+
         // Look for 0x followed by hex-like chars (including common misreads)
         const potentialMatches = variant.match(/0x[a-fA-F0-9lIoO?ghH]{30,50}/gi);
         if (potentialMatches) {
@@ -409,7 +413,7 @@ export const TokenScanner = () => {
               .replace(/H/g, 'B')
               .replace(/g/g, '9')
               .replace(/[^a-fA-F0-9]/g, '');
-            
+
             // Take exactly 40 chars if we have enough
             if (cleaned.length >= 40) {
               addresses.add('0x' + cleaned.substring(0, 40).toLowerCase());
@@ -418,7 +422,7 @@ export const TokenScanner = () => {
         }
       }
     }
-    
+
     // Extract Solana addresses (Base58, 32-44 chars)
     // Check both normalized and line-stripped versions
     const textVariants = [normalizedText, text.replace(/\n/g, '')];
@@ -434,19 +438,19 @@ export const TokenScanner = () => {
         }
       });
     });
-    
+
     // Extract Tron addresses from normalized text
     const tronMatches = normalizedText.match(ADDRESS_PATTERNS.tron);
     if (tronMatches) {
       tronMatches.forEach(addr => addresses.add(addr));
     }
-    
+
     // Try stripping all newlines as fallback for Tron
     const tronMatchesFallback = text.replace(/\n/g, '').match(ADDRESS_PATTERNS.tron);
     if (tronMatchesFallback) {
       tronMatchesFallback.forEach(addr => addresses.add(addr));
     }
-    
+
     return Array.from(addresses);
   }, [normalizeOcrText]);
 
@@ -493,26 +497,26 @@ export const TokenScanner = () => {
         for (let i = 0; i < data.length; i += 4) {
           histogram[Math.round(data[i])]++;
         }
-        
+
         // Find optimal threshold using Otsu's method
         const totalPixels = data.length / 4;
         let sum = 0;
         for (let i = 0; i < 256; i++) sum += i * histogram[i];
-        
+
         let sumB = 0, wB = 0, wF = 0;
         let maxVariance = 0, optimalThreshold = 128;
-        
+
         for (let t = 0; t < 256; t++) {
           wB += histogram[t];
           if (wB === 0) continue;
           wF = totalPixels - wB;
           if (wF === 0) break;
-          
+
           sumB += t * histogram[t];
           const mB = sumB / wB;
           const mF = (sum - sumB) / wF;
           const variance = wB * wF * (mB - mF) * (mB - mF);
-          
+
           if (variance > maxVariance) {
             maxVariance = variance;
             optimalThreshold = t;
@@ -522,20 +526,20 @@ export const TokenScanner = () => {
         // Apply adaptive contrast and noise reduction
         const newImgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const newData = newImgData.data;
-        
+
         for (let i = 0; i < newData.length; i += 4) {
           let gray = newData[i];
-          
+
           // Contrast stretch based on histogram analysis
           const contrast = 1.6;
           const mid = optimalThreshold;
           gray = mid + (gray - mid) * contrast;
           gray = Math.max(0, Math.min(255, gray));
-          
+
           // Apply adaptive binarization with hysteresis
           const highThresh = optimalThreshold + 30;
           const lowThresh = optimalThreshold - 30;
-          
+
           let final;
           if (gray > highThresh) {
             final = 255;
@@ -545,19 +549,19 @@ export const TokenScanner = () => {
             // Use local context for edge pixels
             final = gray > optimalThreshold ? 255 : 0;
           }
-          
+
           newData[i] = final;
           newData[i + 1] = final;
           newData[i + 2] = final;
         }
-        
+
         ctx.putImageData(newImgData, 0, 0);
 
         // Pass 3: Morphological operations - Dilation to connect broken characters
         const dilatedData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const dData = dilatedData.data;
         const width = canvas.width;
-        
+
         // Simple 3x3 dilation for black pixels (text)
         for (let y = 1; y < canvas.height - 1; y++) {
           for (let x = 1; x < width - 1; x++) {
@@ -576,7 +580,7 @@ export const TokenScanner = () => {
             }
           }
         }
-        
+
         // Apply dilation markers
         for (let i = 0; i < dData.length; i += 4) {
           if (dData[i] === 200) {
@@ -585,7 +589,7 @@ export const TokenScanner = () => {
             dData[i + 2] = 0;
           }
         }
-        
+
         ctx.putImageData(dilatedData, 0, 0);
 
         // Pass 4: Sharpen edges for cleaner character boundaries
@@ -594,11 +598,11 @@ export const TokenScanner = () => {
         if (sharpCtx) {
           sharpCanvas.width = canvas.width;
           sharpCanvas.height = canvas.height;
-          
+
           // Apply subtle blur
           sharpCtx.filter = 'blur(0.5px)';
           sharpCtx.drawImage(canvas, 0, 0);
-          
+
           // Blend for sharpening effect
           ctx.globalCompositeOperation = 'difference';
           ctx.globalAlpha = 0.15;
@@ -614,7 +618,7 @@ export const TokenScanner = () => {
           if (finalData.data[i] < 128) blackCount++;
           else whiteCount++;
         }
-        
+
         // If more black than white, invert (text should be dark on light for OCR)
         if (blackCount > whiteCount * 1.5) {
           for (let i = 0; i < finalData.data.length; i += 4) {
@@ -635,10 +639,10 @@ export const TokenScanner = () => {
 // Fix common OCR misreads in addresses using smart correction with checksum validation
   const fixOcrMisreads = (text: string): { text: string; corrections: number } => {
     let totalCorrections = 0;
-    
+
     // Find all potential addresses and correct them
     let fixed = text;
-    
+
     // Process Ethereum-like addresses (0x prefix)
     fixed = fixed.replace(/[0O]x[a-fA-F0-9lIoO?ghGH|!]{30,50}/gi, (match) => {
       const result = correctEthAddress(match);
@@ -648,14 +652,14 @@ export const TokenScanner = () => {
       }
       return result.corrected;
     });
-    
+
     // Fix standalone "x" that should be "0x" (OCR missed leading zero)
     fixed = fixed.replace(/\bx([a-fA-F0-9lIoO?ghGH|!]{38,50})/gi, (_, group) => {
       const result = correctEthAddress('0x' + group);
       totalCorrections++;
       return result.corrected;
     });
-    
+
     // Process Solana addresses (Base58, 32-44 chars without 0/O/I/l)
     fixed = fixed.replace(/\b[1-9A-HJ-NP-Za-km-z0OIl]{32,50}\b/g, (match) => {
       // Only process if it looks like a corrupted Solana address
@@ -669,7 +673,7 @@ export const TokenScanner = () => {
       }
       return match;
     });
-    
+
     // Process Tron addresses (T prefix)
     fixed = fixed.replace(/\b[Tt][A-Za-z0-9lIoO]{30,40}\b/g, (match) => {
       const result = correctAddress(match);
@@ -680,7 +684,7 @@ export const TokenScanner = () => {
       }
       return match;
     });
-    
+
     return { text: fixed, corrections: totalCorrections };
   };
 
@@ -704,11 +708,11 @@ export const TokenScanner = () => {
         }
       }
     }
-    
+
     // Look for anything starting with 0x followed by hex-like chars
     const potentialMatches = text.match(/0x[a-fA-F0-9lIoO?ghH]{30,50}/gi);
     if (!potentialMatches) return null;
-    
+
     for (const match of potentialMatches) {
       // Clean and fix the address
       let cleaned = match.replace(/0x/i, '');
@@ -720,7 +724,7 @@ export const TokenScanner = () => {
         .replace(/H/g, 'B')
         .replace(/g/g, '9')
         .replace(/[^a-fA-F0-9]/g, '');
-      
+
       // Take exactly 40 chars if we have enough
       if (cleaned.length >= 40) {
         return '0x' + cleaned.substring(0, 40).toLowerCase();
@@ -763,7 +767,7 @@ export const TokenScanner = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        
+
         // Don't retry on client errors (rate limit, payment, auth)
         if (response.status === 429) {
           toast.error("AI rate limit reached. Try again in a minute.");
@@ -810,7 +814,7 @@ export const TokenScanner = () => {
         await new Promise(resolve => setTimeout(resolve, delay));
         return performVLMOcr(imageData, retryCount + 1);
       }
-      
+
       console.error("VLM OCR failed after retries:", error);
       return { addresses: [], addressConfidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null };
     }
@@ -827,21 +831,21 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     let rawTextLength = 0;
     let charCount = 0;
     let fixApplied = false;
-    
+
     const imageSizeBytes = Math.round((imageData.length * 3) / 4);
-    
+
     try {
       setIsOcrProcessing(true);
       setOcrProgress(0);
       setOcrStage("Preprocessing image…");
       setExtractedConfidences([]);
-      
+
       let addresses: string[] = [];
       let confidences: number[] = [];
       let vlmTokenName: string | null = null;
       let vlmTokenSymbol: string | null = null;
       let vlmTruncatedAddresses: string[] | null = null;
-      
+
       // ============================================
       // PRIORITY 1: Tesseract (fastest, proven highest success rate)
       // ============================================
@@ -849,11 +853,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       setOcrProgress(5);
       setOcrStage("Fast OCR engine (Tesseract)…");
       toast.info("Scanning with fast OCR engine...", { duration: 2000 });
-      
+
       try {
         // Attempt 1: Preprocessed image with enhanced settings
         const processedImage = await preprocessImage(imageData);
-        
+
         const worker = await createWorker('eng', 1, {
           logger: (m) => {
             if (m.status === 'recognizing text') {
@@ -861,30 +865,30 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
             }
           },
         });
-        
+
         const { data: { text } } = await worker.recognize(processedImage);
         await worker.terminate();
-        
+
         rawTextLength = text.length;
         const correctionResult = fixOcrMisreads(text);
         fixApplied = correctionResult.corrections > 0;
         console.log("Tesseract OCR (preprocessed):", correctionResult.text, `(${correctionResult.corrections} corrections)`);
-        
+
         addresses = extractAddressesFromText(correctionResult.text);
         // Tesseract baseline confidence (lower if we had to correct chars)
         confidences = addresses.map(() => fixApplied ? 70 : 88);
         charCount = addresses.join('').length;
-        
+
         // Attempt 2: Original image (no preprocessing) as fallback
         if (addresses.length === 0) {
           setOcrProgress(25);
           setOcrStage("Retrying with original image…");
           console.log("Preprocessed scan failed, trying original image...");
-          
+
           const fallbackWorker = await createWorker('eng', 1);
           const { data: { text: fallbackText } } = await fallbackWorker.recognize(imageData);
           await fallbackWorker.terminate();
-          
+
           rawTextLength = fallbackText.length;
           const fallbackCorrectionResult = fixOcrMisreads(fallbackText);
           fixApplied = fixApplied || fallbackCorrectionResult.corrections > 0;
@@ -898,11 +902,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           setOcrProgress(30);
           setOcrStage("Aggressive character recovery…");
           console.log("Standard extraction failed, trying aggressive address recovery...");
-          
+
           const aggressiveWorker = await createWorker('eng', 1);
           const { data: { text: rawText } } = await aggressiveWorker.recognize(processedImage);
           await aggressiveWorker.terminate();
-          
+
           const bestAddress = extractBestEthAddress(rawText);
           if (bestAddress) {
             addresses = [bestAddress];
@@ -912,7 +916,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
             console.log("Aggressive recovery found:", bestAddress);
           }
         }
-        
+
         if (addresses.length > 0) {
           tesseractSucceeded = true;
           console.log("Tesseract extracted addresses:", addresses);
@@ -922,7 +926,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         errorType = 'tesseract_error';
         errorMessage = tesseractError instanceof Error ? tesseractError.message : 'Tesseract failed';
       }
-      
+
       // ============================================
       // PRIORITY 2: AI Vision (VLM) if Tesseract found nothing
       // Parallel Pass 1 (Pro + Flash) → forensic → pixel-level
@@ -932,17 +936,17 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         setOcrProgress(40);
         setOcrStage("AI vision scanning (parallel Pro + Flash)…");
         toast.info("AI vision scanning for deeper analysis...", { duration: 3000 });
-        
+
         try {
           setOcrProgress(50);
           const vlmResult = await performVLMOcr(imageData);
           setOcrProgress(85);
           setOcrStage("Validating extracted addresses…");
-          
+
           vlmTokenName = vlmResult.tokenName;
           vlmTokenSymbol = vlmResult.tokenSymbol;
           vlmTruncatedAddresses = vlmResult.truncatedAddresses;
-          
+
           if (vlmResult.addresses.length > 0) {
             console.log("VLM extracted addresses:", vlmResult.addresses);
             addresses = vlmResult.addresses;
@@ -962,17 +966,17 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           }
         }
       }
-      
+
       setExtractedAddresses(addresses);
       setExtractedConfidences(confidences);
       setOcrProgress(100);
       setOcrStage(addresses.length > 0 ? "Done" : "");
-      
+
       // Log OCR analytics
       const processingTimeMs = Math.round(performance.now() - startTime);
       const method = tesseractSucceeded ? (vlmAttempted ? 'vlm_fallback_tesseract' : 'tesseract') : (vlmSucceeded ? 'vlm' : (tesseractAttempted ? 'tesseract' : 'vlm'));
       const confidence = tesseractSucceeded ? (fixApplied ? 0.7 : 0.85) : (vlmSucceeded ? 0.95 : 0);
-      
+
       logOCRAnalytics({
         method: method as 'vlm' | 'tesseract' | 'vlm_fallback_tesseract',
         vlmAttempted,
@@ -991,32 +995,32 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         rawTextLength: rawTextLength > 0 ? rawTextLength : undefined,
         fixApplied,
       });
-      
+
       // If no full addresses found but we have token name/symbol, use it as a search fallback
       if (addresses.length === 0 && (vlmTokenName || vlmTokenSymbol)) {
         const searchTerm = vlmTokenSymbol || vlmTokenName || '';
         const truncatedInfo = vlmTruncatedAddresses?.join(', ') || '';
-        
+
         toast.info(
           `Address appears truncated${truncatedInfo ? ` (${truncatedInfo})` : ''}. Searching by token name "${searchTerm}"...`,
           { duration: 4000 }
         );
-        
+
         setScanMode("address");
         setTokenQuery(searchTerm);
         setUploadedImage(null);
         setIsOcrProcessing(false);
-        
+
         return [];
       }
-      
+
       if (addresses.length === 0) {
         toast.warning("No contract addresses found in image. Try a screenshot with a full (non-truncated) address.");
       } else {
         const source = tesseractSucceeded ? "Fast OCR" : "AI Vision";
         toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''} via ${source}`);
       }
-      
+
       return addresses;
     } catch (error) {
       console.error("OCR Error:", error);
@@ -1024,7 +1028,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       (window as any).gtag?.('event', 'screenshot_upload_fail', {
         reason: 'processing_error',
       });
-      
+
       const processingTimeMs = Math.round(performance.now() - startTime);
       logOCRAnalytics({
         method: vlmAttempted ? 'vlm' : 'tesseract',
@@ -1042,7 +1046,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         charCount: 0,
         fixApplied: false,
       });
-      
+
       return [];
     } finally {
       setIsOcrProcessing(false);
@@ -1076,16 +1080,16 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     }
 
     setIsSearching(true);
-    
+
     try {
       // Ranked search: verified/established tokens first, lookalikes grouped after them
       const ranked = await searchTokensRanked(searchValidation.sanitized);
-      
+
       // Check if this search is still the current one (prevent race conditions)
       if (currentSearchId !== searchIdRef.current) {
         return; // A newer search has been triggered, discard these results
       }
-      
+
       const combined = [...ranked.primary.slice(0, 4), ...ranked.warned.slice(0, 8)];
       setSuggestions(combined);
       // Collapse unverified copies unless there is nothing verified to show
@@ -1134,7 +1138,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       setIsSearching(false);
       return;
     }
-    
+
     // Don't search if it looks like an address - user should click scan
     if (isContractAddress(tokenQuery)) {
       setDisplayAddress(tokenQuery);
@@ -1154,6 +1158,12 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
   }, [tokenQuery, searchTokensDebounced, isContractAddress]);
 
   const handleSelectSuggestion = (s: TokenSuggestion, isTrusted: boolean) => {
+    // Drop the previous result immediately so the old token's score can never
+    // sit under the new token's header (it used to survive this path).
+    setScanResults([]);
+    setSelectedResult(null);
+    setScanBlocked(false);
+
     setTokenQuery(s.token.symbol);
     setDisplayAddress(s.token.address);
     setTokenInfo({
@@ -1182,11 +1192,26 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
   // Scan for token data with security validation
   const handleScanWithAddress = async (address: string) => {
     if (!address) return;
-    
+
+    // Each scan gets an ID. If a newer scan starts, this one stops writing state,
+    // so a slow older scan can never overwrite a newer result.
+    const myScanId = ++scanIdRef.current;
+    const isCurrent = () => myScanId === scanIdRef.current;
+
+    // Clear any previous result BEFORE the limit check. Otherwise a blocked scan
+    // leaves the old token's score (e.g. "SAFE") showing for a token that was never scanned.
+    setIsScanning(false);
+    setScanResults([]);
+    setSelectedResult(null);
+    setScanBlocked(false);
+
     // Check scan limit for free users
     // Server-side scan limit check (atomic check + increment)
     const allowed = await recordScan();
+    if (!isCurrent()) return;
     if (!allowed) {
+      setScanBlocked(true);
+      setDisplayAddress(address);
       toast.error(
         `Daily scan limit reached (${dailyLimit} scans). Upgrade to Pro for unlimited scans!`,
         {
@@ -1198,39 +1223,42 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       );
       return;
     }
-    
+
     // Apply OCR correction for common character misreads (O->0, l->1, etc.)
+    // A well-formed 0x + 40 hex address is already valid: never "correct" it.
+    const looksValidEvm = /^0x[a-fA-F0-9]{40}$/.test(address.trim());
     const correctionResult = correctAddress(address);
-    const correctedAddress = correctionResult.confidence > 0.3 ? correctionResult.corrected : address;
-    
+    const correctedAddress = !looksValidEvm && correctionResult.confidence > 0.3 ? correctionResult.corrected : address;
+
     // Log OCR corrections for debugging
-    if (correctionResult.corrections.length > 0) {
+    if (!looksValidEvm && correctionResult.corrections.length > 0) {
       console.log(`[OCR Correction] Applied: ${correctionResult.corrections.join(', ')}, confidence: ${correctionResult.confidence}`);
       if (correctionResult.confidence >= 0.5) {
         toast.info(`Auto-corrected address (${correctionResult.corrections.length} fix${correctionResult.corrections.length > 1 ? 'es' : ''} applied)`);
       }
     }
-    
+
     // Security: Validate and sanitize contract address input
     const addressValidation = sanitizeContractAddress(correctedAddress);
     if (containsDangerousPatterns(correctedAddress)) {
       toast.error("Invalid input detected. Please enter a valid contract address.");
       return;
     }
-    
+
     // Use the sanitized address for API calls
     const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : correctedAddress.trim();
-    
+
     setIsScanning(true);
     setScanResults([]);
     setSelectedResult(null);
-    
+
     try {
-      // Keep only pairs where the scanned token is the BASE token. If it only appears
-      // as the quote side (e.g. USDT in SOL/USDT), flip those pairs so every price,
-      // trade count and security lookup below is about the token the user chose.
-      const pairs = orientPairsToToken(await getTokenByAddress(sanitizedAddress), sanitizedAddress);
-      
+      // Pairs for the scanned token, oriented per chain (quote-side pools are flipped
+      // where the token is mainly a quote asset, e.g. USDT) and sorted by liquidity,
+      // so pairs[0] of every chain is that chain's main pool.
+      const pairs = await getOrientedTokenPairs(sanitizedAddress);
+      if (!isCurrent()) return;
+
       if (pairs.length === 0) {
         setScanResults([]);
         setIsScanning(false);
@@ -1245,7 +1273,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         return;
       }
 
-      // Group pairs by chain
+      // Group pairs by chain (insertion order keeps highest-liquidity pair first)
       const chainGroups: Record<string, DexPair[]> = {};
       pairs.forEach(pair => {
         const chain = pair.chainId;
@@ -1257,19 +1285,19 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       const resultsWithData = await Promise.all(
         Object.entries(chainGroups).map(async ([chainId, chainPairs]) => {
           const mainPair = chainPairs[0];
-          const { score: dexScore, factors: dexFactors } = analyzeTokenRisk(chainPairs);
+          const { score: dexScore, factors: dexFactors, hardCap: dexHardCap, marketOnlyCap } = analyzeTokenRisk(chainPairs);
           const liquidity = mainPair.liquidity?.usd || 0;
           const volume24h = mainPair.volume?.h24 || 0;
           const hasSocials = !!(mainPair.info?.websites?.length || mainPair.info?.socials?.length);
           const network = chainIdToNetwork[chainId] || chainId.toUpperCase();
-          
+
           // Fetch security data based on network
           let securityData: SecurityData | undefined;
           let securityFactors: RiskFactor[] = [];
           let securityScore = 0;
           let tokenLockInfo: LockInfo | undefined;
           const apiSources: ApiSource[] = ["dexscreener"]; // Always used for market data
-          
+
           try {
             if (network === 'SOL') {
               // Use SolanaFM for Solana tokens
@@ -1290,7 +1318,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   hasFreezeAuthority: solanaData.isFreezeAuthority,
                 };
               }
-              
+
               // Also fetch GoPlus Solana data for enhanced analysis
               try {
                 const { getGoPlusSolanaSecurity, analyzeGoPlusSolanaSecurity } = await import('@/lib/api/goplus');
@@ -1316,14 +1344,14 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               } catch (goPlusSolError) {
                 console.error('GoPlus Solana API error:', goPlusSolError);
               }
-              
+
               // Also fetch RugCheck data for enhanced Solana analysis
               try {
                 const rugCheckData = await getRugCheckSecurity(mainPair.baseToken.address);
                 if (rugCheckData) {
                   apiSources.push("rugcheck");
                   const { score: rcScore, factors: rcFactors, rawScore: rcRawScore } = analyzeRugCheckSecurity(rugCheckData);
-                  
+
                   // If RugCheck raw score is very low (critical risk), give it more weight
                   // This prevents high-risk tokens from showing as safe due to other APIs
                   if (rcRawScore < 20) {
@@ -1336,7 +1364,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     // Normal: average the scores
                     securityScore = Math.round((securityScore + rcScore) / 2);
                   }
-                  
+
                   // Add unique factors from RugCheck that aren't already present
                   const existingFactorNames = new Set(securityFactors.map(f => f.name));
                   const uniqueRcFactors = rcFactors.filter(f => !existingFactorNames.has(f.name));
@@ -1347,7 +1375,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     securityData.hasFreezeAuthority = securityData.hasFreezeAuthority || !!rugCheckData.tokenMeta.freezeAuthority;
                   }
                 }
-                
+
                 // Detect SPL token standard for Solana
                 try {
                   const splStandardResult = await detectSPLStandard(mainPair.baseToken.address);
@@ -1386,7 +1414,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   ercStandard: goplusData.ercStandard, // ERC token standard
                 };
               }
-              
+
               // For BSC tokens, also fetch BSCTrace data for enhanced analysis
               if (network === 'BSC') {
                 try {
@@ -1413,7 +1441,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   console.error('BSCTrace API error:', bscTraceError);
                 }
               }
-              
+
               // Fetch Unicrypt/Team Finance/PinkSale/DXSale liquidity lock data for EVM chains
               try {
                 const lockInfo = await getLiquidityLockInfo(mainPair.baseToken.address, network, goplusData?.lpHolders);
@@ -1431,10 +1459,20 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           } catch (error) {
             console.error('Security fetch error:', error);
           }
-          
+
           // Merge risk factors (security factors first, then DEX factors)
           const allFactors = [...securityFactors, ...dexFactors];
-          
+
+          // No contract-security source covered this chain (e.g. PulseChain): say so,
+          // instead of letting a market-only score look like a full safety check.
+          if (securityFactors.length === 0) {
+            allFactors.unshift({
+              name: 'No Security Data',
+              status: 'warning',
+              description: 'No contract security checks are available for this chain. Score is based on market data only.',
+            });
+          }
+
           // Check for critical danger factors that should cap the score
           const hasCriticalDanger = securityFactors.some(f => 
             f.status === 'danger' && (
@@ -1443,17 +1481,22 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               f.description.toLowerCase().includes('critical')
             )
           );
-          
-          // Combined score: weighted average of DEX (55%) and security (45%) if available
+
+          // Combined score: weighted average of DEX (55%) and security (45%) if available.
+          // With NO security data, the market-only cap applies (market data can't see
+          // honeypots, mint rights, taxes or hidden owners).
           let combinedScore = securityFactors.length > 0
             ? Math.max(0, Math.min(100, Math.round(dexScore * 0.55 + (50 + securityScore) * 0.45)))
-            : dexScore;
-          
+            : Math.min(dexScore, marketOnlyCap);
+
+          // Hard cap from market signals (tiny liquidity, buys with no sells, brand-new pair)
+          combinedScore = Math.min(combinedScore, dexHardCap);
+
           // Cap score at 39 (DANGER threshold) if critical dangers exist
           if (hasCriticalDanger) {
             combinedScore = Math.min(combinedScore, 39);
           }
-          
+
           return {
             network,
             chainId,
@@ -1485,21 +1528,23 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         })
       );
 
+      if (!isCurrent()) return;
+
       // Determine original vs bridged/suspicious
       // Original = known original network OR (highest liquidity + volume + has socials + good score)
       // Bridged = similar token on different chain
       // Suspicious = low liquidity, no socials, poor score, or honeypot
-      
-      
+
+
       // Use known original networks (hardcoded list)
       const mergedKnownNetworks = knownOriginalNetworks;
-      
+
       const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
-      
+
       // First pass: identify if any result is on a known original network
       const tokenSymbol = resultsWithData[0]?.pairs[0]?.baseToken.symbol.toUpperCase() || '';
       let knownNetworks = mergedKnownNetworks[tokenSymbol] || [];
-      
+
       // If not in hardcoded mappings, check CoinGecko
       if (knownNetworks.length === 0 && tokenSymbol) {
         try {
@@ -1545,16 +1590,18 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           console.warn('Official address resolution failed:', error);
         }
       }
-      
+
+      if (!isCurrent()) return;
+
       const results: NetworkResult[] = resultsWithData.map(r => {
         let tokenStatus: "original" | "bridged" | "suspicious";
-        
+
         // Check if this is the original (highest liquidity + volume, has socials)
         const isHighestLiquidity = r._liquidity === maxLiquidity && maxLiquidity > 0;
         const hasGoodLiquidity = r._liquidity >= 10000;
         const hasGoodVolume = r._volume >= 1000;
         const chainId = r.chainId.toLowerCase();
-        
+
         // Check if this is on a known original network for this token
         const isKnownOriginal = knownNetworks.includes(chainId);
 
@@ -1592,24 +1639,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           // Decent metrics but not confirmed original = bridged
           tokenStatus = "bridged";
         }
-        
+
         // Remove temp properties and add status + verification flag
         const { _liquidity, _volume, _hasSocials, _score, _isHoneypot, ...rest } = r;
         return { ...rest, tokenStatus, isAddressVerified };
       });
-
-      // Set token info from best result
-      if (pairs.length > 0) {
-        const bestPair = pairs[0];
-        setTokenInfo({
-          name: bestPair.baseToken.name,
-          symbol: bestPair.baseToken.symbol,
-          address: bestPair.baseToken.address,
-          chainId: bestPair.chainId,
-          imageUrl: bestPair.info?.imageUrl,
-        });
-        setDisplayAddress(bestPair.baseToken.address);
-      }
 
       // Sort results: original first, then by liquidity descending
       const sortedResults = [...results].sort((a, b) => {
@@ -1624,7 +1658,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       });
 
       setScanResults(sortedResults);
-      
+
       // Auto-select original or highest liquidity result
       if (sortedResults.length > 0) {
         const original = sortedResults.find(r => r.tokenStatus === "original");
@@ -1644,6 +1678,18 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           hasAutoSelectedFromUrl.current = true;
         }
 
+        // Header (name, symbol, address, logo) comes from the SAME result that is
+        // selected, so the header and the score below it can never disagree.
+        const finalPair = shareResult.pairs[0];
+        setTokenInfo({
+          name: finalPair.baseToken.name,
+          symbol: finalPair.baseToken.symbol,
+          address: finalPair.baseToken.address,
+          chainId: finalPair.chainId,
+          imageUrl: finalPair.info?.imageUrl,
+        });
+        setDisplayAddress(finalPair.baseToken.address);
+
         // Update URL to make result shareable
         const chainSlug = shareResult.network.toLowerCase().replace("ethereum", "eth").replace("avalanche", "avax").replace("optimism", "op").replace("arbitrum", "arb").replace("polygon", "matic");
         const newUrl = `${window.location.pathname}?address=${shareResult.address}&chain=${chainSlug}`;
@@ -1651,9 +1697,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       }
     } catch (error) {
       console.error('Scan error:', error);
-      toast.error('Failed to scan token');
+      if (isCurrent()) toast.error('Failed to scan token');
     } finally {
-      setIsScanning(false);
+      if (isCurrent()) setIsScanning(false);
     }
   };
 
@@ -1685,7 +1731,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       toast.error("Please upload an image file");
       return;
     }
-    
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       const imageData = e.target?.result as string;
@@ -1693,12 +1739,12 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       setExtractedAddresses([]);
       setExtractedConfidences([]);
       setOcrStage("");
-      
+
       // Auto-run OCR to extract addresses
       toast.info("Analyzing screenshot for contract addresses...");
       (window as any).gtag?.('event', 'screenshot_upload_start');
       const addresses = await performOCR(imageData);
-      
+
       if (addresses.length > 0) {
         const firstAddress = addresses[0];
         setTokenQuery(firstAddress);
@@ -1707,7 +1753,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         (window as any).gtag?.('event', 'screenshot_upload_success', {
           address_count: addresses.length,
         });
-        
+
         // Auto-trigger scan with the first extracted address
         handleScanWithAddress(firstAddress);
       } else {
@@ -1730,7 +1776,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    
+
     const files = e.dataTransfer.files;
     if (files && files[0]) {
       handleFile(files[0]);
@@ -1750,6 +1796,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     setUploadedImage(null);
     setScanResults([]);
     setSelectedResult(null);
+    setScanBlocked(false);
     setTokenInfo(null);
     setDisplayAddress("");
     setTokenQuery("");
@@ -1830,7 +1877,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
 
   const handleAddToWatchlist = async () => {
     if (!selectedResult || !tokenInfo) return;
-    
+
     if (!isAuthenticated) {
       toast.info("Sign in to save tokens to your watchlist", {
         action: {
@@ -1840,14 +1887,14 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       });
       return;
     }
-    
+
     const added = await addToken({
       address: selectedResult.address,
       name: tokenInfo.name,
       network: selectedResult.network as Network,
       riskScore: selectedResult.riskScore,
     });
-    
+
     if (added) {
       toast.success(`${tokenInfo.name} added to watchlist!`);
     } else {
@@ -1858,6 +1905,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
   const resetScan = () => {
     setScanResults([]);
     setSelectedResult(null);
+    setScanBlocked(false);
     setTokenInfo(null);
     setTokenQuery("");
     setDisplayAddress("");
@@ -1875,11 +1923,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     }
 
     setIsMerging(true);
-    
+
     try {
       // Use the best/selected result for merging
       const resultToMerge = selectedResult || scanResults[0];
-      
+
       // Prepare live security data
       const liveSecurityData = resultToMerge.securityData ? {
         isHoneypot: resultToMerge.securityData.isHoneypot,
@@ -1891,7 +1939,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         hasHiddenOwner: resultToMerge.securityData.hasHiddenOwner,
         hasFreezeAuthority: resultToMerge.securityData.hasFreezeAuthority,
       } : undefined;
-      
+
       // Prepare live market data
       const liveMarketData = resultToMerge.marketData ? {
         price: resultToMerge.marketData.price,
@@ -1900,7 +1948,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         volume24h: resultToMerge.marketData.volume24h,
         liquidity: resultToMerge.marketData.liquidity,
       } : undefined;
-      
+
       // Merge the data
       const merged = mergeSecurityData(
         structuredSecurityResult,
@@ -1910,7 +1958,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         liveMarketData,
         resultToMerge.apiSources
       );
-      
+
       setMergedSecurityResult(merged);
       toast.success("Successfully merged JSON data with live API results");
     } catch (error) {
@@ -1947,33 +1995,33 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
   // Generate one-sentence risk summary explaining the score
   const generateRiskSummary = useCallback((result: NetworkResult): string => {
     const { riskScore, riskFactors, securityData, lockInfo, marketData } = result;
-    
+
     // Determine risk level
     const riskLevel = riskScore >= 70 ? "Low risk" : riskScore >= 40 ? "Medium risk" : "High risk";
-    
+
     // Collect key positive and negative factors
     const positives: string[] = [];
     const negatives: string[] = [];
-    
+
     // Check for critical issues first
     if (securityData?.isHoneypot) {
       return "⚠️ CRITICAL: Honeypot detected - tokens cannot be sold!";
     }
-    
+
     // Check for dangerous factors
     const dangerFactors = riskFactors.filter(f => f.status === "danger");
     const warningFactors = riskFactors.filter(f => f.status === "warning");
     const safeFactors = riskFactors.filter(f => f.status === "safe");
-    
+
     // Collect specific insights
     if (lockInfo?.isLocked) {
       positives.push(`liquidity locked (${lockInfo.lockPercentage}%)`);
     }
-    
+
     if (securityData?.isVerified) {
       positives.push("verified contract");
     }
-    
+
     if (marketData && marketData.liquidity >= 100000) {
       positives.push("strong liquidity");
     } else if (marketData && marketData.liquidity >= 10000) {
@@ -1981,13 +2029,13 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     } else if (marketData && marketData.liquidity < 5000) {
       negatives.push("low liquidity");
     }
-    
+
     if (securityData?.holderCount && securityData.holderCount >= 1000) {
       positives.push("many holders");
     } else if (securityData?.holderCount && securityData.holderCount < 50) {
       negatives.push("few holders");
     }
-    
+
     // Check for specific risk factors
     for (const factor of dangerFactors) {
       const lowerName = factor.name.toLowerCase();
@@ -2008,7 +2056,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         negatives.push("freeze authority enabled");
       }
     }
-    
+
     for (const factor of warningFactors) {
       const lowerName = factor.name.toLowerCase();
       if (lowerName.includes("holder") || lowerName.includes("concentration")) {
@@ -2018,7 +2066,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         }
       }
     }
-    
+
     // Build the summary sentence
     if (dangerFactors.length > 0 && negatives.length > 0) {
       const topNegatives = negatives.slice(0, 2).join(" and ");
@@ -2028,25 +2076,25 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
       }
       return `${riskLevel} — ${topNegatives}.`;
     }
-    
+
     if (positives.length > 0 && negatives.length > 0) {
       const topPositives = positives.slice(0, 1)[0];
       const topNegatives = negatives.slice(0, 1)[0];
       return `${riskLevel} — ${topPositives} but ${topNegatives}.`;
     }
-    
+
     if (positives.length >= 2) {
       return `${riskLevel} — ${positives.slice(0, 2).join(" and ")}.`;
     }
-    
+
     if (positives.length === 1) {
       return `${riskLevel} — ${positives[0]}.`;
     }
-    
+
     if (negatives.length > 0) {
       return `${riskLevel} — ${negatives.slice(0, 2).join(" and ")}.`;
     }
-    
+
     // Default fallbacks based on score
     if (riskScore >= 70) {
       return "Low risk — no major issues detected.";
@@ -2066,7 +2114,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
           <div className="absolute bottom-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
           {/* Top neon accent line */}
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
-          
+
           <div className="relative space-y-6">
             {/* Header */}
             <div className="text-center mb-2">
@@ -2075,7 +2123,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               </div>
               <h3 className="font-display text-xl text-foreground mb-1">Scan Any Token</h3>
               <p className="text-sm text-muted-foreground">Multi-chain risk analysis powered by real-time data</p>
-              
+
               {/* Scan Usage Indicator */}
               {!isPro && (
                 <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/50">
@@ -2131,18 +2179,19 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                       setTokenQuery(e.target.value);
                       setScanResults([]);
                       setSelectedResult(null);
+                      setScanBlocked(false);
                     }}
                     onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
                       e.preventDefault();
                       const pastedText = e.clipboardData.getData('text').trim();
-                      
+
                       // Check if it's JSON security data first
                       if (isJsonSecurityData(pastedText)) {
                         handleJsonSecurityInput(pastedText);
                         setTokenQuery("[JSON Security Data]");
                         return;
                       }
-                      
+
                       // Otherwise treat as address/token name
                       setStructuredSecurityResult(null);
                       setTokenQuery(pastedText);
@@ -2179,7 +2228,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </Button>
                 </div>
               </div>
-              
+
               {/* Input Type Indicator */}
               {tokenQuery && (
                 <div className="absolute -bottom-6 left-0">
@@ -2198,7 +2247,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </span>
                 </div>
               )}
-              
+
               {/* Suggestions Dropdown: verified match first, unverified copies collapsed below */}
               {showSuggestions && (
                 <div className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto">
@@ -2329,7 +2378,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                 >
                   <X className="w-4 h-4 text-foreground" />
                 </button>
-                
+
                 {/* OCR Processing Overlay */}
                 {isOcrProcessing && (
                   <div className="absolute inset-0 bg-background/85 backdrop-blur-md flex flex-col items-center justify-center px-4">
@@ -2350,7 +2399,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </div>
                 )}
               </div>
-              
+
               {/* Quick Analysis Summary - Shows after successful scan */}
               {selectedResult && tokenInfo && !isScanning && !isOcrProcessing && (
                 <div className="p-4 rounded-xl border border-border/50 bg-gradient-to-br from-secondary/50 to-secondary/20 space-y-4 animate-fade-in">
@@ -2548,7 +2597,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </div>
                 </div>
               )}
-              
+
               {/* Extracted Addresses Section */}
               {extractedAddresses.length > 0 && !isOcrProcessing && !selectedResult && (
                 <div className="p-4 rounded-xl border border-primary/30 bg-primary/5">
@@ -2563,7 +2612,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                       </span>
                     )}
                   </div>
-                  
+
                   {/* OCR Warning */}
                   <div className="flex items-start gap-2 mb-3 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
                     <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
@@ -2571,7 +2620,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                       OCR may have errors (e.g., 0↔6, O↔0). Please verify the address before scanning.
                     </p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     {extractedAddresses.map((address, i) => {
                       const conf = extractedConfidences[i] ?? 80;
@@ -2612,7 +2661,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </div>
                 </div>
               )}
-              
+
               {/* Manual Address Input (fallback) */}
               {!isOcrProcessing && (
                 <div className="space-y-2">
@@ -2680,11 +2729,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               Close
             </Button>
           </div>
-          
+
           <p className="text-sm text-muted-foreground mb-4">
             {generateMergedRiskSummary(mergedSecurityResult)}
           </p>
-          
+
           <MergedSecurityDisplay result={mergedSecurityResult} />
         </div>
       )}
@@ -2729,11 +2778,11 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               </Button>
             </div>
           </div>
-          
+
           <p className="text-sm text-muted-foreground mb-4">
             {generateStructuredRiskSummary(structuredSecurityResult)}
           </p>
-          
+
           {/* If no scan results, show prompt to scan a token */}
           {scanResults.length === 0 && (
             <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
@@ -2748,9 +2797,9 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
               </div>
             </div>
           )}
-          
+
           <StructuredSecurityDisplay result={structuredSecurityResult} />
-          
+
           {/* Show Raw JSON toggle */}
           <details className="mt-4">
             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
@@ -2763,8 +2812,24 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         </div>
       )}
 
+      {/* Not scanned: the free daily limit was used up, so there is NO result for this token */}
+      {scanBlocked && !isScanning && (
+        <div className="glass-card p-8 text-center animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-warning" />
+          </div>
+          <h3 className="font-display text-xl text-foreground mb-2">Not scanned</h3>
+          <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+            Your free daily scans are used up, so this token has not been checked. No safety score is shown.
+          </p>
+          <Button asChild className="mt-2">
+            <Link to="/subscription">Upgrade for unlimited scans</Link>
+          </Button>
+        </div>
+      )}
+
       {/* No Results Found */}
-      {scanResults.length === 0 && !isScanning && !structuredSecurityResult && tokenQuery && displayAddress && (
+      {scanResults.length === 0 && !isScanning && !scanBlocked && !structuredSecurityResult && tokenQuery && displayAddress && (
         <div className="glass-card p-8 text-center animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
             <Search className="w-8 h-8 text-warning" />
@@ -2825,16 +2890,16 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                 </div>
               </div>
             </div>
-            
+
             <p className="text-sm text-muted-foreground mb-4">
               Found on {foundNetworks.length} chain{foundNetworks.length !== 1 ? 's' : ''}
             </p>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {scanResults.map((result, index) => {
                 const isOriginal = result.tokenStatus === "original";
                 const isFirstOriginal = isOriginal && index === 0;
-                
+
                 return (
                   <div
                     key={result.chainId}
@@ -2859,7 +2924,21 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                       </div>
                     )}
                     <button
-                      onClick={() => result.found && setSelectedResult(result)}
+                      onClick={() => {
+                        if (!result.found) return;
+                        setSelectedResult(result);
+                        // Keep the header in step with the card the user picked
+                        const p = result.pairs[0];
+                        if (p) {
+                          setTokenInfo({
+                            name: p.baseToken.name,
+                            symbol: p.baseToken.symbol,
+                            address: p.baseToken.address,
+                            chainId: p.chainId,
+                            imageUrl: p.info?.imageUrl,
+                          });
+                        }
+                      }}
                       disabled={!result.found}
                       className="w-full text-left"
                     >
@@ -2969,7 +3048,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                         </div>
                       )}
                     </button>
-                    
+
                     {result.found && tokenInfo && (
                       <div className="mt-3 pt-3 border-t border-border/30">
                         <Button
@@ -3047,7 +3126,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   )}
                 </div>
                 <RiskGauge score={selectedResult.riskScore} />
-                
+
                 {/* One-sentence risk summary */}
                 <p className={cn(
                   "text-sm text-center mt-3 px-4 py-2 rounded-lg max-w-sm",
@@ -3059,7 +3138,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                 )}>
                   {generateRiskSummary(selectedResult)}
                 </p>
-                
+
                 <div className="flex gap-2 mt-4">
                   <Button
                     onClick={handleAddToWatchlist}
@@ -3187,7 +3266,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                     <ShieldCheck className="w-4 sm:w-5 h-4 sm:h-5 text-primary" />
                     Contract Security
                   </h3>
-                  
+
                   {/* Honeypot Warning Banner */}
                   {selectedResult.securityData.isHoneypot && (
                     <div className="mb-3 sm:mb-4 p-3 sm:p-4 rounded-lg bg-danger/20 border border-danger/50 flex items-start sm:items-center gap-2 sm:gap-3">
@@ -3198,7 +3277,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                       </div>
                     </div>
                   )}
-                  
+
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
                     {/* Contract Verification */}
                     <div className={cn(
@@ -3218,7 +3297,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                         {selectedResult.securityData.isVerified ? "Verified ✓" : "Unverified"}
                       </p>
                     </div>
-                    
+
                     {/* Holder Count */}
                     <div className={cn(
                       "p-2 sm:p-4 rounded-lg border",
@@ -3243,7 +3322,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                         {selectedResult.securityData.holderCount.toLocaleString()}
                       </p>
                     </div>
-                    
+
                     {/* Buy Tax */}
                     <div className={cn(
                       "p-2 sm:p-4 rounded-lg border",
@@ -3268,7 +3347,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                         {selectedResult.securityData.buyTax.toFixed(1)}%
                       </p>
                     </div>
-                    
+
                     {/* Sell Tax */}
                     <div className={cn(
                       "p-2 sm:p-4 rounded-lg border",
@@ -3294,7 +3373,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                       </p>
                     </div>
                   </div>
-                  
+
                   {/* Additional Security Flags */}
                   <div className="flex flex-wrap gap-2 mt-4">
                     {/* BEP Token Standard Badge for BSC tokens */}
@@ -3332,7 +3411,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   </div>
                 </div>
               )}
-              
+
               {/* Liquidity Lock Status - Prominent Display */}
               {selectedResult.network !== 'SOL' && (
                 <div className="glass-card p-6 md:col-span-2">
@@ -3343,7 +3422,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                   <LockStatusBadge lockInfo={selectedResult.lockInfo} />
                 </div>
               )}
-              
+
               {/* Market Data - Enhanced */}
               {selectedResult.marketData && (
                 <div className="glass-card p-6 md:col-span-2">
@@ -3445,7 +3524,7 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
                         </p>
                       </div>
                     </div>
-                    
+
                     {/* Transaction breakdown by timeframe */}
                     <div className="grid grid-cols-4 gap-2 text-center">
                       {[
