@@ -114,7 +114,10 @@ export async function searchTokens(query: string): Promise<DexPair[]> {
   }
 }
 
-// Get token by contract address with timeout and validation
+// Get token by contract address with timeout and validation.
+// NOTE: this endpoint returns at most ~30 pairs TOTAL across all chains, so for
+// heavily-traded tokens (USDT, USDC, WETH) it can miss a chain's main pools.
+// For scanning, use getOrientedTokenPairs() below, which tops it up per chain.
 export async function getTokenByAddress(address: string): Promise<DexPair[]> {
   // Input validation - addresses are typically 32-66 chars
   if (!address || typeof address !== 'string') return [];
@@ -145,6 +148,39 @@ export async function getTokenByAddress(address: string): Promise<DexPair[]> {
       return [];
     }
     console.error('DEXScreener token lookup error:', error);
+    return [];
+  }
+}
+
+// Get the pools of one token on ONE chain (returns up to ~30 pools for that chain,
+// on either side of the pair). Returns a bare array from DEXScreener.
+export async function getTokenPairsOnChain(chainId: string, address: string): Promise<DexPair[]> {
+  if (!chainId || !address || typeof chainId !== 'string' || typeof address !== 'string') return [];
+  const cid = chainId.trim();
+  const addr = address.trim();
+  if (!/^[a-z0-9-]{2,32}$/i.test(cid)) return [];
+  if (addr.length < 32 || addr.length > 66 || !/^(0x)?[a-zA-Z0-9]+$/.test(addr)) return [];
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(
+      `https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(cid)}/${encodeURIComponent(addr)}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeoutId);
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    if (Array.isArray(data)) return data as DexPair[];
+    if (data && Array.isArray(data.pairs)) return data.pairs as DexPair[];
+    return [];
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name !== 'AbortError') {
+      console.warn('DEXScreener per-chain pairs error:', error);
+    }
     return [];
   }
 }
@@ -381,50 +417,126 @@ export async function searchTokensRanked(query: string): Promise<RankedSearchRes
   };
 }
 
-// DexScreener returns every pair a token appears in, on EITHER side. Stablecoins
-// like USDT are usually the QUOTE token (SOL/USDT), so pairs[0].baseToken is a
-// different token. This keeps only pairs where `address` is the base token; if it
-// only ever appears as the quote side, those pairs are flipped so price, trades,
-// liquidity and every security lookup describe the token the user chose.
+// ---------------------------------------------------------------------------
+// Orienting pairs to the scanned token
+// ---------------------------------------------------------------------------
+
+// Flip a pair so the quote token becomes the base token. Price, trades,
+// liquidity and every security lookup then describe the token the user chose.
+function flipPair(p: DexPair): DexPair {
+  const native = parseFloat(p.priceNative);
+  const usd = parseFloat(p.priceUsd);
+  const swap = (w?: { buys: number; sells: number }) =>
+    w ? { buys: w.sells, sells: w.buys } : w;
+
+  return {
+    ...p,
+    baseToken: p.quoteToken,
+    quoteToken: p.baseToken,
+    priceNative: native > 0 ? String(1 / native) : '0',
+    priceUsd: native > 0 && usd > 0 ? String(usd / native) : '0',
+    txns: {
+      m5: swap(p.txns?.m5)!,
+      h1: swap(p.txns?.h1)!,
+      h6: swap(p.txns?.h6)!,
+      h24: swap(p.txns?.h24)!,
+    },
+    // Price change belongs to the original base token, so it is not carried over
+    // (zeros, not guesses). info / marketCap / fdv are restored by the caller
+    // from a base-side pair of the same token when one exists.
+    priceChange: { m5: 0, h1: 0, h6: 0, h24: 0 },
+    marketCap: undefined,
+    fdv: undefined,
+    info: undefined,
+  };
+}
+
+// If a token's best quote-side pool holds more than this many times the liquidity
+// of its best base-side pool on the same chain, the token is mainly a quote asset
+// there (USDT, USDC, WETH, SOL) and the quote-side pools ARE its real market.
+const QUOTE_DOMINANCE_RATIO = 10;
+
+const bestLiquidity = (list: DexPair[]): number =>
+  list.reduce((max, p) => Math.max(max, p.liquidity?.usd || 0), 0);
+
+// DexScreener returns every pair a token appears in, on EITHER side. This keeps
+// only what describes `address`, decided PER CHAIN:
+//  - only quote-side pools on a chain  -> flip them all
+//  - base-side pools dominate          -> base-side pools only (a scam token
+//    paired against a memecoin can't hijack that memecoin's price)
+//  - quote-side pools dominate (stablecoins, WETH, SOL) -> base + flipped pools
+// The old version dropped ALL quote-side pools on EVERY chain as soon as one
+// chain had a single base-side pool, which hid the real Ethereum USDT market.
+// Result is sorted by liquidity (highest first), so [0] per chain is the main pool.
 export function orientPairsToToken(pairs: DexPair[], address: string): DexPair[] {
   const target = (address || '').trim();
   const isEvm = EVM_ADDRESS.test(target);
   const same = (candidate?: string) =>
     !!candidate && (isEvm ? candidate.toLowerCase() === target.toLowerCase() : candidate === target);
 
-  const asBase = pairs.filter((p) => same(p.baseToken?.address));
-  if (asBase.length > 0) return asBase;
-
-  const flipped: DexPair[] = [];
+  const byChain = new Map<string, DexPair[]>();
   for (const p of pairs) {
-    if (!same(p.quoteToken?.address)) continue;
-
-    const native = parseFloat(p.priceNative);
-    const usd = parseFloat(p.priceUsd);
-    const swap = (w?: { buys: number; sells: number }) =>
-      w ? { buys: w.sells, sells: w.buys } : w;
-
-    flipped.push({
-      ...p,
-      baseToken: p.quoteToken,
-      quoteToken: p.baseToken,
-      priceNative: native > 0 ? String(1 / native) : '0',
-      priceUsd: native > 0 && usd > 0 ? String(usd / native) : '0',
-      txns: {
-        m5: swap(p.txns?.m5)!,
-        h1: swap(p.txns?.h1)!,
-        h6: swap(p.txns?.h6)!,
-        h24: swap(p.txns?.h24)!,
-      },
-      // Price change, market cap and the logo/links in `info` belong to the
-      // original base token, so they are not carried over (zeros, not guesses).
-      priceChange: { m5: 0, h1: 0, h6: 0, h24: 0 },
-      marketCap: undefined,
-      fdv: undefined,
-      info: undefined,
-    });
+    if (!p?.chainId) continue;
+    const list = byChain.get(p.chainId) || [];
+    list.push(p);
+    byChain.set(p.chainId, list);
   }
-  return flipped;
+
+  const result: DexPair[] = [];
+
+  for (const chainPairs of byChain.values()) {
+    const asBase = chainPairs.filter((p) => same(p.baseToken?.address));
+    const asQuoteRaw = chainPairs.filter(
+      (p) => same(p.quoteToken?.address) && !same(p.baseToken?.address)
+    );
+
+    if (asBase.length === 0) {
+      result.push(...asQuoteRaw.map(flipPair));
+      continue;
+    }
+
+    if (asQuoteRaw.length > 0 && bestLiquidity(asQuoteRaw) > bestLiquidity(asBase) * QUOTE_DOMINANCE_RATIO) {
+      // Token-level data (logo, links, market cap, FDV) is the same for every
+      // pool of this token, so borrow it from the best base-side pool.
+      const donor = asBase.reduce((best, p) =>
+        (p.liquidity?.usd || 0) > (best.liquidity?.usd || 0) ? p : best
+      , asBase[0]);
+      const flipped = asQuoteRaw.map((p) => ({
+        ...flipPair(p),
+        info: donor.info,
+        marketCap: donor.marketCap,
+        fdv: donor.fdv,
+      }));
+      result.push(...asBase, ...flipped);
+    } else {
+      result.push(...asBase);
+    }
+  }
+
+  return result.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+}
+
+// One call for the scanner: finds which chains the token trades on, tops each
+// chain up with its own pool list (the global endpoint caps at ~30 pairs total),
+// then orients everything to the scanned token, sorted by liquidity.
+export async function getOrientedTokenPairs(address: string): Promise<DexPair[]> {
+  const first = await getTokenByAddress(address);
+  if (first.length === 0) return [];
+
+  const chainIds = [...new Set(first.map((p) => p.chainId).filter(Boolean))];
+  const perChain = await Promise.all(chainIds.map((cid) => getTokenPairsOnChain(cid, address)));
+
+  const seen = new Set<string>();
+  const merged = [...first, ...perChain.flat()].filter((p) => {
+    if (!p?.chainId || !p?.pairAddress) return false;
+    const id = `${p.chainId}:${p.pairAddress}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  const oriented = orientPairsToToken(merged, address);
+  return oriented.length > 0 ? oriented : orientPairsToToken(first, address);
 }
 
 // Market-data-only risk analysis.
