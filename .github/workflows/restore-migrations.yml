@@ -1,0 +1,16 @@
+name: Restore migrations
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git revert --no-edit 52a150cdfad8ea5eed1b3f25d2cdb255be301833
+          git push
