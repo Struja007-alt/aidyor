@@ -1,266 +1,337 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
-const logStep = (step: string, details?: Record<string, unknown>) => {
-  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
+const ALLOWED_ORIGINS = [
+  'https://aidyor.app',
+  'https://www.aidyor.app',
+  'http://localhost:5173',
+  'http://localhost:8080',
+];
+
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Credentials': 'true',
+  };
+}
+
+const FREE_REQUESTS_PER_HOUR = 5;
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now = Date.now();
+  const hourMs = 60 * 60 * 1000;
+  
+  const entry = rateLimitMap.get(identifier);
+  
+  if (!entry || now >= entry.resetAt) {
+    rateLimitMap.set(identifier, { count: 1, resetAt: now + hourMs });
+    return { allowed: true, remaining: FREE_REQUESTS_PER_HOUR - 1, resetIn: hourMs };
+  }
+  
+  if (entry.count >= FREE_REQUESTS_PER_HOUR) {
+    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now };
+  }
+  
+  entry.count++;
+  return { allowed: true, remaining: FREE_REQUESTS_PER_HOUR - entry.count, resetIn: entry.resetAt - now };
+}
+
+interface WhaleAlert {
+  id: string;
+  tokenAddress: string;
+  tokenName: string;
+  tokenSymbol: string;
+  network: string;
+  transactionType: "buy" | "sell";
+  amountUsd: number;
+  timestamp: string;
+  txHash?: string;
+  walletAddress?: string;
+}
+
+interface DexScreenerPair {
+  chainId: string;
+  baseToken: {
+    address: string;
+    name: string;
+    symbol: string;
+  };
+  txns: {
+    h1: { buys: number; sells: number };
+    h24: { buys: number; sells: number };
+  };
+  volume: {
+    h1: number;
+    h24: number;
+  };
+  priceUsd: string;
+  liquidity: { usd: number };
+}
+
+const TRENDING_ENDPOINTS = [
+  "https://api.dexscreener.com/token-boosts/latest/v1",
+  "https://api.dexscreener.com/token-boosts/top/v1"
+];
+
+const chainNameMap: Record<string, string> = {
+  ethereum: "Ethereum",
+  bsc: "BSC",
+  polygon: "Polygon",
+  arbitrum: "Arbitrum",
+  base: "Base",
+  solana: "Solana",
+  avalanche: "Avalanche",
+  optimism: "Optimism",
 };
 
-const PRODUCT_IDS = {
-  pro: "prod_TsmarvHsLfmOgX",
-  whale_pro: "prod_TsmahG5mQUlguv",
-} as const;
+const MIN_AMOUNT_RANGE = { min: 1000, max: 10000000 };
+const LIMIT_RANGE = { min: 1, max: 100 };
 
-// FIX: the live RPC is get_user_id_by_email(p_email text). The old code passed
-// { email_input }, so every lookup failed and no whale_subscriptions row was ever touched.
-async function findUserIdByEmail(supabaseAdmin: ReturnType<typeof createClient>, email: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin.rpc('get_user_id_by_email', { p_email: email.trim().toLowerCase() });
-  if (error) {
-    logStep("get_user_id_by_email RPC error", { error: error.message });
-    return null;
-  }
-  return (data as string | null) ?? null;
-}
+// Returns true only for an active, non-expired Whale Pro subscription.
+// Query errors are logged loudly (console.error) instead of being swallowed,
+// so a schema/query problem can no longer silently downgrade paying users.
+async function checkWhaleProSubscription(supabase: any, userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('whale_subscriptions')
+      .select('status, expires_at')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle();
 
-// ----- Whale Pro lifecycle, keyed by user_id (UNIQUE in whale_subscriptions) -----
-// Creates the row if missing, otherwise updates it. Throws on DB error so Stripe retries the webhook.
-async function syncWhaleSubscription(
-  supabaseAdmin: ReturnType<typeof createClient>,
-  subscription: Stripe.Subscription,
-  email: string | null | undefined,
-  forceExpired = false,
-  knownUserId: string | null = null,
-) {
-  const whaleItem = subscription.items.data.find(
-    (item) => (item.price.product as string) === PRODUCT_IDS.whale_pro,
-  );
-  if (!whaleItem) return; // not a Whale Pro subscription
+    if (error) {
+      console.error(`[whale-alerts] whale_subscriptions query failed for user ${userId}: ${error.message}`);
+      return false;
+    }
 
-  if (!knownUserId && !email) {
-    logStep("Whale Pro subscription without user id or customer email, skipping", { subscriptionId: subscription.id });
-    return;
-  }
+    if (!data) return false;
 
-  // Prefer the user_id that stripe-checkout stored in the session metadata; fall back to email lookup.
-  const userId = knownUserId ?? (email ? await findUserIdByEmail(supabaseAdmin, email) : null);
-  if (!userId) {
-    logStep("No Supabase user found for Whale Pro subscription", { subscriptionId: subscription.id });
-    return;
-  }
+    const expiresAt = (data as { status: string; expires_at: string | null }).expires_at;
+    if (expiresAt && new Date(expiresAt) < new Date()) {
+      return false;
+    }
 
-  // basil API versions moved current_period_end from the subscription to its items.
-  const periodEndUnix: number | null =
-    (whaleItem as unknown as { current_period_end?: number }).current_period_end ??
-    (subscription as unknown as { current_period_end?: number }).current_period_end ??
-    null;
-
-  const expiresAt = forceExpired
-    ? new Date().toISOString()
-    : periodEndUnix
-      ? new Date(periodEndUnix * 1000).toISOString()
-      : null;
-
-  const status = forceExpired || subscription.status === "canceled" ? "expired" : subscription.status;
-
-  const { error } = await supabaseAdmin
-    .from("whale_subscriptions")
-    .upsert(
-      {
-        user_id: userId,
-        stripe_subscription_id: subscription.id,
-        status,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" },
-    );
-
-  if (error) {
-    throw new Error(`whale_subscriptions upsert failed: ${error.message}`);
-  }
-
-  logStep("Synced whale_subscriptions", { userId, status, expiresAt });
-}
-
-// ----- B2B API client lifecycle, keyed by stripe_subscription_id -----
-async function syncApiClientSubscription(supabaseAdmin: ReturnType<typeof createClient>, subscription: Stripe.Subscription) {
-  const { data: apiClient, error } = await supabaseAdmin
-    .from('api_clients')
-    .select('id, status')
-    .eq('stripe_subscription_id', subscription.id)
-    .maybeSingle();
-
-  if (error) {
-    logStep("api_clients lookup error", { error: error.message });
-    return;
-  }
-  if (!apiClient) return; // not a B2B API subscription
-
-  const inactiveStatuses = ['canceled', 'unpaid', 'incomplete_expired'];
-  let newStatus: string | null = null;
-
-  if (inactiveStatuses.includes(subscription.status)) {
-    newStatus = 'suspended';
-  } else if (subscription.status === 'active' && apiClient.status !== 'active') {
-    newStatus = 'active';
-  }
-
-  if (newStatus && newStatus !== apiClient.status) {
-    await supabaseAdmin.from('api_clients').update({ status: newStatus }).eq('id', apiClient.id);
-    logStep("api_clients status synced", { clientId: apiClient.id, status: newStatus, stripeStatus: subscription.status });
+    return true;
+  } catch (e) {
+    console.error(`[whale-alerts] Whale Pro check threw for user ${userId}:`, e);
+    return false;
   }
 }
 
-async function getCustomerEmail(stripe: Stripe, customerId: string): Promise<string | null> {
-  const customer = await stripe.customers.retrieve(customerId);
-  if ((customer as Stripe.DeletedCustomer).deleted) return null;
-  return (customer as Stripe.Customer).email ?? null;
-}
+serve(async (req) => {
+  const origin = req.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
 
-serve(async (req: Request) => {
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    logStep("Webhook received");
+    console.log("[whale-alerts] Processing request...");
 
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
-    if (!stripeKey || !webhookSecret) {
-      throw new Error("Missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET");
+    const body = await req.json().catch(() => ({}));
+    
+    let minAmountUsd = typeof body.minAmountUsd === 'number' ? body.minAmountUsd : 50000;
+    let limit = typeof body.limit === 'number' ? body.limit : 20;
+    
+    minAmountUsd = Math.max(MIN_AMOUNT_RANGE.min, Math.min(MIN_AMOUNT_RANGE.max, minAmountUsd));
+    limit = Math.max(LIMIT_RANGE.min, Math.min(LIMIT_RANGE.max, Math.floor(limit)));
+    
+    const authHeader = req.headers.get('Authorization');
+    let isWhalePro = false;
+    let userId: string | null = null;
+    let rateLimitIdentifier: string;
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      
+      const token = authHeader.replace('Bearer ', '');
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      
+      if (!claimsError && claimsData?.claims?.sub) {
+        userId = claimsData.claims.sub as string;
+        rateLimitIdentifier = `user:${userId}`;
+        
+        const serviceSupabase = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        );
+        isWhalePro = await checkWhaleProSubscription(serviceSupabase, userId);
+        console.log(`[whale-alerts] User ${userId} - Whale Pro: ${isWhalePro}`);
+      } else {
+        rateLimitIdentifier = `ip:${req.headers.get('x-forwarded-for') || 'unknown'}`;
+      }
+    } else {
+      rateLimitIdentifier = `ip:${req.headers.get('x-forwarded-for') || 'unknown'}`;
     }
-
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-
-    const body = await req.text();
-    const signature = req.headers.get("stripe-signature");
-    if (!signature) {
-      throw new Error("No stripe-signature header");
+    
+    if (!isWhalePro) {
+      const rateLimit = checkRateLimit(rateLimitIdentifier);
+      
+      if (!rateLimit.allowed) {
+        console.log(`[whale-alerts] Rate limited: ${rateLimitIdentifier}`);
+        return new Response(
+          JSON.stringify({
+            error: "Rate limit exceeded",
+            message: "Free users are limited to 5 whale alert requests per hour. Upgrade to Whale Pro ($49/month) for unlimited access.",
+            resetIn: Math.ceil(rateLimit.resetIn / 1000 / 60),
+            upgradeUrl: "/api-docs#whale-pro",
+          }),
+          { 
+            status: 429, 
+            headers: { 
+              ...corsHeaders, 
+              "Content-Type": "application/json",
+              "X-RateLimit-Remaining": "0",
+              "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetIn / 1000)),
+            } 
+          }
+        );
+      }
+      
+      corsHeaders["X-RateLimit-Remaining"] = String(rateLimit.remaining);
+      corsHeaders["X-RateLimit-Reset"] = String(Math.ceil(rateLimit.resetIn / 1000));
+      corsHeaders["X-RateLimit-Limit"] = String(FREE_REQUESTS_PER_HOUR);
+    } else {
+      corsHeaders["X-RateLimit-Limit"] = "unlimited";
     }
-
-    let event: Stripe.Event;
-    try {
-      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logStep("Signature verification failed", { error: msg });
-      return new Response(JSON.stringify({ error: "Invalid signature" }), { status: 400 });
+    
+    console.log(`[whale-alerts] Fetching with min amount: $${minAmountUsd}, limit: ${limit}, isWhalePro: ${isWhalePro}`);
+    
+    const whaleAlerts: WhaleAlert[] = [];
+    
+    const trendingTokens: Array<{ chainId: string; tokenAddress: string }> = [];
+    
+    for (const endpoint of TRENDING_ENDPOINTS) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const response = await fetch(endpoint, {
+          signal: controller.signal,
+          headers: { "Accept": "application/json" }
+        });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            data.slice(0, 10).forEach((item: { chainId?: string; tokenAddress?: string }) => {
+              if (item.chainId && item.tokenAddress) {
+                trendingTokens.push({
+                  chainId: item.chainId,
+                  tokenAddress: item.tokenAddress
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.log(`[whale-alerts] Failed to fetch trending data`);
+      }
     }
-
-    logStep("Event verified", { type: event.type, id: event.id });
-
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } }
+    
+    console.log(`[whale-alerts] Found ${trendingTokens.length} trending tokens to analyze`);
+    
+    const tokenPromises = trendingTokens.slice(0, 15).map(async (token) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const response = await fetch(
+          `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(token.tokenAddress)}`,
+          {
+            signal: controller.signal,
+            headers: { "Accept": "application/json" }
+          }
+        );
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) return [];
+        
+        const data = await response.json();
+        const pairs = data.pairs as DexScreenerPair[] | undefined;
+        
+        if (!pairs || pairs.length === 0) return [];
+        
+        const mainPair = pairs[0];
+        const hourlyVolume = mainPair.volume?.h1 || 0;
+        const hourlyTxns = (mainPair.txns?.h1?.buys || 0) + (mainPair.txns?.h1?.sells || 0);
+        
+        if (hourlyTxns > 0 && hourlyVolume > 0) {
+          const avgTxSize = hourlyVolume / hourlyTxns;
+          
+          if (avgTxSize >= minAmountUsd * 0.5) {
+            const estimatedWhales = Math.floor(hourlyVolume / minAmountUsd);
+            
+            if (estimatedWhales > 0) {
+              const buys = mainPair.txns?.h1?.buys || 0;
+              const sells = mainPair.txns?.h1?.sells || 0;
+              const isBuyPressure = buys > sells;
+              
+              const alert: WhaleAlert = {
+                id: `${mainPair.baseToken.address}-${Date.now()}`,
+                tokenAddress: mainPair.baseToken.address,
+                tokenName: mainPair.baseToken.name,
+                tokenSymbol: mainPair.baseToken.symbol,
+                network: chainNameMap[mainPair.chainId] || mainPair.chainId,
+                transactionType: isBuyPressure ? "buy" : "sell",
+                amountUsd: Math.round(avgTxSize * estimatedWhales),
+                timestamp: new Date().toISOString(),
+              };
+              
+              return [alert];
+            }
+          }
+        }
+        
+        return [];
+      } catch (e) {
+        console.log(`[whale-alerts] Failed to analyze token`);
+        return [];
+      }
+    });
+    
+    const results = await Promise.all(tokenPromises);
+    results.forEach(alerts => whaleAlerts.push(...alerts));
+    
+    const sortedAlerts = whaleAlerts
+      .sort((a, b) => b.amountUsd - a.amountUsd)
+      .slice(0, limit);
+    
+    console.log(`[whale-alerts] Returning ${sortedAlerts.length} whale alerts`);
+    
+    return new Response(
+      JSON.stringify({
+        alerts: sortedAlerts,
+        totalFound: sortedAlerts.length,
+        minAmountUsd,
+        timestamp: new Date().toISOString(),
+        subscription: isWhalePro ? "whale_pro" : "free",
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
-    switch (event.type) {
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        if (invoice.subscription && invoice.customer_email) {
-          logStep("Payment succeeded", {
-            email: invoice.customer_email,
-            subscription: invoice.subscription,
-            amount: invoice.amount_paid,
-          });
-        }
-        break;
-      }
-
-      case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
-        logStep("Payment failed", {
-          email: invoice.customer_email,
-          subscription: invoice.subscription,
-          attempt: invoice.attempt_count,
-        });
-        break;
-      }
-
-      case "customer.subscription.created":
-      case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const email = await getCustomerEmail(stripe, subscription.customer as string);
-
-        logStep("Subscription created/updated", {
-          subscriptionId: subscription.id,
-          status: subscription.status,
-          email,
-          cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        });
-
-        // Whale Pro: create the row if missing, otherwise sync status + expires_at
-        await syncWhaleSubscription(supabaseAdmin, subscription, email);
-
-        // B2B API clients (matched by stripe_subscription_id, since price is created dynamically at checkout)
-        await syncApiClientSubscription(supabaseAdmin, subscription);
-
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const email = await getCustomerEmail(stripe, subscription.customer as string);
-
-        logStep("Subscription deleted", {
-          subscriptionId: subscription.id,
-          email,
-        });
-
-        await syncWhaleSubscription(supabaseAdmin, subscription, email, true);
-
-        // B2B API client — subscription is fully gone, suspend access
-        await syncApiClientSubscription(supabaseAdmin, subscription);
-
-        break;
-      }
-
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        logStep("Checkout completed", {
-          sessionId: session.id,
-          customerEmail: session.customer_email,
-          subscriptionId: session.subscription,
-          priceType: session.metadata?.price_type,
-          aidyorProduct: session.metadata?.aidyor_product,
-        });
-
-        // Grant Whale Pro immediately on checkout, without depending on the .created event being enabled
-        if (session.mode === "subscription" && session.subscription) {
-          const subscriptionId = typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription.id;
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-          const email = session.customer_details?.email ?? session.customer_email ?? null;
-          await syncWhaleSubscription(
-            supabaseAdmin,
-            subscription,
-            email,
-            false,
-            session.metadata?.user_id ?? null,
-          );
-        }
-        break;
-      }
-
-      default:
-        logStep("Unhandled event type", { type: event.type });
-    }
-
-    return new Response(JSON.stringify({ received: true }), {
-      headers: { "Content-Type": "application/json" },
-      status: 200,
-    });
-
+    
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logStep("ERROR", { message: errorMessage });
-    return new Response(JSON.stringify({ error: "Webhook processing failed" }), {
-      headers: { "Content-Type": "application/json" },
-      status: 500,
-    });
+    console.error("[whale-alerts] Error:", error);
+    const origin = req.headers.get('origin');
+    const corsHeaders = getCorsHeaders(origin);
+    return new Response(
+      JSON.stringify({ error: "An error occurred processing your request" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
