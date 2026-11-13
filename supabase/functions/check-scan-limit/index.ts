@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 
+const DAILY_FREE_LIMIT = 3;
+
 const PRODUCT_IDS = {
   pro: "prod_TsmarvHsLfmOgX",
   whale_pro: "prod_TsmahG5mQUlguv",
@@ -13,12 +15,10 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:8080',
 ];
-
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin);
 }
-
 function corsFor(origin: string | null): Record<string, string> {
   const allowed = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
   return {
@@ -26,6 +26,17 @@ function corsFor(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Credentials': 'true',
   };
+}
+
+// Prefer headers set by the edge proxy (cf-connecting-ip) over x-forwarded-for,
+// whose first entry can be supplied by the client.
+function getClientIp(req: Request): string {
+  return (
+    req.headers.get('cf-connecting-ip')?.trim() ||
+    req.headers.get('x-real-ip')?.trim() ||
+    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    'unknown'
+  );
 }
 
 serve(async (req) => {
@@ -51,7 +62,6 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     let userId: string | null = null;
     let userEmail: string | null = null;
-
     if (authHeader.startsWith('Bearer ')) {
       const { data } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
       if (data?.user) {
@@ -85,14 +95,7 @@ serve(async (req) => {
       }
     }
 
-    const identifier = userId
-      ? `user:${userId}`
-      : (() => {
-          const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
-            || req.headers.get('cf-connecting-ip')
-            || 'unknown';
-          return `ip:${ip}`;
-        })();
+    const identifier = userId ? `user:${userId}` : `ip:${getClientIp(req)}`;
 
     let finalIdentifier = identifier;
     if (identifier.startsWith('ip:')) {
@@ -103,17 +106,15 @@ serve(async (req) => {
     if (peek) {
       const { data: peekData, error: peekErr } = await supabase.rpc('get_remaining_free_scans', {
         p_identifier: finalIdentifier,
-        p_daily_limit: 3,
+        p_daily_limit: DAILY_FREE_LIMIT,
       });
-
       if (peekErr) {
         console.error('[check-scan-limit] peek rpc failed:', peekErr);
         return new Response(JSON.stringify({ error: 'Could not check scan limit' }), {
           status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
         });
       }
-
-      const remaining = peekData?.[0]?.remaining ?? 3;
+      const remaining = peekData?.[0]?.remaining ?? DAILY_FREE_LIMIT;
       return new Response(JSON.stringify({ allowed: remaining > 0, remaining, isPro: false }), {
         headers: { ...cors, 'Content-Type': 'application/json' },
       });
@@ -121,20 +122,18 @@ serve(async (req) => {
 
     const { data: limitData, error: limitErr } = await supabase.rpc('check_and_increment_free_scan', {
       p_identifier: finalIdentifier,
+      p_daily_limit: DAILY_FREE_LIMIT,
     });
-
     if (limitErr) {
       console.error('[check-scan-limit] rpc failed:', limitErr);
       return new Response(JSON.stringify({ error: 'Could not verify scan limit' }), {
         status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
       });
     }
-
     const row = limitData?.[0];
     return new Response(JSON.stringify({ allowed: !!row?.allowed, remaining: row?.remaining ?? 0, isPro: false }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
-
   } catch (e) {
     console.error('[check-scan-limit] error:', e);
     return new Response(JSON.stringify({ error: 'Internal error' }), {
