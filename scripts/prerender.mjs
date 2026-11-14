@@ -1,32 +1,33 @@
 // scripts/prerender.mjs
 // Runs after `vite build`. For every public URL it writes dist/<path>/index.html
-// with the page's own <title>, description, canonical, OG/Twitter tags, an H1,
-// an intro and internal links, so crawlers see correct data in the RAW HTML
-// (before any JavaScript runs). It also adds static content to the homepage.
+// with the page's own <title>, description, canonical, OG/Twitter tags, an H1 and
+// (for blog, glossary and chain pages) real body text, so crawlers see correct
+// data in the RAW HTML (before any JavaScript runs).
+//
+// Data sources (read from src/ at build time, never imported):
+//   - src/data/blogPosts.ts      -> /blog/<slug>
+//   - src/pages/Glossary.tsx     -> /glossary/<slug>
+//   - src/data/chains.ts         -> /chains/<slug>  (ONLY if App.tsx has the route)
+// If any source cannot be parsed, that part is skipped with a warning and the
+// build continues exactly as before. This script never fails the build because
+// of a parsing problem.
 
 import fs from "node:fs";
 import path from "node:path";
 
 const SITE = "https://aidyor.app";
 const DIST = path.resolve("dist");
+const SRC = path.resolve("src");
+
 const SITEMAP_CANDIDATES = [
   path.join(DIST, "sitemap.xml"),
   path.resolve("public", "sitemap.xml"),
 ];
 
 // ---------------------------------------------------------------------------
-// Per-page metadata. Entries here always win over the section fallbacks below.
-// Add your most important pages (top blog posts, key glossary terms) here.
+// Manual per-page metadata. These ALWAYS win over auto-generated metadata.
 // ---------------------------------------------------------------------------
 const PAGES = {
-  "/about": {
-    title: "About AIDYOR | AI Crypto Token Security Scanner",
-    description:
-      "AIDYOR is an AI-powered crypto token security scanner that detects honeypots, rug pulls and scam tokens across 9 blockchain networks. Learn what we check and how it works.",
-    h1: "About AIDYOR",
-    intro:
-      "AIDYOR is an AI-powered crypto token security scanner that helps you spot honeypots, rug pulls, and scam tokens before you invest.",
-  },
   "/faq": {
     title: "Crypto Scam FAQ: Rug Pulls, Honeypots & Red Flags | AIDYOR",
     description:
@@ -36,61 +37,43 @@ const PAGES = {
       "Learn how to protect yourself from crypto scams, identify red flags, and follow security best practices.",
   },
   "/blog": {
-    title: "Crypto Security Blog: Scams, Honeypots & Rug Pulls | AIDYOR",
+    title: "Crypto Security Blog: Scam Detection Guides | AIDYOR",
     description:
-      "Guides on crypto scams, honeypots, rug pulls and token safety from the AIDYOR team.",
+      "Guides on crypto scams, honeypots, rug pulls, token approvals and on-chain safety checks, from the AIDYOR token security scanner.",
     h1: "AIDYOR Crypto Security Blog",
-    intro: "Guides on crypto scams, honeypots, rug pulls and token safety.",
+    intro:
+      "Guides on spotting honeypots, rug pulls, fake tokens and wallet drainers before you buy.",
   },
   "/glossary": {
-    title: "Crypto Security Glossary: Honeypot, Rug Pull & More | AIDYOR",
+    title: "Crypto Glossary: Scam & DeFi Terms Explained | AIDYOR",
     description:
-      "Plain-English crypto security glossary from AIDYOR. Look up honeypots, rug pulls, liquidity locks and other terms every token buyer should know.",
-    h1: "Crypto Security Glossary",
-    intro:
-      "Plain-English definitions of the crypto and DeFi security terms every token buyer should know.",
-  },
-  "/api-docs": {
-    title: "Token Security API Documentation | AIDYOR",
-    description:
-      "Developer documentation for the AIDYOR token security API: endpoints, authentication, rate limits and plans.",
-    h1: "AIDYOR API Documentation",
-    intro:
-      "Developer documentation for the AIDYOR token security API: endpoints, authentication, rate limits and plans.",
-  },
-  "/subscription": {
-    title: "Pricing & Plans | AIDYOR Crypto Token Scanner",
-    description:
-      "Compare AIDYOR plans: free daily token scans, and Pro with AI explanations and the Smart Contract Bug Scanner.",
-    h1: "AIDYOR Plans & Pricing",
-    intro:
-      "Compare the free plan with Pro, which adds AI explanations and the Smart Contract Bug Scanner.",
+      "Plain-English definitions of crypto and DeFi terms, from honeypot and rug pull to liquidity lock, slippage and tokenomics.",
+    h1: "Crypto Glossary",
+    intro: "Essential terms every crypto investor should know.",
   },
 };
+
+// Filled automatically from src/ (see loaders below). Manual PAGES override it.
+const DYNAMIC = {};
+
 // ---------------------------------------------------------------------------
+const MAIN_STYLE =
+  "max-width:48rem;margin:0 auto;padding:2rem 1rem;min-height:100vh;background:hsl(var(--background));color:hsl(var(--foreground));font-family:system-ui,sans-serif;line-height:1.6";
 
-// Words that should be upper-cased (or special-cased) when built from a slug
-const ACRONYMS = new Set([
-  "amm", "fdv", "fud", "dex", "cex", "tvl", "kyc", "aml", "dao", "nft", "api",
-  "ico", "ido", "ieo", "lp", "mev", "bnb", "eth", "evm", "ath", "atl", "apy",
-  "apr", "dyor", "rpc", "ai", "ocr", "ux", "ui",
-]);
-const SPECIAL = { defi: "DeFi", dapp: "dApp", dapps: "dApps" };
-
-const NAV = [
-  ["/", "Home"],
-  ["/faq", "FAQ"],
-  ["/blog", "Blog"],
-  ["/glossary", "Glossary"],
-  ["/api-docs", "API"],
-  ["/subscription", "Pricing"],
-  ["/about", "About"],
-  ["/transparency", "Transparency"],
-];
-
-// Matches #root whether it is empty or already holds static content
-// (anchored on the </div> that is followed by a <script> or </body>)
-const ROOT_RE = /<div id="root">[\s\S]*?<\/div>\s*(?=<script|<\/body>)/;
+const ACRONYMS = {
+  api: "API",
+  faq: "FAQ",
+  ocr: "OCR",
+  bnb: "BNB",
+  dex: "DEX",
+  dyor: "DYOR",
+  fdv: "FDV",
+  amm: "AMM",
+  fomo: "FOMO",
+  fud: "FUD",
+  lp: "LP",
+  ai: "AI",
+};
 
 const esc = (s) =>
   String(s)
@@ -103,52 +86,157 @@ const humanize = (slug) =>
   slug
     .split("-")
     .filter(Boolean)
-    .map((w) => {
-      const lw = w.toLowerCase();
-      if (SPECIAL[lw]) return SPECIAL[lw];
-      if (ACRONYMS.has(lw)) return lw.toUpperCase();
-      return w.charAt(0).toUpperCase() + w.slice(1);
-    })
+    .map((w) => ACRONYMS[w.toLowerCase()] || w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 
-// Fallback metadata for pages without a PAGES entry (unique per page, built from the slug)
-function fallbackMeta(route) {
-  const parts = route.split("/").filter(Boolean);
-  const section = parts[0];
-  const name = humanize(parts[parts.length - 1] || "");
-
-  if (parts.length === 2 && section === "glossary") {
-    return {
-      title: `${name} Explained: Crypto Glossary | AIDYOR`,
-      description: `What does ${name} mean in crypto? Plain-English explanation from the AIDYOR crypto security glossary.`,
-      h1: name,
-      intro: `A plain-English explanation of ${name} from the AIDYOR crypto security glossary.`,
-    };
+// ---------------------------------------------------------------------------
+// Source readers / parsers (all defensive)
+// ---------------------------------------------------------------------------
+function readSrc(rel) {
+  try {
+    return fs.readFileSync(path.join(SRC, rel), "utf8");
+  } catch {
+    console.warn(`[prerender] could not read src/${rel}`);
+    return "";
   }
-  if (parts.length === 2 && section === "chains") {
-    return {
-      title: `${name} Token Scanner: Detect Honeypots & Rug Pulls | AIDYOR`,
-      description: `Scan ${name} tokens for honeypots, rug pulls and scam patterns. Free AI-powered ${name} token risk scanner from AIDYOR, no wallet needed.`,
-      h1: `${name} Token Scanner`,
-      intro: `Scan ${name} tokens for honeypots, rug pulls and scam patterns with AIDYOR's free multichain token scanner.`,
-    };
-  }
-  if (parts.length === 2 && section === "blog") {
-    return {
-      title: `${name} | AIDYOR Blog`,
-      description: `${name}: a crypto security guide from the AIDYOR blog.`,
-      h1: name,
-      intro: "",
-    };
-  }
-  return {
-    title: `${name} | AIDYOR`,
-    description: `${name} on AIDYOR, the AI-powered crypto token security scanner.`,
-    h1: name,
-    intro: "",
-  };
 }
 
+const unescapeStr = (s) =>
+  s.replace(/\\n/g, "\n").replace(/\\(["'\\])/g, "$1");
+
+// Reads  key: "value"  (value may be on the next line, may contain \" escapes)
+function field(block, key) {
+  const re = new RegExp(key + String.raw`:\s*"((?:[^"\\]|\\.)*)"`);
+  const m = block.match(re);
+  return m ? unescapeStr(m[1]) : "";
+}
+
+function splitBySlug(src) {
+  const starts = [...src.matchAll(/\bslug:\s*"([^"]+)"/g)];
+  return starts.map((m, i) => ({
+    slug: m[1],
+    block: src.slice(m.index, i + 1 < starts.length ? starts[i + 1].index : src.length),
+  }));
+}
+
+function loadBlog() {
+  try {
+    const src = readSrc("data/blogPosts.ts");
+    const posts = splitBySlug(src).map(({ slug, block }) => {
+      const c = block.match(/content:\s*`([\s\S]*?)`\s*\n?\s*\}/);
+      return {
+        slug,
+        title: field(block, "title"),
+        excerpt: field(block, "excerpt"),
+        date: field(block, "date"),
+        metaTitle: field(block, "metaTitle"),
+        metaDescription: field(block, "metaDescription"),
+        content: c ? c[1].trim() : "",
+      };
+    });
+    let n = 0;
+    for (const p of posts) {
+      if (!p.slug || !p.title) continue;
+      const route = `/blog/${p.slug}`;
+      const url = `${SITE}${route}`;
+      const title = p.metaTitle || `${p.title} | AIDYOR`;
+      const description = p.metaDescription || p.excerpt;
+      const ld = {
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        headline: p.title,
+        description,
+        datePublished: p.date || undefined,
+        dateModified: p.date || undefined,
+        author: { "@type": "Organization", name: "AIDYOR", url: SITE },
+        publisher: { "@type": "Organization", name: "AIDYOR", url: SITE },
+        mainEntityOfPage: { "@type": "WebPage", "@id": url },
+      };
+      DYNAMIC[route] = {
+        title,
+        description,
+        h1: p.title,
+        intro: p.excerpt,
+        bodyHtml: p.content, // trusted HTML from our own repo
+        jsonLd: ld,
+      };
+      n++;
+    }
+    console.log(`[prerender] blog posts parsed: ${n}`);
+  } catch (e) {
+    console.warn("[prerender] blog parsing failed, skipping:", e.message);
+  }
+}
+
+function loadGlossary() {
+  try {
+    const src = readSrc("pages/Glossary.tsx");
+    const re =
+      /\{\s*term:\s*"((?:[^"\\]|\\.)*)",\s*slug:\s*"([^"]+)",\s*shortDefinition:\s*"((?:[^"\\]|\\.)*)"/g;
+    let n = 0;
+    for (const m of src.matchAll(re)) {
+      const term = unescapeStr(m[1]);
+      const slug = m[2];
+      const def = unescapeStr(m[3]);
+      DYNAMIC[`/glossary/${slug}`] = {
+        title: `${term} Meaning in Crypto | AIDYOR`,
+        description: `${def} Part of the AIDYOR crypto glossary.`,
+        h1: term,
+        intro: def,
+      };
+      n++;
+    }
+    console.log(`[prerender] glossary terms parsed: ${n}`);
+  } catch (e) {
+    console.warn("[prerender] glossary parsing failed, skipping:", e.message);
+  }
+}
+
+function loadChains() {
+  try {
+    // Only prerender chain pages if the route really exists in the app.
+    const app = readSrc("App.tsx");
+    const hasRoute = /path=["']\/chains\/:slug["']/.test(app);
+    const hasPage = fs.existsSync(path.join(SRC, "pages", "ChainLanding.tsx"));
+    if (!hasRoute || !hasPage) {
+      console.warn(
+        "[prerender] /chains/:slug route or ChainLanding.tsx not found in src/, skipping chain pages"
+      );
+      return;
+    }
+    const src = readSrc("data/chains.ts");
+    let n = 0;
+    for (const { slug, block } of splitBySlug(src)) {
+      const name = field(block, "name");
+      if (!slug || !name) continue;
+      const type = field(block, "type");
+      const intro = field(block, "intro");
+      const rm = block.match(/risks:\s*\[([\s\S]*?)\]/);
+      const risks = rm
+        ? [...rm[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((x) => unescapeStr(x[1]))
+        : [];
+      const body =
+        `<p>Check any token on ${esc(name)}, ${esc(type)}, for honeypots, rug pull signals, hidden taxes, and risky contract permissions before you buy. Free, instant, and no wallet connection required.</p>` +
+        `<h2>Why ${esc(name)} tokens need checking</h2><p>${esc(intro)}</p>` +
+        (risks.length
+          ? `<h2>Common risks on ${esc(name)}</h2><ul>${risks.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`
+          : "");
+      DYNAMIC[`/chains/${slug}`] = {
+        title: `${name} Token Scanner: Honeypot & Rug Pull Checker | AIDYOR`,
+        description: `Check any ${name} token for honeypots, rug pulls, hidden taxes and risky contracts. Free ${name} token safety scanner with a 0-100 risk score. No wallet needed.`,
+        h1: `${name} Token Scanner & Safety Checker`,
+        intro: "",
+        bodyHtml: body,
+      };
+      n++;
+    }
+    console.log(`[prerender] chain pages parsed: ${n}`);
+  } catch (e) {
+    console.warn("[prerender] chains parsing failed, skipping:", e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 function readSitemapPaths() {
   for (const file of SITEMAP_CANDIDATES) {
     if (fs.existsSync(file)) {
@@ -167,19 +255,17 @@ function readSitemapPaths() {
   return [];
 }
 
+// replace with a function so "$" characters in the replacement are never special
 function setMeta(html, re, replacement) {
-  return re.test(html) ? html.replace(re, replacement) : html;
+  return re.test(html) ? html.replace(re, () => replacement) : html;
 }
-
-const navHtml = () =>
-  `<nav aria-label="Main">${NAV.map(
-    ([href, label]) => `<a href="${href}" class="text-primary underline">${label}</a>`
-  ).join(" · ")}</nav>`;
 
 function buildPage(template, route) {
   const url = `${SITE}${route}`;
-  const meta = { ...fallbackMeta(route), ...(PAGES[route] || {}) };
-  const { title, description, h1, intro } = meta;
+  const meta = { ...(DYNAMIC[route] || {}), ...(PAGES[route] || {}) };
+  const lastSlug = route.split("/").filter(Boolean).pop() || "";
+  const title = meta.title || `${humanize(lastSlug)} | AIDYOR`;
+  const h1 = meta.h1 || humanize(lastSlug);
 
   let html = template;
   html = setMeta(html, /<title>[\s\S]*?<\/title>/, `<title>${esc(title)}</title>`);
@@ -188,10 +274,12 @@ function buildPage(template, route) {
   html = setMeta(html, /<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${esc(title)}" />`);
   html = setMeta(html, /<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${esc(title)}" />`);
 
-  const d = esc(description);
-  html = setMeta(html, /<meta name="description"[^>]*>/, `<meta name="description" content="${d}" />`);
-  html = setMeta(html, /<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${d}" />`);
-  html = setMeta(html, /<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${d}" />`);
+  if (meta.description) {
+    const d = esc(meta.description);
+    html = setMeta(html, /<meta name="description"[^>]*>/, `<meta name="description" content="${d}" />`);
+    html = setMeta(html, /<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${d}" />`);
+    html = setMeta(html, /<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${d}" />`);
+  }
 
   // meta keywords is ignored by Google
   html = html.replace(/<meta name="keywords"[^>]*>\s*/g, "");
@@ -202,35 +290,23 @@ function buildPage(template, route) {
     (block) => (block.includes('"SoftwareApplication"') ? "" : block)
   );
 
-  // Static nav + H1 + intro inside #root (React replaces it on mount)
-  // The "ssr-fallback" class lets index.html hide this block for JS-enabled clients (no flash before React mounts)
-  const introHtml = intro ? `<p>${esc(intro)}</p>` : "";
-  html = html.replace(
-    ROOT_RE,
-    () => `<div id="root"><div class="ssr-fallback container mx-auto px-4 py-8">${navHtml()}<main><h1>${esc(h1)}</h1>${introHtml}</main></div></div>\n    `
-  );
+  // Page-specific structured data (blog posts)
+  if (meta.jsonLd) {
+    const json = JSON.stringify(meta.jsonLd).replace(/</g, "\\u003c");
+    html = html.replace(
+      "</head>",
+      () => `<script type="application/ld+json">${json}</script></head>`
+    );
+  }
+
+  // Static H1 + intro + body inside #root (React replaces it on mount)
+  const intro = meta.intro ? `<p>${esc(meta.intro)}</p>` : "";
+  const body = meta.bodyHtml || "";
+  const staticMain = `<div id="root"><main style="${MAIN_STYLE}"><h1>${esc(h1)}</h1>${intro}${body}</main></div>`;
+  html = html.replace(/<div id="root"><\/div>/, () => staticMain);
 
   return html;
 }
-
-// Static homepage content (mirrors the visible hero and How It Works copy)
-// The "ssr-fallback" class lets index.html hide this block for JS-enabled clients (no flash before React mounts)
-const HOME_BLOCK = `<div class="ssr-fallback container mx-auto px-4 py-8">${navHtml()}<main>
-<h1>Crypto Token Scanner: Detect Honeypots &amp; Rug Pulls</h1>
-<p>Protect your crypto with an advanced multi-chain token scanner and free honeypot checker. Paste a contract, search by name, or drop a screenshot — we surface the risk in seconds.</p>
-<ul><li>No wallet connection required</li><li>Real-time blockchain data</li><li>Scam pattern detection</li><li>AI-powered OCR</li></ul>
-<h2>How It Works</h2>
-<p>Institutional-grade crypto security analysis in three steps — no wallet, no sign-up required.</p>
-<h3>1. Input Your Token</h3>
-<p>Paste a contract address, search by token name, or drop a screenshot — our OCR engine extracts the address automatically.</p>
-<h3>2. Real-Time Analysis</h3>
-<p>We cross-check 7+ security APIs simultaneously — GoPlus, RugCheck, Unicrypt, DexScreener and more — across 9 blockchain networks.</p>
-<h3>3. Get Your Risk Score</h3>
-<p>Receive a 0–100 safety score with AI-powered plain-English explanations of every risk factor. No jargon, no guesswork.</p>
-<h2>Smart Contract Bug Scanner</h2>
-<p>Check smart contract code for common vulnerabilities before you interact with it.</p>
-<p><small>Analysis is informational only. No financial advice or guarantees.</small></p>
-</main></div>`;
 
 function main() {
   const templatePath = path.join(DIST, "index.html");
@@ -238,10 +314,17 @@ function main() {
     console.error("[prerender] dist/index.html not found. Did vite build run?");
     process.exit(1);
   }
-  // Read the pristine template ONCE, before the homepage is modified below
   const template = fs.readFileSync(templatePath, "utf8");
 
-  const routes = new Set([...readSitemapPaths(), ...Object.keys(PAGES)]);
+  loadBlog();
+  loadGlossary();
+  loadChains();
+
+  const routes = new Set([
+    ...readSitemapPaths(),
+    ...Object.keys(PAGES),
+    ...Object.keys(DYNAMIC),
+  ]);
   routes.delete("/");
 
   let count = 0;
@@ -252,18 +335,6 @@ function main() {
     count++;
   }
   console.log(`[prerender] wrote ${count} pages`);
-
-  // Homepage: add static content to dist/index.html
-  const home = template.replace(
-    ROOT_RE,
-    () => `<div id="root">${HOME_BLOCK}</div>\n    `
-  );
-  if (!ROOT_RE.test(template)) {
-    console.warn('[prerender] homepage: #root not found, homepage left unchanged');
-  } else {
-    fs.writeFileSync(templatePath, home);
-    console.log("[prerender] homepage static content added");
-  }
 }
 
 main();
