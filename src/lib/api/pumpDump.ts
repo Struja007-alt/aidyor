@@ -32,17 +32,22 @@ const THRESHOLDS = {
   PUMP_24H_PRICE: 200,      // 200% in 24 hours
   PUMP_VOLUME_SPIKE: 5,     // 5x normal volume
   PUMP_BUY_RATIO: 3,        // 3:1 buy to sell ratio
-  
+
   // Dump thresholds
   DUMP_5M_PRICE: -10,       // -10% in 5 minutes
   DUMP_1H_PRICE: -30,       // -30% in 1 hour
   DUMP_24H_PRICE: -50,      // -50% in 24 hours
   DUMP_SELL_RATIO: 0.3,     // 1:3 buy to sell ratio
-  
+
   // Warning thresholds (softer)
   WARNING_5M_PRICE: 8,
   WARNING_1H_PRICE: 30,
   WARNING_VOLUME_SPIKE: 3,
+
+  // Minimum number of trades (buys + sells) in the 1h window before the
+  // buy/sell pressure signals are trusted. Below this the ratio is just noise
+  // (e.g. 1 buy and 0 sells would otherwise read as "10:1 extreme buy pressure").
+  MIN_TXNS_1H_FOR_RATIO: 20,
 };
 
 // Analyze a token for pump/dump patterns
@@ -52,7 +57,7 @@ export function analyzePumpDump(pairs: DexPair[]): PumpDumpAnalysis {
   }
 
   // Get the main pair (highest liquidity)
-  const mainPair = pairs.reduce((best, pair) => 
+  const mainPair = pairs.reduce((best, pair) =>
     (pair.liquidity?.usd || 0) > (best.liquidity?.usd || 0) ? pair : best
   , pairs[0]);
 
@@ -66,10 +71,9 @@ export function analyzePumpDump(pairs: DexPair[]): PumpDumpAnalysis {
   const priceChange24h = mainPair.priceChange?.h24 || 0;
 
   // Volume analysis
-  const volume5m = mainPair.volume?.m5 || 0;
   const volume1h = mainPair.volume?.h1 || 0;
   const volume24h = mainPair.volume?.h24 || 0;
-  
+
   // Calculate expected hourly volume from 24h
   const expectedHourlyVolume = volume24h / 24;
   const volumeChange = expectedHourlyVolume > 0 ? volume1h / expectedHourlyVolume : 0;
@@ -80,10 +84,19 @@ export function analyzePumpDump(pairs: DexPair[]): PumpDumpAnalysis {
   const buys1h = mainPair.txns?.h1?.buys || 0;
   const sells1h = mainPair.txns?.h1?.sells || 0;
   const buySellRatio = sells24h > 0 ? buys24h / sells24h : buys24h > 0 ? 10 : 1;
-  const buySellRatio1h = sells1h > 0 ? buys1h / sells1h : buys1h > 0 ? 10 : 1;
+
+  // 1h ratio is only meaningful with enough trades. With a tiny sample we
+  // leave it null and skip the buy/sell pressure checks entirely.
+  const txns1h = buys1h + sells1h;
+  const hasRatioSample = txns1h >= THRESHOLDS.MIN_TXNS_1H_FOR_RATIO;
+  const buySellRatio1h: number | null = !hasRatioSample
+    ? null
+    : sells1h > 0
+      ? buys1h / sells1h
+      : 10; // enough trades but zero sells: genuinely one-sided
 
   // === PUMP DETECTION ===
-  
+
   // 5-minute pump
   if (priceChange5m >= THRESHOLDS.PUMP_5M_PRICE) {
     signals.push({
@@ -141,13 +154,13 @@ export function analyzePumpDump(pairs: DexPair[]): PumpDumpAnalysis {
     pumpScore += 10;
   }
 
-  // Buy pressure
-  if (buySellRatio1h >= THRESHOLDS.PUMP_BUY_RATIO) {
+  // Buy pressure (only with a meaningful 1h sample)
+  if (buySellRatio1h !== null && buySellRatio1h >= THRESHOLDS.PUMP_BUY_RATIO) {
     signals.push({
       name: 'Extreme Buy Pressure',
       type: 'pump',
       severity: 'high',
-      description: `${buySellRatio1h.toFixed(1)}:1 buy/sell ratio in 1h`,
+      description: `${buySellRatio1h.toFixed(1)}:1 buy/sell ratio in 1h (${txns1h} trades)`,
     });
     pumpScore += 20;
   }
@@ -195,13 +208,13 @@ export function analyzePumpDump(pairs: DexPair[]): PumpDumpAnalysis {
     dumpScore += 30;
   }
 
-  // Sell pressure
-  if (buySellRatio1h <= THRESHOLDS.DUMP_SELL_RATIO) {
+  // Sell pressure (only with a meaningful 1h sample)
+  if (buySellRatio1h !== null && buySellRatio1h <= THRESHOLDS.DUMP_SELL_RATIO) {
     signals.push({
       name: 'Extreme Sell Pressure',
       type: 'dump',
       severity: 'high',
-      description: `Heavy selling: ${buySellRatio1h.toFixed(2)}:1 buy/sell ratio`,
+      description: `Heavy selling: ${buySellRatio1h.toFixed(2)}:1 buy/sell ratio in 1h (${txns1h} trades)`,
     });
     dumpScore += 25;
   }
