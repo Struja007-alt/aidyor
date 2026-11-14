@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { Lock, Unlock, Clock, Timer, Shield } from "lucide-react";
+import { Lock, Unlock, Clock, Timer, Shield, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LockInfo } from "@/lib/api/unicrypt";
 
@@ -23,13 +23,19 @@ interface LockStatusBadgeProps {
  * Displays the liquidity lock status of a token with countdown timer.
  * Shows lock percentage, unlock date, and platform information.
  * Supports both compact badge and full card display modes.
- * 
+ *
+ * Respects LockInfo.status:
+ *  - 'unknown'  -> neutral "UNVERIFIED" (could not classify; NOT shown as a danger)
+ *  - 'burned'   -> positive "BURNED"
+ *  - 'protocol' -> neutral/positive "DEX POOL" (no transferable LP token)
+ *  - 'unlocked' or legacy !isLocked -> red "UNLOCKED"
+ *
  * @component
  * @example
  * ```tsx
  * // Compact badge
  * <LockStatusBadge lockInfo={lockData} compact />
- * 
+ *
  * // Full card view
  * <LockStatusBadge lockInfo={lockData} />
  * ```
@@ -79,7 +85,7 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
 
   if (!lockInfo) {
     return compact ? (
-      <span 
+      <span
         className="px-1.5 py-0.5 text-[10px] rounded bg-muted/50 text-muted-foreground border border-border/50 flex items-center gap-0.5"
         title="Lock status unknown"
       >
@@ -89,14 +95,57 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
     ) : null;
   }
 
+  const isUnknown = lockInfo.status === 'unknown';
+  const isBurned = lockInfo.status === 'burned';
+  const isProtocol = lockInfo.status === 'protocol';
+
   const isExpired = lockInfo.unlockDate && lockInfo.unlockDate < Date.now();
-  const isUnlockingSoon = lockInfo.unlockDate && 
+  const isUnlockingSoon = lockInfo.unlockDate &&
     (lockInfo.unlockDate - Date.now()) < (30 * 24 * 60 * 60 * 1000); // 30 days
 
   if (compact) {
+    // Could not verify: neutral, not a danger claim
+    if (isUnknown) {
+      return (
+        <span
+          className="px-1.5 py-0.5 text-[10px] rounded bg-muted/50 text-muted-foreground border border-border/50 flex items-center gap-0.5"
+          title="Liquidity lock status could not be verified. This is not necessarily a risk."
+        >
+          <Info className="w-2.5 h-2.5" />
+          UNVERIFIED
+        </span>
+      );
+    }
+
+    // Permanently burned LP tokens
+    if (isBurned) {
+      return (
+        <span
+          className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5"
+          title={`${lockInfo.lockPercentage.toFixed(0)}% of liquidity burned (permanently unrecoverable)`}
+        >
+          <Lock className="w-2.5 h-2.5" />
+          BURNED
+        </span>
+      );
+    }
+
+    // Liquidity managed by a DEX pool contract (no transferable LP token)
+    if (isProtocol) {
+      return (
+        <span
+          className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5"
+          title={lockInfo.lockerPlatform}
+        >
+          <Shield className="w-2.5 h-2.5" />
+          DEX POOL
+        </span>
+      );
+    }
+
     if (!lockInfo.isLocked) {
       return (
-        <span 
+        <span
           className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5"
           title="No liquidity lock detected - High risk!"
         >
@@ -108,7 +157,7 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
 
     if (isExpired) {
       return (
-        <span 
+        <span
           className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5"
           title="Lock has expired!"
         >
@@ -120,7 +169,7 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
 
     if (isUnlockingSoon) {
       return (
-        <span 
+        <span
           className="px-1.5 py-0.5 text-[10px] rounded bg-warning/30 text-warning border border-warning/50 flex items-center gap-0.5"
           title={`Unlocks in ${countdown} via ${lockInfo.lockerPlatform}`}
         >
@@ -131,7 +180,7 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
     }
 
     return (
-      <span 
+      <span
         className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5"
         title={`${lockInfo.lockPercentage.toFixed(0)}% locked via ${lockInfo.lockerPlatform}`}
       >
@@ -142,11 +191,75 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
   }
 
   // Full display (non-compact)
+
+  // Could not verify: neutral card
+  if (isUnknown) {
+    return (
+      <div className="rounded-lg border p-4 bg-muted/30 border-border/50">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-8 h-8 rounded-full bg-muted/50 flex items-center justify-center">
+            <Info className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div>
+            <h4 className="font-medium text-foreground text-sm">Liquidity Lock</h4>
+            <p className="text-xs text-muted-foreground">{lockInfo.lockerPlatform}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 p-2 rounded-md bg-background/50">
+          <Shield className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">
+            Lock status could not be verified. This is not necessarily a risk, especially for established tokens.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Burned liquidity card
+  if (isBurned) {
+    return (
+      <div className="rounded-lg border p-4 bg-safe/10 border-safe/30">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-safe/20 flex items-center justify-center">
+              <Lock className="w-4 h-4 text-safe" />
+            </div>
+            <div>
+              <h4 className="font-medium text-foreground text-sm">Liquidity Burned</h4>
+              <p className="text-xs text-muted-foreground">{lockInfo.lockerPlatform}</p>
+            </div>
+          </div>
+          <div className="text-right text-safe">
+            <div className="font-display text-2xl">{lockInfo.lockPercentage.toFixed(0)}%</div>
+            <div className="text-xs opacity-80">burned</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // DEX-pool-managed liquidity card
+  if (isProtocol) {
+    return (
+      <div className="rounded-lg border p-4 bg-safe/10 border-safe/30">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-safe/20 flex items-center justify-center">
+            <Shield className="w-4 h-4 text-safe" />
+          </div>
+          <div>
+            <h4 className="font-medium text-foreground text-sm">Liquidity Structure</h4>
+            <p className="text-xs text-muted-foreground">{lockInfo.lockerPlatform}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn(
       "rounded-lg border p-4",
-      !lockInfo.isLocked 
-        ? "bg-danger/10 border-danger/30" 
+      !lockInfo.isLocked
+        ? "bg-danger/10 border-danger/30"
         : isExpired
           ? "bg-danger/10 border-danger/30"
           : isUnlockingSoon
@@ -175,7 +288,7 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
             </p>
           </div>
         </div>
-        
+
         {lockInfo.isLocked && (
           <div className={cn(
             "text-right",
@@ -192,10 +305,10 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
       {lockInfo.isLocked && lockInfo.unlockDate && (
         <div className={cn(
           "flex items-center justify-between p-2 rounded-md",
-          isExpired 
-            ? "bg-danger/20" 
-            : isUnlockingSoon 
-              ? "bg-warning/20" 
+          isExpired
+            ? "bg-danger/20"
+            : isUnlockingSoon
+              ? "bg-warning/20"
               : "bg-background/50"
         )}>
           <div className="flex items-center gap-2">
@@ -206,10 +319,10 @@ export const LockStatusBadge = ({ lockInfo, compact = false }: LockStatusBadgePr
           </div>
           <div className={cn(
             "font-mono text-sm font-medium",
-            isExpired 
-              ? "text-danger" 
-              : isUnlockingSoon 
-                ? "text-warning" 
+            isExpired
+              ? "text-danger"
+              : isUnlockingSoon
+                ? "text-warning"
                 : "text-foreground"
           )}>
             {isExpired ? (
