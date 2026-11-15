@@ -1,3 +1,5 @@
+// supabase/functions/x402-scan/index.ts
+// x402 v2 paywall in front of AIDYOR's existing scan function.
 // Flow: no payment -> 402 | verify -> run scan -> settle (only if scan ok) -> 200 + PAYMENT-RESPONSE
 // Deploy with "Verify JWT" OFF (agents have no Supabase JWT).
 // Supports Coinbase CDP facilitator (mainnet) via Ed25519 API key, or keyless testnet facilitator.
@@ -8,10 +10,10 @@ const FACILITATOR = env("X402_FACILITATOR_URL", "https://x402.org/facilitator");
 const PAY_TO = env("X402_PAY_TO");
 const NETWORK = env("X402_NETWORK", "eip155:84532"); // TESTNET default. Mainnet Base: eip155:8453
 const ASSET = env("X402_ASSET", "0x036CbD53842c5426634e7929541eC2318f3dCF7e"); // Base Sepolia USDC
-const PRICE_ATOMIC = env("X402_PRICE_ATOMIC", "10000"); // 6 decimals: 10000 = $0.01
+const PRICE_ATOMIC = env("X402_PRICE_ATOMIC", "10000"); // 6 decimals: 10000 = $0.05
 const EIP712_NAME = env("X402_EIP712_NAME", "USDC"); // mainnet is usually "USD Coin" - VERIFY
 const EIP712_VERSION = env("X402_EIP712_VERSION", "2");
-const SCAN_FUNCTION = env("X402_SCAN_FUNCTION", "scan-token"); // ASSUMPTION: your scan function name
+const SCAN_FUNCTION = env("X402_SCAN_FUNCTION", "risk-orchestrator"); // verified: your real scan engine
 const SUPABASE_URL = env("SUPABASE_URL");
 const SERVICE_KEY = env("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -158,7 +160,10 @@ Deno.serve(async (req) => {
       chain = String(b.chain ?? chain).toLowerCase();
     } catch { /* fall through to validation */ }
   }
-  if (!address || address.length > 100 || !CHAINS.has(chain)) {
+  address = address.trim();
+  const validAddr = /^0x[a-fA-F0-9]{40}$/.test(address) ||
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+  if (!validAddr || (chain && !CHAINS.has(chain))) {
     return json({ error: "invalid_input", supported_chains: [...CHAINS] }, 400);
   }
 
@@ -192,11 +197,13 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${SERVICE_KEY}`,
       },
-      body: JSON.stringify({ address, chain }), // ASSUMPTION: adjust to your scan function's input
+      body: JSON.stringify({ address, network: chain || undefined }), // risk-orchestrator takes {address, network}
     });
   } catch {
     return json({ error: "scan_unavailable" }, 502);
   }
+  if (scan.status === 404) return json({ error: "token_not_found" }, 404); // not charged
+  if (scan.status === 400) return json({ error: "invalid_address" }, 400); // not charged
   if (!scan.ok) return json({ error: "scan_failed", status: scan.status }, 502);
   const result = await scan.json();
 
