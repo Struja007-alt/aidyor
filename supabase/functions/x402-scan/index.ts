@@ -10,7 +10,7 @@ const FACILITATOR = env("X402_FACILITATOR_URL", "https://x402.org/facilitator");
 const PAY_TO = env("X402_PAY_TO");
 const NETWORK = env("X402_NETWORK", "eip155:84532"); // TESTNET default. Mainnet Base: eip155:8453
 const ASSET = env("X402_ASSET", "0x036CbD53842c5426634e7929541eC2318f3dCF7e"); // Base Sepolia USDC
-const PRICE_ATOMIC = env("X402_PRICE_ATOMIC", "10000"); // 6 decimals: 10000 = $0.05
+const PRICE_ATOMIC = env("X402_PRICE_ATOMIC", "50000"); // 6 decimals: 50000 = $0.05
 const EIP712_NAME = env("X402_EIP712_NAME", "USDC"); // mainnet is usually "USD Coin" - VERIFY
 const EIP712_VERSION = env("X402_EIP712_VERSION", "2");
 const SCAN_FUNCTION = env("X402_SCAN_FUNCTION", "risk-orchestrator"); // verified: your real scan engine
