@@ -25,6 +25,8 @@ function getCorsHeaders(origin) {
 const cache = new Map();
 const CACHE_TTL = 30000;
 
+// Tron addresses (T..., 34 base58 chars) also match the solana pattern,
+// so they pass validation. They are case-sensitive and are never lowercased.
 const ADDRESS_PATTERNS = {
   evm: /^0x[a-fA-F0-9]{40}$/,
   solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
@@ -41,6 +43,7 @@ const NETWORK_ALIASES = {
   avalanche: 'avalanche', avax: 'avalanche',
   fantom: 'fantom', ftm: 'fantom',
   solana: 'solana', sol: 'solana',
+  tron: 'tron', trx: 'tron',
 };
 
 function validateAddress(address) {
@@ -55,7 +58,7 @@ function validateNetwork(network) {
   return !!NETWORK_ALIASES[network.toLowerCase().trim()];
 }
 
-// EVM addresses are case-insensitive. Solana (base58) is case-SENSITIVE
+// EVM addresses are case-insensitive. Solana and Tron (base58) are case-SENSITIVE
 // and must never be lowercased.
 function normalizeAddress(address) {
   const a = address.trim();
