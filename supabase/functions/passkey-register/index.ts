@@ -1,236 +1,405 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "@supabase/supabase-js";
-import { generateAuthenticationOptions, verifyAuthenticationResponse } from "@simplewebauthn/server";
+import { createClient, type User } from "@supabase/supabase-js";
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  type RegistrationResponseJSON,
+} from "@simplewebauthn/server";
 
 const PROD_ORIGINS = [
-  'https://aidyor.app',
-  'https://www.aidyor.app',
+  "https://aidyor.app",
+  "https://www.aidyor.app",
 ];
-const DEV_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:8080',
-];
-// Localhost origins are only accepted if the secret ALLOW_LOCALHOST_ORIGINS=true is set.
-const ALLOWED_ORIGINS = Deno.env.get('ALLOW_LOCALHOST_ORIGINS') === 'true'
-  ? [...PROD_ORIGINS, ...DEV_ORIGINS]
-  : PROD_ORIGINS;
 
-function isAllowedOrigin(origin) {
-  if (!origin) return false;
-  return ALLOWED_ORIGINS.includes(origin);
+const DEV_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:8080",
+];
+
+const ALLOWED_ORIGINS =
+  Deno.env.get("ALLOW_LOCALHOST_ORIGINS") === "true"
+    ? [...PROD_ORIGINS, ...DEV_ORIGINS]
+    : PROD_ORIGINS;
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const MAX_BODY_BYTES = 64 * 1024;
+
+function isAllowedOrigin(origin: string | null): origin is string {
+  return !!origin && ALLOWED_ORIGINS.includes(origin);
 }
 
-function getCorsHeaders(origin) {
-  const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowedOrigin = isAllowedOrigin(origin)
+    ? origin
+    : PROD_ORIGINS[0];
+
   return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Credentials': 'true',
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Credentials": "true",
+    "Vary": "Origin",
   };
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_EMAIL_LENGTH = 320;
-
-function validateEmail(email) {
-  if (!email || typeof email !== 'string') return { valid: false, error: 'Email is required' };
-  if (email.length > MAX_EMAIL_LENGTH) return { valid: false, error: 'Invalid email format' };
-  if (!EMAIL_REGEX.test(email)) return { valid: false, error: 'Invalid email format' };
-  return { valid: true };
+function jsonResponse(
+  body: Record<string, unknown>,
+  status: number,
+  corsHeaders: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
-function base64urlToUint8Array(base64url) {
-  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-// Paginated lookup. listUsers() alone only returns the first page (50 users).
-async function findUserByEmail(supabaseAdmin, email) {
-  const target = email.toLowerCase();
-  const perPage = 1000;
-  for (let page = 1; page <= 20; page++) {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-    if (error) return { user: null, error };
-    const users = data?.users ?? [];
-    const match = users.find((u) => u.email?.toLowerCase() === target);
-    if (match) return { user: match, error: null };
-    if (users.length < perPage) break;
+function requiredEnv(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
   }
-  return { user: null, error: null };
+  return value;
 }
 
-serve(async (req) => {
-  const origin = req.headers.get('origin');
+function validateEmail(email: unknown): email is string {
+  if (typeof email !== "string") return false;
+
+  const normalized = email.trim();
+
+  return (
+    normalized.length > 0 &&
+    normalized.length <= 320 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
+  );
+}
+
+function uint8ArrayToBase64url(bytes: Uint8Array): string {
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
+async function getAuthenticatedUser(
+  req: Request,
+  supabaseAdmin: ReturnType<typeof createClient>,
+): Promise<User | null> {
+  const authorization = req.headers.get("Authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+
+  if (!match?.[1]) return null;
+
+  const { data, error } = await supabaseAdmin.auth.getUser(match[1]);
+
+  if (error || !data.user) return null;
+
+  return data.user;
+}
+
+serve(async (req: Request) => {
+  const origin = req.headers.get("origin");
   const corsHeaders = getCorsHeaders(origin);
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
+  }
+
+  if (!isAllowedOrigin(origin)) {
+    return jsonResponse({ error: "Invalid origin" }, 403, corsHeaders);
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    const contentLength = Number(req.headers.get("content-length") || "0");
 
-    if (!origin || !isAllowedOrigin(origin)) {
-      return new Response(JSON.stringify({ error: 'Invalid origin' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (contentLength > MAX_BODY_BYTES) {
+      return jsonResponse({ error: "Request too large" }, 413, corsHeaders);
     }
+
+    const supabaseUrl = requiredEnv("SUPABASE_URL");
+    const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+
+    // Registration must only be available to an authenticated account.
+    const user = await getAuthenticatedUser(req, supabaseAdmin);
+
+    if (!user) {
+      return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+    }
+
     const rpID = new URL(origin).hostname;
 
-    const { action, email, credential } = await req.json();
+    let body: {
+      action?: string;
+      credential?: RegistrationResponseJSON;
+    };
 
-    if (action === 'start') {
-      const emailValidation = validateEmail(email);
-      if (!emailValidation.valid) {
-        return new Response(JSON.stringify({ error: emailValidation.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      const { user, error: authError } = await findUserByEmail(supabaseAdmin, email);
-      if (authError) {
-        console.error('Auth error:', authError);
-        return new Response(JSON.stringify({ error: 'Failed to lookup user' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      // Same response whether the user doesn't exist or has no passkey
-      const genericNotFound = () => new Response(JSON.stringify({ error: 'No passkey found for this email' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-      if (!user) return genericNotFound();
-
-      const { data: credentials, error: credError } = await supabaseAdmin
-        .from('passkey_credentials')
-        .select('credential_id')
-        .eq('user_id', user.id);
-
-      if (credError || !credentials?.length) return genericNotFound();
-
-      const options = await generateAuthenticationOptions({
-        rpID,
-        timeout: 60000,
-        userVerification: 'required',
-        allowCredentials: credentials.map((cred) => ({ id: cred.credential_id })),
-      });
-
-      await supabaseAdmin.from('passkey_challenges').delete().eq('user_id', user.id).eq('purpose', 'authentication');
-
-      const { error: challengeInsertError } = await supabaseAdmin
-        .from('passkey_challenges')
-        .insert({ user_id: user.id, challenge: options.challenge, purpose: 'authentication' });
-
-      if (challengeInsertError) {
-        console.error('Challenge insert error:', challengeInsertError);
-        return new Response(JSON.stringify({ error: 'Failed to start authentication' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      console.log('Generated authentication options for user:', user.id);
-
-      // userId intentionally NOT returned (avoids leaking user UUIDs)
-      return new Response(JSON.stringify({ options, challenge: options.challenge }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
     }
 
-    if (action === 'complete') {
-      const emailValidation = validateEmail(email);
-      if (!emailValidation.valid || !credential?.id) {
-        return new Response(JSON.stringify({ error: 'Missing credential data' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (body.action === "start") {
+      const { data: existingCredentials, error: credentialsError } =
+        await supabaseAdmin
+          .from("passkey_credentials")
+          .select("credential_id")
+          .eq("user_id", user.id);
+
+      if (credentialsError) {
+        console.error("Could not load existing passkeys");
+        return jsonResponse(
+          { error: "Failed to load existing passkeys" },
+          500,
+          corsHeaders,
+        );
       }
 
-      const { user, error: authError } = await findUserByEmail(supabaseAdmin, email);
-      if (authError) {
-        return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const excludeCredentials = (existingCredentials || []).map(
+        (credential: { credential_id: string }) => ({
+          id: credential.credential_id,
+        }),
+      );
+
+      const options = await generateRegistrationOptions({
+        rpName: "AIDYOR",
+        rpID,
+        userID: new TextEncoder().encode(user.id),
+        userName: user.email || user.id,
+        userDisplayName: user.email?.split("@")[0] || "AIDYOR user",
+        timeout: 60000,
+        attestationType: "none",
+        excludeCredentials,
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required",
+          residentKey: "preferred",
+        },
+        supportedAlgorithmIDs: [-7, -257],
+      });
+
+      // Remove any previous unfinished registration challenge.
+      const { error: deleteError } = await supabaseAdmin
+        .from("passkey_challenges")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("purpose", "registration");
+
+      if (deleteError) {
+        console.error("Could not clear previous registration challenge");
+        return jsonResponse(
+          { error: "Failed to start passkey registration" },
+          500,
+          corsHeaders,
+        );
       }
-      if (!user) {
-        return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const expiresAt = new Date(
+        Date.now() + CHALLENGE_TTL_MS,
+      ).toISOString();
+
+      const { error: insertError } = await supabaseAdmin
+        .from("passkey_challenges")
+        .insert({
+          user_id: user.id,
+          challenge: options.challenge,
+          purpose: "registration",
+          expires_at: expiresAt,
+        });
+
+      if (insertError) {
+        console.error("Could not save registration challenge");
+        return jsonResponse(
+          { error: "Failed to start passkey registration" },
+          500,
+          corsHeaders,
+        );
       }
 
-      const { data: storedCred, error: credError } = await supabaseAdmin
-        .from('passkey_credentials')
-        .select('*')
-        .eq('credential_id', credential.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
+      return jsonResponse(
+        {
+          options,
+          challenge: options.challenge,
+        },
+        200,
+        corsHeaders,
+      );
+    }
 
-      if (credError || !storedCred) {
-        console.error('Credential not found for user:', user.id);
-        return new Response(JSON.stringify({ error: 'Invalid passkey' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (body.action === "complete") {
+      const credential = body.credential;
+
+      if (
+        !credential ||
+        typeof credential.id !== "string" ||
+        !credential.id ||
+        typeof credential.rawId !== "string" ||
+        credential.type !== "public-key" ||
+        !credential.response
+      ) {
+        return jsonResponse(
+          { error: "Invalid registration credential" },
+          400,
+          corsHeaders,
+        );
       }
 
-      const { data: challengeRow, error: challengeFetchError } = await supabaseAdmin
-        .from('passkey_challenges')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('purpose', 'authentication')
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: challengeRow, error: challengeError } =
+        await supabaseAdmin
+          .from("passkey_challenges")
+          .select("id, challenge")
+          .eq("user_id", user.id)
+          .eq("purpose", "registration")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (challengeFetchError || !challengeRow) {
-        return new Response(JSON.stringify({ error: 'Authentication session expired. Please try again.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (challengeError || !challengeRow) {
+        return jsonResponse(
+          {
+            error: "Registration session expired. Please try again.",
+          },
+          400,
+          corsHeaders,
+        );
       }
 
-      // Single-use: consume the challenge BEFORE verifying, so a failed attempt burns it too
-      await supabaseAdmin.from('passkey_challenges').delete().eq('id', challengeRow.id);
+      // Consume the challenge before verification to prevent replay.
+      const { error: consumeError } = await supabaseAdmin
+        .from("passkey_challenges")
+        .delete()
+        .eq("id", challengeRow.id);
+
+      if (consumeError) {
+        console.error("Could not consume registration challenge");
+        return jsonResponse(
+          { error: "Could not complete registration" },
+          500,
+          corsHeaders,
+        );
+      }
 
       let verification;
+
       try {
-        verification = await verifyAuthenticationResponse({
+        verification = await verifyRegistrationResponse({
           response: credential,
           expectedChallenge: challengeRow.challenge,
           expectedOrigin: origin,
           expectedRPID: rpID,
           requireUserVerification: true,
-          credential: {
-            id: storedCred.credential_id,
-            publicKey: base64urlToUint8Array(storedCred.public_key),
-            counter: Number(storedCred.counter),
-          },
         });
-      } catch (verifyError) {
-        console.error('Verification error:', verifyError);
-        return new Response(JSON.stringify({ error: 'Passkey verification failed' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      } catch (error) {
+        console.error(
+          "Passkey registration verification failed:",
+          error instanceof Error ? error.message : "Unknown error",
+        );
+
+        return jsonResponse(
+          { error: "Passkey verification failed" },
+          400,
+          corsHeaders,
+        );
       }
 
-      if (!verification.verified) {
-        return new Response(JSON.stringify({ error: 'Passkey verification failed' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (!verification.verified || !verification.registrationInfo) {
+        return jsonResponse(
+          { error: "Passkey verification failed" },
+          400,
+          corsHeaders,
+        );
       }
 
-      await supabaseAdmin
-        .from('passkey_credentials')
-        .update({ counter: verification.authenticationInfo.newCounter, last_used_at: new Date().toISOString() })
-        .eq('id', storedCred.id);
+      const {
+        credential: verifiedCredential,
+        credentialDeviceType,
+      } = verification.registrationInfo;
 
-      const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'magiclink',
-        email: user.email,
-        options: { redirectTo: origin || undefined },
-      });
+      const publicKey = uint8ArrayToBase64url(
+        verifiedCredential.publicKey,
+      );
 
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        return new Response(JSON.stringify({ error: 'Failed to create session' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      // Credential IDs are globally unique in the database.
+      const { data: existingCredential, error: lookupError } =
+        await supabaseAdmin
+          .from("passkey_credentials")
+          .select("id")
+          .eq("credential_id", verifiedCredential.id)
+          .maybeSingle();
+
+      if (lookupError) {
+        console.error("Could not check for existing credential");
+        return jsonResponse(
+          { error: "Failed to save passkey" },
+          500,
+          corsHeaders,
+        );
       }
 
-      console.log('Passkey authentication successful for user:', user.id);
-
-      const hashedToken = sessionData.properties?.hashed_token;
-
-      if (!hashedToken) {
-        console.error('No hashed_token in generateLink response');
-        return new Response(JSON.stringify({ error: 'Failed to create session' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (existingCredential) {
+        return jsonResponse(
+          { error: "This passkey is already registered" },
+          409,
+          corsHeaders,
+        );
       }
 
-      return new Response(JSON.stringify({ success: true, token: hashedToken }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const { error: insertCredentialError } = await supabaseAdmin
+        .from("passkey_credentials")
+        .insert({
+          user_id: user.id,
+          credential_id: verifiedCredential.id,
+          public_key: publicKey,
+          counter: verifiedCredential.counter,
+          device_type: credentialDeviceType || "platform",
+        });
+
+      if (insertCredentialError) {
+        console.error("Could not save verified passkey");
+        return jsonResponse(
+          { error: "Failed to save passkey" },
+          500,
+          corsHeaders,
+        );
+      }
+
+      return jsonResponse({ success: true }, 200, corsHeaders);
     }
 
-    return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
+    return jsonResponse({ error: "Invalid action" }, 400, corsHeaders);
   } catch (error) {
-    console.error('[Internal] Passkey authentication error:', error);
-    const origin = req.headers.get('origin');
-    const corsHeaders = getCorsHeaders(origin);
-    return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    console.error(
+      "[passkey-register] Internal error:",
+      error instanceof Error ? error.message : "Unknown error",
+    );
+
+    return jsonResponse(
+      { error: "Registration failed. Please try again." },
+      500,
+      corsHeaders,
+    );
   }
 });
