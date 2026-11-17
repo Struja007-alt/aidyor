@@ -1,10 +1,17 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 // ---------- Gemini model config (override via Supabase secrets) ----------
 const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 const GEMINI_PRO_MODEL = Deno.env.get("GEMINI_OCR_PRO_MODEL") || "gemini-3.1-pro-preview";
 const GEMINI_FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.6-flash";
+
+// ---------- Daily OCR quotas (UTC day) ----------
+const WEB_DAILY_LIMIT_PER_IP = 3;
+const TELEGRAM_DAILY_LIMIT_PER_USER = 5;
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const IP_HASH_SALT = Deno.env.get("OCR_IP_SALT") || SERVICE_ROLE_KEY;
 
 const ALLOWED_ORIGINS = [
   'https://aidyor.app',
@@ -31,6 +38,45 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MAX_RETRIES = 2;
 const RETRY_DELAYS = [1000, 2500];
 
+function safeEqual(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function sha256Hex(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getClientIp(req) {
+  const cf = req.headers.get('cf-connecting-ip');
+  if (cf) return cf.trim();
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0].trim();
+  return '';
+}
+
+// Decides who is being counted and what their daily limit is.
+// Telegram identity is only trusted when the caller proves it is our own backend
+// (service role key); otherwise anyone could spoof a Telegram user id.
+async function resolveQuotaSubject(req, authHeader, body) {
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const isServiceCall = !!SERVICE_ROLE_KEY && safeEqual(bearer, SERVICE_ROLE_KEY);
+
+  if (isServiceCall && body && body.telegramUserId !== undefined && body.telegramUserId !== null) {
+    const tgId = String(body.telegramUserId);
+    if (/^\d{1,20}$/.test(tgId)) {
+      return { identifier: `tg:${tgId}`, limit: TELEGRAM_DAILY_LIMIT_PER_USER };
+    }
+  }
+
+  const ip = getClientIp(req) || 'unknown';
+  const ipHash = await sha256Hex(`${IP_HASH_SALT}:${ip}`);
+  return { identifier: `ip:${ipHash.slice(0, 32)}`, limit: WEB_DAILY_LIMIT_PER_IP };
+}
+
 const CHAR_CORRECTIONS = {
   'O': '0', 'o': '0', 'Q': '0',
   'l': '1', 'I': '1', 'i': '1', '|': '1', '!': '1',
@@ -44,31 +90,29 @@ const CHAR_CORRECTIONS = {
 };
 
 const HEX_CHARS = new Set('0123456789abcdefABCDEF');
+// A repaired address may differ from what the model read by at most this many
+// characters. More than that is a guess, and a guessed address can belong to a
+// different token, so it is rejected instead of scanned.
+const MAX_REPAIRS = 2;
 
 function applyBasicCorrections(text) {
   let result = '';
+  let fixes = 0;
+  let dropped = 0;
   for (const char of text) {
     if (HEX_CHARS.has(char)) {
       result += char;
     } else if (CHAR_CORRECTIONS[char]) {
       result += CHAR_CORRECTIONS[char];
+      fixes++;
+    } else {
+      dropped++;
     }
   }
-  return result;
-}
-
-function countDifferences(a, b) {
-  let diff = Math.abs(a.length - b.length);
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    if (a[i].toLowerCase() !== b[i].toLowerCase()) {
-      diff++;
-    }
-  }
-  return diff;
+  return { text: result, fixes, dropped };
 }
 
 function correctEthAddress(rawAddress) {
-  const corrections = [];
   let normalized = rawAddress
     .replace(/^Ox/i, '0x')
     .replace(/^\bx(?=[a-fA-F0-9])/i, '0x');
@@ -84,23 +128,25 @@ function correctEthAddress(rawAddress) {
     return { corrected: prefix + body.toLowerCase(), confidence: 1.0, corrections: [], type: 'ethereum' };
   }
 
-  const correctedBody = applyBasicCorrections(body);
+  const { text: fixedBody, fixes, dropped } = applyBasicCorrections(body);
 
-  if (correctedBody.length === 40 && /^[a-fA-F0-9]{40}$/.test(correctedBody)) {
-    const changesNeeded = countDifferences(body, correctedBody);
-    const confidence = Math.max(0.5, 1 - (changesNeeded * 0.1));
-    if (changesNeeded > 0) {
-      corrections.push(`${changesNeeded} character(s) corrected`);
-    }
-    return { corrected: '0x' + correctedBody.toLowerCase(), confidence, corrections, type: 'ethereum' };
+  // Only accept a repair when nothing was thrown away, the length comes out
+  // exactly right and only a couple of look-alike characters were swapped.
+  if (dropped === 0 && fixes > 0 && fixes <= MAX_REPAIRS && /^[a-fA-F0-9]{40}$/.test(fixedBody)) {
+    return {
+      corrected: '0x' + fixedBody.toLowerCase(),
+      confidence: Math.max(0.5, 1 - fixes * 0.15),
+      corrections: [`${fixes} character(s) corrected`],
+      type: 'ethereum',
+    };
   }
 
-  const finalAddress = correctedBody.slice(0, 40).padEnd(40, '0').toLowerCase();
+  // No padding or truncating: never fabricate an address.
   return {
-    corrected: '0x' + finalAddress,
-    confidence: 0.3,
-    corrections: ['Multiple corrections applied, low confidence'],
-    type: 'ethereum'
+    corrected: prefix + body.toLowerCase(),
+    confidence: 0,
+    corrections: ['Could not repair safely'],
+    type: 'ethereum',
   };
 }
 
@@ -114,12 +160,15 @@ function correctSolanaAddress(rawAddress) {
 
   let corrected = '';
   let changesCount = 0;
+  let dropped = 0;
   for (const char of rawAddress) {
     if (BASE58_SET.has(char)) {
       corrected += char;
     } else if (SOLANA_CORRECTIONS[char]) {
       corrected += SOLANA_CORRECTIONS[char];
       changesCount++;
+    } else {
+      dropped++;
     }
   }
 
@@ -128,7 +177,8 @@ function correctSolanaAddress(rawAddress) {
   }
 
   const isValidLength = corrected.length >= 32 && corrected.length <= 44;
-  const confidence = isValidLength ? Math.max(0.5, 1 - (changesCount * 0.1)) : 0.2;
+  const safe = isValidLength && dropped === 0 && changesCount <= MAX_REPAIRS;
+  const confidence = safe ? Math.max(0.5, 1 - (changesCount * 0.15)) : 0.2;
   return { corrected, confidence, corrections, type: 'solana' };
 }
 
@@ -147,6 +197,7 @@ function correctTronAddress(rawAddress) {
   const TRON_CORRECTIONS = { '0': 'O', 'O': 'o', 'I': '1', 'l': '1' };
   let corrected = 'T';
   let changesCount = 0;
+  let dropped = 0;
   for (let i = 1; i < normalized.length; i++) {
     const char = normalized[i];
     if (/[A-Za-z1-9]/.test(char)) {
@@ -154,6 +205,8 @@ function correctTronAddress(rawAddress) {
     } else if (TRON_CORRECTIONS[char]) {
       corrected += TRON_CORRECTIONS[char];
       changesCount++;
+    } else {
+      dropped++;
     }
   }
 
@@ -162,14 +215,29 @@ function correctTronAddress(rawAddress) {
   }
 
   const isValidLength = corrected.length === 34;
-  const confidence = isValidLength ? Math.max(0.5, 1 - (changesCount * 0.1)) : 0.2;
+  const safe = isValidLength && dropped === 0 && changesCount <= MAX_REPAIRS;
+  const confidence = safe ? Math.max(0.5, 1 - (changesCount * 0.15)) : 0.2;
   return { corrected, confidence, corrections, type: 'tron' };
 }
 
 function correctAddress(rawAddress) {
   const trimmed = rawAddress.trim();
   if (/^[0O]x/i.test(trimmed)) return correctEthAddress(trimmed);
-  if (trimmed.startsWith('T') || trimmed.startsWith('t')) return correctTronAddress(trimmed);
+
+  // Already valid Base58: classify without touching it. A Solana address can
+  // legitimately start with T, so only a 34-char T-address is treated as Tron.
+  if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(trimmed)) {
+    if (trimmed.length === 34 && trimmed.startsWith('T')) {
+      return { corrected: trimmed, confidence: 1.0, corrections: [], type: 'tron' };
+    }
+    if (trimmed.length >= 32 && trimmed.length <= 44) {
+      return { corrected: trimmed, confidence: 1.0, corrections: [], type: 'solana' };
+    }
+  }
+
+  if ((trimmed.startsWith('T') || trimmed.startsWith('t')) && trimmed.length >= 30 && trimmed.length <= 38) {
+    return correctTronAddress(trimmed);
+  }
   if (trimmed.length >= 32 && trimmed.length <= 50) {
     const result = correctSolanaAddress(trimmed);
     if (result.confidence > 0.3) return result;
@@ -461,7 +529,11 @@ function processAddresses(rawAddresses) {
   return { validAddresses, processedAddresses, totalCorrections };
 }
 
-serve(async (req) => {
+function jsonResponse(corsHeaders, status, payload) {
+  return new Response(JSON.stringify(payload), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
 
@@ -472,34 +544,53 @@ serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonResponse(corsHeaders, 401, { error: "Unauthorized" });
     }
 
-    const supabase = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_ANON_KEY'));
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user } } = await supabase.auth.getUser(token);
-
-    console.log(`[ocr-extract] Request from ${user ? `user: ${user.id}` : 'anonymous visitor'}`);
-
-    const { imageBase64 } = await req.json();
+    const body = await req.json();
+    const { imageBase64 } = body || {};
 
     if (!imageBase64 || typeof imageBase64 !== 'string') {
-      return new Response(JSON.stringify({ error: "Invalid request format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonResponse(corsHeaders, 400, { error: "Invalid request format" });
     }
 
     if (imageBase64.length > MAX_IMAGE_SIZE) {
-      return new Response(JSON.stringify({ error: "Image too large. Maximum size is 10MB." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonResponse(corsHeaders, 400, { error: "Image too large. Maximum size is 10MB." });
     }
 
     if (!imageBase64.startsWith("data:image/") && !/^[A-Za-z0-9+/=]+$/.test(imageBase64)) {
-      return new Response(JSON.stringify({ error: "Invalid image format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonResponse(corsHeaders, 400, { error: "Invalid image format" });
     }
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
       console.error("[ocr-extract] GEMINI_API_KEY not configured");
-      return new Response(JSON.stringify({ error: "Service temporarily unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonResponse(corsHeaders, 503, { error: "Service temporarily unavailable" });
+    }
+
+    // ---------- Daily quota (checked only after cheap validation, before any paid call) ----------
+    const subject = await resolveQuotaSubject(req, authHeader, body);
+    const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const { data: quotaRows, error: quotaError } = await adminClient.rpc('consume_ocr_quota', {
+      p_identifier: subject.identifier,
+      p_limit: subject.limit,
+    });
+
+    if (quotaError || !Array.isArray(quotaRows) || quotaRows.length === 0) {
+      // Fail closed: if we cannot count, we do not spend AI credits.
+      console.error("[ocr-extract] Quota check failed:", quotaError);
+      return jsonResponse(corsHeaders, 503, { error: "Service temporarily unavailable" });
+    }
+
+    const quota = quotaRows[0];
+    if (!quota.allowed) {
+      console.warn(`[ocr-extract] Daily OCR limit reached for ${subject.identifier.split(':')[0]}`);
+      return jsonResponse(corsHeaders, 429, {
+        error: "ocr_daily_limit",
+        message: `Daily screenshot-scan limit reached (${subject.limit} per day). Paste the contract address instead, or try again tomorrow.`,
+        limit: subject.limit,
+        used: quota.used,
+      });
     }
 
     const imageInline = parseDataUrl(imageBase64);
@@ -547,7 +638,7 @@ serve(async (req) => {
 
     if (!pass1Result.ok) {
       if (pass1Result.status === 429) {
-        return new Response(JSON.stringify({ error: "Too many requests. Please try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return jsonResponse(corsHeaders, 429, { error: "Too many requests. Please try again later." });
       }
     }
 
@@ -637,6 +728,6 @@ serve(async (req) => {
     console.error("[ocr-extract] Error:", error);
     const origin = req.headers.get('origin');
     const corsHeaders = getCorsHeaders(origin);
-    return new Response(JSON.stringify({ error: "An error occurred processing your request" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return jsonResponse(corsHeaders, 500, { error: "An error occurred processing your request" });
   }
 });
