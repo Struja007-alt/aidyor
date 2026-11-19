@@ -21,11 +21,20 @@ const ALLOWED_ORIGINS =
     ? [...PROD_ORIGINS, ...DEV_ORIGINS]
     : PROD_ORIGINS;
 
+// Fixed RP ID so a passkey works on both aidyor.app and www.aidyor.app.
+// Must match the RP ID used by your passkey login function.
+const PROD_RP_ID = Deno.env.get("PASSKEY_RP_ID") || "aidyor.app";
+
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const MAX_BODY_BYTES = 64 * 1024;
 
 function isAllowedOrigin(origin: string | null): origin is string {
   return !!origin && ALLOWED_ORIGINS.includes(origin);
+}
+
+function getRpId(origin: string): string {
+  const hostname = new URL(origin).hostname;
+  return hostname === "localhost" ? "localhost" : PROD_RP_ID;
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
@@ -124,6 +133,7 @@ serve(async (req: Request) => {
   }
 
   try {
+    // Cheap early reject; the real limit is enforced on the actual body below.
     const contentLength = Number(req.headers.get("content-length") || "0");
 
     if (contentLength > MAX_BODY_BYTES) {
@@ -148,7 +158,7 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
     }
 
-    const rpID = new URL(origin).hostname;
+    const rpID = getRpId(origin);
 
     let body: {
       action?: string;
@@ -156,8 +166,19 @@ serve(async (req: Request) => {
     };
 
     try {
-      body = await req.json();
+      // Read as text so the size limit also covers chunked requests.
+      const rawBody = await req.text();
+
+      if (new TextEncoder().encode(rawBody).length > MAX_BODY_BYTES) {
+        return jsonResponse({ error: "Request too large" }, 413, corsHeaders);
+      }
+
+      body = JSON.parse(rawBody);
     } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
+
+    if (!body || typeof body !== "object") {
       return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
     }
 
@@ -287,17 +308,29 @@ serve(async (req: Request) => {
         );
       }
 
-      // Consume the challenge before verification to prevent replay.
-      const { error: consumeError } = await supabaseAdmin
+      // Atomically consume the challenge before verification to prevent replay.
+      // If two requests race, only one gets a returned row; the other is rejected.
+      const { data: consumedRows, error: consumeError } = await supabaseAdmin
         .from("passkey_challenges")
         .delete()
-        .eq("id", challengeRow.id);
+        .eq("id", challengeRow.id)
+        .select("id");
 
       if (consumeError) {
         console.error("Could not consume registration challenge");
         return jsonResponse(
           { error: "Could not complete registration" },
           500,
+          corsHeaders,
+        );
+      }
+
+      if (!consumedRows || consumedRows.length !== 1) {
+        return jsonResponse(
+          {
+            error: "Registration session expired. Please try again.",
+          },
+          400,
           corsHeaders,
         );
       }
@@ -378,6 +411,15 @@ serve(async (req: Request) => {
         });
 
       if (insertCredentialError) {
+        // 23505 = unique_violation: lost a race with a concurrent registration.
+        if (insertCredentialError.code === "23505") {
+          return jsonResponse(
+            { error: "This passkey is already registered" },
+            409,
+            corsHeaders,
+          );
+        }
+
         console.error("Could not save verified passkey");
         return jsonResponse(
           { error: "Failed to save passkey" },
