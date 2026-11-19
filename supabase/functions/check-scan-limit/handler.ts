@@ -1,9 +1,12 @@
 export const DAILY_FREE_LIMIT = 3;
 export const RETRY_DELAY_MS = 300;
 
-const ALLOWED_ORIGINS = [
+const PROD_ORIGINS = [
   "https://aidyor.app",
   "https://www.aidyor.app",
+];
+
+const DEV_ORIGINS = [
   "http://localhost:5173",
   "http://localhost:8080",
 ];
@@ -21,6 +24,8 @@ export interface RpcResult {
 export interface AuthUser {
   id: string;
   email: string | null;
+  // false = email not confirmed. Undefined is treated as confirmed (back-compat).
+  emailConfirmed?: boolean;
 }
 export interface Deps {
   rpc(fn: string, args: Record<string, unknown>): Promise<RpcResult>;
@@ -31,6 +36,8 @@ export interface Deps {
   log(level: "info" | "warn" | "error", fields: Record<string, unknown>): void;
   keyKind: string; // "sb_secret" | "legacy_jwt" | "unknown" - never the key itself
   now(): number;
+  // Localhost origins are allowed only when true (default: false).
+  allowLocalhostOrigins?: boolean;
 }
 
 // ---------- logging safety ----------
@@ -62,12 +69,14 @@ export function isIssuedAtFuture(e: RpcError | null): boolean {
 }
 
 // ---------- CORS ----------
-function corsFor(origin: string | null): Record<string, string> {
-  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+function corsFor(origin: string | null, allowLocalhost: boolean): Record<string, string> {
+  const allowedList = allowLocalhost ? [...PROD_ORIGINS, ...DEV_ORIGINS] : PROD_ORIGINS;
+  const allowed = origin && allowedList.includes(origin) ? origin : PROD_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Credentials": "true",
+    "Vary": "Origin",
   };
 }
 
@@ -85,7 +94,7 @@ type Op = "peek" | "consume";
 export function createHandler(deps: Deps) {
   return async function handle(req: Request): Promise<Response> {
     const origin = req.headers.get("origin");
-    const cors = corsFor(origin);
+    const cors = corsFor(origin, deps.allowLocalhostOrigins === true);
     const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
       new Response(JSON.stringify(body), {
         status,
@@ -150,12 +159,18 @@ export function createHandler(deps: Deps) {
       const authHeader = req.headers.get("Authorization") ?? "";
       let userId: string | null = null;
       let userEmail: string | null = null;
+      let emailConfirmed = true;
       if (authHeader.startsWith("Bearer ")) {
         const user = await deps.getUser(authHeader.replace("Bearer ", ""));
-        if (user) { userId = user.id; userEmail = user.email ?? null; }
+        if (user) {
+          userId = user.id;
+          userEmail = user.email ?? null;
+          emailConfirmed = user.emailConfirmed !== false;
+        }
       }
 
-      if (userId && userEmail) {
+      // Only trust the email for Pro lookup if Supabase has confirmed it.
+      if (userId && userEmail && emailConfirmed) {
         try {
           if (await deps.isProSubscriber(userEmail)) {
             return json({ allowed: true, remaining: -1, isPro: true });
