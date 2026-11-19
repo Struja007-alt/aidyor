@@ -21,9 +21,11 @@ const ALLOWED_ORIGINS =
     ? [...PROD_ORIGINS, ...DEV_ORIGINS]
     : PROD_ORIGINS;
 
-// Fixed RP ID so a passkey works on both aidyor.app and www.aidyor.app.
-// Must match the RP ID used by your passkey login function.
-const PROD_RP_ID = Deno.env.get("PASSKEY_RP_ID") || "aidyor.app";
+// Optional fixed RP ID (e.g. "aidyor.app") so a passkey works on both
+// aidyor.app and www.aidyor.app. When unset, the RP ID is derived from the
+// request origin (the previous behavior, matching passkey-authenticate).
+// Only set this together with the same change in passkey-authenticate.
+const FIXED_RP_ID = Deno.env.get("PASSKEY_RP_ID") || "";
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -34,7 +36,8 @@ function isAllowedOrigin(origin: string | null): origin is string {
 
 function getRpId(origin: string): string {
   const hostname = new URL(origin).hostname;
-  return hostname === "localhost" ? "localhost" : PROD_RP_ID;
+  if (hostname === "localhost") return "localhost";
+  return FIXED_RP_ID || hostname;
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
