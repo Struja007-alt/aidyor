@@ -8,9 +8,49 @@ const PRODUCT_IDS = {
   whale_pro: "prod_TsmahG5mQUlguv",
 } as const;
 
+// Subscription statuses that grant Pro access.
+// Remove "past_due" if you'd rather cut access immediately on a failed payment.
+const PRO_STATUSES = new Set(["active", "trialing", "past_due"]);
+
+const PRO_CACHE_TTL_TRUE_MS = 5 * 60 * 1000;
+const PRO_CACHE_TTL_FALSE_MS = 60 * 1000;
+const PRO_CACHE_MAX_ENTRIES = 5000;
+
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const supabase = createClient(supabaseUrl, serviceKey);
+
+// Created once per instance. No apiVersion: uses the version pinned by stripe@17.
+const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+const stripe = stripeKey ? new Stripe(stripeKey) : null;
+
+// Per-instance cache. Resets on cold start, which is fine.
+const proCache = new Map<string, { value: boolean; expires: number }>();
+
+async function lookupPro(email: string): Promise<boolean> {
+  if (!stripe) return false;
+
+  const customers = await stripe.customers.list({ email, limit: 10 });
+  for (const customer of customers.data) {
+    const subs = await stripe.subscriptions.list({
+      customer: customer.id,
+      status: "all",
+      limit: 20,
+    });
+    const hasPro = subs.data.some((s) =>
+      PRO_STATUSES.has(s.status) &&
+      s.items.data.some((i) => {
+        const pid = typeof i.price.product === "string"
+          ? i.price.product
+          : i.price.product.id;
+        return pid === PRODUCT_IDS.pro || pid === PRODUCT_IDS.whale_pro;
+      })
+    );
+    if (hasPro) return true;
+  }
+  return false;
+}
 
 const handler = createHandler({
   rpc: async (fn, args) => {
@@ -18,26 +58,38 @@ const handler = createHandler({
     return { data, error };
   },
   getUser: async (token) => {
+    // Anonymous visitors send the anon key as the Bearer token. It is not a
+    // user JWT, so skip the lookup (and the log noise) and use the IP bucket.
+    if (anonKey && token === anonKey) return null;
+
     const { data, error } = await supabase.auth.getUser(token);
     if (error) {
       // Logging only; auth behavior unchanged (falls back to the IP bucket as before).
       console.warn(JSON.stringify({ event: "auth_get_user_failed", message: redact(error.message) }));
     }
-    return data?.user ? { id: data.user.id, email: data.user.email ?? null } : null;
+    return data?.user
+      ? {
+        id: data.user.id,
+        email: data.user.email ?? null,
+        emailConfirmed: !!data.user.email_confirmed_at,
+      }
+      : null;
   },
   isProSubscriber: async (email) => {
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey) return false;
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    const customers = await stripe.customers.list({ email, limit: 1 });
-    if (customers.data.length === 0) return false;
-    const subs = await stripe.subscriptions.list({ customer: customers.data[0].id, status: "active" });
-    return subs.data.some((s) =>
-      s.items.data.some((i) => {
-        const pid = i.price.product as string;
-        return pid === PRODUCT_IDS.pro || pid === PRODUCT_IDS.whale_pro;
-      })
-    );
+    const key = email.toLowerCase();
+    const now = Date.now();
+
+    const cached = proCache.get(key);
+    if (cached && cached.expires > now) return cached.value;
+
+    const value = await lookupPro(email);
+
+    if (proCache.size >= PRO_CACHE_MAX_ENTRIES) proCache.clear();
+    proCache.set(key, {
+      value,
+      expires: now + (value ? PRO_CACHE_TTL_TRUE_MS : PRO_CACHE_TTL_FALSE_MS),
+    });
+    return value;
   },
   sha256Hex: async (input) => {
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
@@ -52,6 +104,7 @@ const handler = createHandler({
   },
   keyKind: keyKindOf(serviceKey),
   now: () => Date.now(),
+  allowLocalhostOrigins: Deno.env.get("ALLOW_LOCALHOST_ORIGINS") === "true",
 });
 
 serve(handler);
