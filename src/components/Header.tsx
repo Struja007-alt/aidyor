@@ -3,7 +3,7 @@
  * Provides navigation and branding for the app
  */
 
-import { Menu, Crown, Mail } from "lucide-react";
+import { Menu, Crown, Mail, UserCog } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,13 @@ export const Header = () => {
             </a>
             <Link to="/blog" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Blog
+            </Link>
+            <Link
+              to="/account"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <UserCog className="w-4 h-4" />
+              Account Settings
             </Link>
             <a
               href="mailto:aidyor.app@gmail.com"
@@ -120,6 +127,14 @@ export const Header = () => {
               className="px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
             >
               Blog
+            </Link>
+            <Link
+              to="/account"
+              onClick={closeMenu}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <UserCog className="w-4 h-4" />
+              Account Settings
             </Link>
             <a
               href="mailto:aidyor.app@gmail.com"
