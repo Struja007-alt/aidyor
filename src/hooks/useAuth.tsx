@@ -6,6 +6,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { syncScansToAccount } from "@/lib/scanHistory";
 
 /**
  * Authentication context type definition
@@ -53,6 +54,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+
+        if (event === "SIGNED_IN" && session) {
+          // Defer: calling supabase inside this callback can deadlock
+          setTimeout(() => {
+            syncScansToAccount(supabase);
+          }, 0);
+        }
       }
     );
 
@@ -68,7 +76,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signUp = async (email: string, password: string) => {
     const redirectUrl = `${window.location.origin}/`;
-    
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -100,7 +108,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
-  
+
   // Return a default state if context is not available
   // This allows the hook to be used during initial render before provider mounts
   if (context === null) {
@@ -113,6 +121,6 @@ export const useAuth = (): AuthContextType => {
       signOut: async () => {},
     };
   }
-  
+
   return context;
 };
