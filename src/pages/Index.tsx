@@ -3,6 +3,7 @@ import { Footer } from "@/components/Footer";
 import { TokenScanner } from "@/components/TokenScanner";
 import { BugScanner } from "@/components/BugScanner";
 import { Watchlist } from "@/components/Watchlist";
+import { ScanHistory } from "@/components/ScanHistory";
 import { WhaleAlerts } from "@/components/WhaleAlerts";
 import { CryptoSecurityNews } from "@/components/CryptoSecurityNews";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
@@ -204,6 +205,11 @@ const Index = () => {
             <h2 className="font-display text-2xl font-bold text-foreground">Watchlist</h2>
           </div>
           <Watchlist />
+        </section>
+
+        {/* Scan History Section */}
+        <section id="history" className="scroll-mt-20">
+          <ScanHistory />
         </section>
       </main>
       <Footer />
