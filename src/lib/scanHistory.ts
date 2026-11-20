@@ -68,6 +68,7 @@ export async function recordScanHistory(s: Omit<Scan, "at">) {
         },
         { onConflict: "user_id,network,address" }
       );
+      notify();
       return;
     }
   } catch {
