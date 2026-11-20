@@ -7,6 +7,8 @@ import { RiskGauge } from "./RiskGauge";
 import { RiskFactorTooltip } from "./RiskFactorTooltip";
 import { useCloudWatchlist } from "@/hooks/useCloudWatchlist";
 import { useScanUsage } from "@/hooks/useScanUsage";
+import { ScanHistoryCard } from "./ScanHistoryCard";
+import { recordScanHistory } from "@/lib/scanHistory";
 import { useOCRAnalytics } from "@/hooks/useOCRAnalytics";
 import { cn } from "@/lib/utils";
 import { createWorker } from "tesseract.js";
@@ -1694,6 +1696,16 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         const chainSlug = shareResult.network.toLowerCase().replace("ethereum", "eth").replace("avalanche", "avax").replace("optimism", "op").replace("arbitrum", "arb").replace("polygon", "matic");
         const newUrl = `${window.location.pathname}?address=${shareResult.address}&chain=${chainSlug}`;
         window.history.replaceState(null, "", newUrl);
+
+        // Save to scan history (full scans only, after a successful result)
+        if (shareResult.found) {
+          recordScanHistory({
+            network: shareResult.network,
+            address: shareResult.address,
+            symbol: finalPair.baseToken.symbol,
+            score: shareResult.riskScore,
+          });
+        }
       }
     } catch (error) {
       console.error('Scan error:', error);
@@ -2812,6 +2824,16 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
         </div>
       )}
 
+      {/* Scan history hook: shown to signed-out users once they have scans */}
+      {!isScanning && (
+        <ScanHistoryCard
+          isSignedIn={isAuthenticated}
+          isPro={isPro}
+          canScan={canScan}
+          remainingScans={remainingScans}
+        />
+      )}
+
       {/* Not scanned: the free daily limit was used up, so there is NO result for this token */}
       {scanBlocked && !isScanning && (
         <div className="glass-card p-8 text-center animate-fade-in">
@@ -3732,4 +3754,5 @@ const performOCR = useCallback(async (imageData: string): Promise<string[]> => {
     </div>
   );
 };
+
 
