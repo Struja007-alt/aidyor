@@ -1,0 +1,3061 @@
+import { useState, useEffect, useCallback, ClipboardEvent, useRef, useMemo, memo } from "react";
+import { Loader2, Star, Upload, Image, X, BadgeCheck, Copy, ExternalLink, ShieldCheck, ShieldAlert, FileText, TrendingUp, TrendingDown, Activity, Layers, Droplets, Users, MessageCircle, Link as LinkIcon, ArrowRightLeft, BarChart3, Info, LogIn, Brain, GitMerge, Crown, Lock, Share2 } from "lucide-react";
+import { Search, Scan, AlertTriangle, CheckCircle, XCircle, Globe } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { RiskGauge } from "./RiskGauge";
+import { RiskFactorTooltip } from "./RiskFactorTooltip";
+import { useCloudWatchlist } from "@/hooks/useCloudWatchlist";
+import { useScanUsage } from "@/hooks/useScanUsage";
+import { useOCRAnalytics } from "@/hooks/useOCRAnalytics";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { Link, useSearchParams } from "react-router-dom";
+import { correctAddress } from "@/lib/ocr";
+import { extractFromScreenshot, VERIFIED_CONFIDENCE, type OcrResult } from "@/lib/ocr/screenshotOcr";
+import { 
+  searchTokensRanked, 
+  getOrientedTokenPairs,
+  analyzeTokenRisk, 
+  chainIdToNetwork,
+  type DexPair,
+  type TokenSuggestion 
+} from "@/lib/api/dexscreener";
+import { 
+  getTokenSecurity, 
+  analyzeGoPlusSecurity,
+  getSolanaTokenSecurity,
+  analyzeSolanaSecurity,
+  type ERCStandardResult,
+} from "@/lib/api/goplus";
+import { ERCStandardBadge, ERCStandardIndicator } from "./ERCStandardBadge";
+import {
+  getLiquidityLockInfo,
+  analyzeLockSecurity,
+  type LockInfo,
+} from "@/lib/api/unicrypt";
+import {
+  getBSCTraceSecurity,
+  analyzeBSCTraceSecurity,
+  type BEPStandardResult,
+} from "@/lib/api/bsctrace";
+import { BEPStandardBadge, BEPStandardIndicator } from "./BEPStandardBadge";
+import {
+  getRugCheckSecurity,
+  analyzeRugCheckSecurity,
+} from "@/lib/api/rugcheck";
+import {
+  detectSPLStandard,
+  getSPLStandardRiskFactors,
+  getSPLStandardScoreModifier,
+  type SPLStandardResult,
+} from "@/lib/api/splStandards";
+import { SPLStandardBadge, SPLStandardIndicator } from "./SPLStandardBadge";
+import {
+  analyzePumpDump,
+  type PumpDumpAnalysis,
+} from "@/lib/api/pumpDump";
+import { LockStatusBadge } from "./LockStatusBadge";
+import { AIRiskExplanation } from "./AIRiskExplanation";
+import { PumpDumpBadge } from "./PumpDumpBadge";
+import { ApiSourcesBadge, ApiSourcesCount, type ApiSource } from "./ApiSourcesBadge";
+import { RiskTrendBadge, calculateRiskTrend, type RiskTrendData } from "./RiskTrendBadge";
+import { 
+  sanitizeContractAddress, 
+  sanitizeSearchQuery, 
+  containsDangerousPatterns 
+} from "@/lib/security/inputSanitizer";
+import { knownOriginalNetworks } from "@/lib/constants/knownTokenNetworks";
+import { getTokenOriginalNetworks, getOfficialTokenAddress, type OfficialTokenResult } from "@/lib/api/coingecko";
+import { 
+  tryParseStructuredSecurityJson, 
+  parseStructuredSecurityData,
+  generateStructuredRiskSummary,
+  type ParsedSecurityResult 
+} from "@/lib/api/structuredSecurityParser";
+import { 
+  mergeSecurityData, 
+  generateMergedRiskSummary,
+  type MergedSecurityResult 
+} from "@/lib/api/mergeSecurityData";
+import { StructuredSecurityDisplay } from "./StructuredSecurityDisplay";
+import { MergedSecurityDisplay } from "./MergedSecurityDisplay";
+
+export type Network = "ETH" | "BSC" | "SOL" | "POLYGON" | "AVAX" | "ARB" | "BASE" | "OP" | "TON";
+
+type ScanMode = "address" | "screenshot";
+
+interface RiskFactor {
+  name: string;
+  status: "safe" | "warning" | "danger";
+  description: string;
+}
+
+interface SecurityData {
+  isHoneypot: boolean;
+  isVerified: boolean;
+  holderCount: number;
+  buyTax: number;
+  sellTax: number;
+  isMintable: boolean;
+  hasHiddenOwner: boolean;
+  hasFreezeAuthority?: boolean; // Solana-specific
+  bepStandard?: BEPStandardResult | null; // BNB Chain token standard
+  ercStandard?: ERCStandardResult | null; // ERC token standard for EVM chains
+  splStandard?: SPLStandardResult | null; // SPL token standard for Solana
+}
+
+
+interface NetworkResult {
+  network: string;
+  chainId: string;
+  found: boolean;
+  riskScore: number;
+  marketData: {
+    price: number;
+    change24h: number;
+    marketCap: number;
+    volume24h: number;
+    liquidity: number;
+  } | null;
+  riskFactors: RiskFactor[];
+  address: string;
+  pairAddress: string;
+  dexUrl: string;
+  pairs: DexPair[];
+  tokenStatus: "original" | "bridged" | "suspicious";
+  securityData?: SecurityData;
+  lockInfo?: LockInfo;
+  pumpDumpAnalysis?: PumpDumpAnalysis;
+  apiSources: ApiSource[];
+  // true = address matched CoinGecko's official contract for this network
+  // false = an official contract exists for this network but this address doesn't match it (likely copycat)
+  // undefined = no official record found (can't confirm either way)
+  isAddressVerified?: boolean;
+}
+
+interface TokenInfo {
+  name: string;
+  symbol: string;
+  address: string;
+  chainId: string;
+  imageUrl?: string;
+}
+
+export const TokenScanner = () => {
+  const [scanMode, setScanMode] = useState<ScanMode>("address");
+  const [tokenQuery, setTokenQuery] = useState("");
+  const [displayAddress, setDisplayAddress] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResults, setScanResults] = useState<NetworkResult[]>([]);
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
+  const [suggestions, setSuggestions] = useState<TokenSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  // Unverified copies stay collapsed unless there is no verified match at all
+  const [showWarned, setShowWarned] = useState(false);
+  // Maps "chainId-address" (lowercase) -> verification result for the search dropdown.
+  // true = confirmed official contract, false = confirmed mismatch (likely copycat), absent = not checked/unknown.
+  const [officialTokenMap, setOfficialTokenMap] = useState<Map<string, boolean>>(new Map());
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedResult, setSelectedResult] = useState<NetworkResult | null>(null);
+  // true when the last scan was refused because the free daily limit is used up.
+  // Lets the UI say "Not scanned" instead of showing an old result or "Token Not Found".
+  const [scanBlocked, setScanBlocked] = useState(false);
+
+  // Split dropdown results: verified tokens first, unverified copies below.
+  // CoinGecko's official-address check overrides the ranking in both directions.
+  const { trustedSuggestions, warnedSuggestions } = useMemo(() => {
+    const trusted: TokenSuggestion[] = [];
+    const warned: TokenSuggestion[] = [];
+    for (const s of suggestions) {
+      const key = `${s.chainId.toLowerCase()}-${s.token.address.toLowerCase()}`;
+      const official = officialTokenMap.get(key); // true | false | undefined
+      const isTrusted =
+        official === true ||
+        (official !== false && (s.trust === "verified" || s.trust === "established"));
+      (isTrusted ? trusted : warned).push(s);
+    }
+    return { trustedSuggestions: trusted.slice(0, 4), warnedSuggestions: warned };
+  }, [suggestions, officialTokenMap]);
+
+  const renderSuggestionRow = (s: TokenSuggestion, isTrusted: boolean, index: number) => {
+    const key = `${s.chainId.toLowerCase()}-${s.token.address.toLowerCase()}`;
+    const official = officialTokenMap.get(key);
+    // pair.info (logo, links) belongs to the pair's BASE token only
+    const isBase = s.token.address.toLowerCase() === s.pair.baseToken.address.toLowerCase();
+    const imageUrl = isBase ? s.pair.info?.imageUrl : undefined;
+    const trustLabel = official === true || s.trust === "verified" ? "Verified" : "Established";
+    const warning =
+      official === false
+        ? "Address does not match the official token"
+        : s.trust === "lookalike"
+          ? "Same name as a verified token, different address"
+          : "Not verified - check the address";
+
+    return (
+      <button
+        type="button"
+        key={`${s.chainId}-${s.token.address}-${index}`}
+        className={cn(
+          "w-full px-4 py-3 flex items-center justify-between transition-colors text-left border-b border-border/20 last:border-b-0",
+          isTrusted
+            ? "bg-emerald-500/10 hover:bg-emerald-500/20"
+            : "bg-red-500/5 hover:bg-red-500/10 opacity-80"
+        )}
+        onMouseDown={() => handleSelectSuggestion(s, isTrusted)}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative shrink-0">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={s.token.symbol}
+                className={cn(
+                  "w-9 h-9 rounded-full bg-secondary",
+                  isTrusted ? "ring-2 ring-emerald-500" : "ring-2 ring-red-500/40"
+                )}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className={cn(
+                "w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-xs font-semibold text-muted-foreground",
+                isTrusted ? "ring-2 ring-emerald-500" : "ring-2 ring-red-500/40"
+              )}>
+                {s.token.symbol.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            {isTrusted && (
+              <div className="absolute -top-1 -right-1 bg-emerald-500 rounded-full p-0.5">
+                <BadgeCheck className="w-3 h-3 text-white" />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={cn("font-medium truncate", isTrusted ? "text-emerald-400" : "text-foreground")}>
+                {s.token.name}
+              </span>
+              <span className="text-muted-foreground text-sm">({s.token.symbol})</span>
+              {isTrusted ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold uppercase tracking-wide">
+                  {trustLabel}
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold uppercase tracking-wide">
+                  Unverified
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground font-mono truncate">
+              {truncateAddress(s.token.address)}
+            </p>
+            {!isTrusted && (
+              <p className="text-[11px] text-red-400/90 mt-0.5">{warning}</p>
+            )}
+          </div>
+        </div>
+        <span className={cn(
+          "text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ml-2",
+          isTrusted ? "bg-emerald-500/20 text-emerald-400" : "bg-primary/10 text-primary"
+        )}>
+          {chainIdToNetwork[s.chainId] || s.chainId}
+        </span>
+      </button>
+    );
+  };
+
+  // Screenshot state
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [extractedAddresses, setExtractedAddresses] = useState<string[]>([]);
+  const [extractedConfidences, setExtractedConfidences] = useState<number[]>([]);
+  const [ocrStage, setOcrStage] = useState<string>("");
+
+  // Structured JSON security data state
+  const [structuredSecurityResult, setStructuredSecurityResult] = useState<ParsedSecurityResult | null>(null);
+  const [rawJsonInput, setRawJsonInput] = useState<string>("");
+
+  // Merged security data state (JSON + Live API)
+  const [mergedSecurityResult, setMergedSecurityResult] = useState<MergedSecurityResult | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
+
+  const [searchParams] = useSearchParams();
+
+  // Auto-scan from URL params on mount
+  const preferredChainFromUrl = useRef<string | null>(null);
+  const hasAutoSelectedFromUrl = useRef(false);
+
+  useEffect(() => {
+    const urlAddress = searchParams.get("address");
+    const urlChain = searchParams.get("chain");
+    if (urlAddress) {
+      if (urlChain) {
+        // Map chain slug to Network type
+        const chainMap: Record<string, string> = {
+          eth: "ETH", ethereum: "ETH",
+          bsc: "BSC", bnb: "BSC",
+          sol: "SOL", solana: "SOL",
+          polygon: "POLYGON", matic: "POLYGON",
+          arbitrum: "ARB", arb: "ARB",
+          base: "BASE",
+          avalanche: "AVAX", avax: "AVAX",
+          optimism: "OP", op: "OP",
+          ton: "TON",
+        };
+        const mapped = chainMap[urlChain.toLowerCase()];
+        if (mapped) preferredChainFromUrl.current = mapped;
+      }
+      setTokenQuery(urlAddress);
+      setDisplayAddress(urlAddress);
+      // Small delay to let state settle
+      const timer = setTimeout(() => handleScanWithAddress(urlAddress), 300);
+      return () => clearTimeout(timer);
+    }
+  }, []); // run once on mount
+
+  // Ref to track current search request ID to prevent race conditions
+  const searchIdRef = useRef(0);
+  // Ref to track the current SCAN so a slow older scan can't overwrite a newer one
+  const scanIdRef = useRef(0);
+  const { addToken, isInWatchlist, isAuthenticated } = useCloudWatchlist();
+  const { canScan, recordScan, remainingScans, scansUsedToday, dailyLimit, isPro } = useScanUsage();
+  const { logOCRAnalytics } = useOCRAnalytics();
+
+  // OCR itself lives in src/lib/ocr/screenshotOcr.ts (AI vision first, basic OCR
+  // as a labelled last resort). This component only shows its result.
+  const performOCR = useCallback(async (imageData: string): Promise<OcrResult> => {
+    setIsOcrProcessing(true);
+    setOcrProgress(0);
+    setOcrStage("");
+    setExtractedConfidences([]);
+
+    try {
+      const result = await extractFromScreenshot(imageData, {
+        onProgress: setOcrProgress,
+        onStage: setOcrStage,
+        logAnalytics: logOCRAnalytics,
+      });
+
+      setExtractedAddresses(result.addresses);
+      setExtractedConfidences(result.confidences);
+
+      // Screenshot only shows part of the address: search by token name/symbol instead
+      if (result.addresses.length === 0 && (result.tokenName || result.tokenSymbol)) {
+        const searchTerm = result.tokenSymbol || result.tokenName || '';
+        const truncatedInfo = result.truncatedAddresses?.join(', ') || '';
+
+        toast.info(
+          `Address appears truncated${truncatedInfo ? ` (${truncatedInfo})` : ''}. Searching by token name "${searchTerm}"...`,
+          { duration: 4000 }
+        );
+
+        setScanMode("address");
+        setTokenQuery(searchTerm);
+        setUploadedImage(null);
+      }
+
+      return result;
+    } catch (error) {
+      console.error("OCR Error:", error);
+      toast.error("Failed to process image");
+      (window as any).gtag?.('event', 'screenshot_upload_fail', {
+        reason: 'processing_error',
+      });
+      return { addresses: [], confidences: [], tokenName: null, tokenSymbol: null, truncatedAddresses: null, source: 'none' };
+    } finally {
+      setIsOcrProcessing(false);
+    }
+  }, [logOCRAnalytics]);
+
+  // Check if input looks like a contract address
+  const isContractAddress = useCallback((query: string): boolean => {
+    // Ethereum-like address (0x...)
+    if (/^0x[a-fA-F0-9]{40}$/i.test(query)) return true;
+    // Solana address (base58, 32-44 chars)
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query)) return true;
+    return false;
+  }, []);
+
+  // Debounced search for real-time suggestions with security validation
+  const searchTokensDebounced = useCallback(async (query: string, currentSearchId: number) => {
+    if (query.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // Security: Validate and sanitize search input
+    const searchValidation = sanitizeSearchQuery(query);
+    if (!searchValidation.isValid) {
+      console.warn("Search blocked:", searchValidation.error);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setIsSearching(true);
+
+    try {
+      // Ranked search: verified/established tokens first, lookalikes grouped after them
+      const ranked = await searchTokensRanked(searchValidation.sanitized);
+
+      // Check if this search is still the current one (prevent race conditions)
+      if (currentSearchId !== searchIdRef.current) {
+        return; // A newer search has been triggered, discard these results
+      }
+
+      const combined = [...ranked.primary.slice(0, 4), ...ranked.warned.slice(0, 8)];
+      setSuggestions(combined);
+      // Collapse unverified copies unless there is nothing verified to show
+      setShowWarned(ranked.primary.length === 0);
+      setShowSuggestions(combined.length > 0);
+
+      // Cross-check the top candidates against CoinGecko's official contract address
+      // so a well-funded copy can still be caught. Runs after the dropdown renders.
+      try {
+        const verificationResults = await Promise.all(
+          combined.slice(0, 8).map(async (s) => {
+            const network = chainIdToNetwork[s.chainId.toLowerCase()] || s.chainId;
+            const official = await getOfficialTokenAddress(s.token.symbol, network);
+            if (!official) return null; // no official record found - stay neutral, don't accuse
+            const key = `${s.chainId.toLowerCase()}-${s.token.address.toLowerCase()}`;
+            return { key, isOfficial: official.address === s.token.address.toLowerCase() };
+          })
+        );
+        if (currentSearchId === searchIdRef.current) {
+          const newOfficialMap = new Map<string, boolean>();
+          verificationResults.forEach(r => { if (r) newOfficialMap.set(r.key, r.isOfficial); });
+          setOfficialTokenMap(newOfficialMap);
+        }
+      } catch (verificationError) {
+        console.warn('Official address verification failed:', verificationError);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      // Only clear suggestions if this is still the current search
+      if (currentSearchId === searchIdRef.current) {
+        setSuggestions([]);
+      }
+    } finally {
+      // Only set isSearching false if this is still the current search
+      if (currentSearchId === searchIdRef.current) {
+        setIsSearching(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    // Clear stale suggestions immediately when query changes
+    if (tokenQuery.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setIsSearching(false);
+      return;
+    }
+
+    // Don't search if it looks like an address - user should click scan
+    if (isContractAddress(tokenQuery)) {
+      setDisplayAddress(tokenQuery);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // Increment search ID to invalidate previous searches
+    searchIdRef.current += 1;
+    const currentSearchId = searchIdRef.current;
+
+    const timer = setTimeout(() => {
+      searchTokensDebounced(tokenQuery, currentSearchId);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [tokenQuery, searchTokensDebounced, isContractAddress]);
+
+  const handleSelectSuggestion = (s: TokenSuggestion, isTrusted: boolean) => {
+    // Drop the previous result immediately so the old token's score can never
+    // sit under the new token's header (it used to survive this path).
+    setScanResults([]);
+    setSelectedResult(null);
+    setScanBlocked(false);
+
+    setTokenQuery(s.token.symbol);
+    setDisplayAddress(s.token.address);
+    setTokenInfo({
+      name: s.token.name,
+      symbol: s.token.symbol,
+      address: s.token.address,
+      chainId: s.chainId,
+      // pair.info (logo) belongs to the pair's base token only
+      imageUrl:
+        s.token.address.toLowerCase() === s.pair.baseToken.address.toLowerCase()
+          ? s.pair.info?.imageUrl
+          : undefined,
+    });
+    setShowSuggestions(false);
+
+    if (!isTrusted) {
+      toast.warning("Unverified token. Check the full address before trusting this result.", {
+        duration: 4000,
+      });
+    }
+
+    // Auto-scan with the selected token
+    handleScanWithAddress(s.token.address);
+  };
+
+  // Scan for token data with security validation
+  const handleScanWithAddress = async (address: string) => {
+    if (!address) return;
+
+    // Each scan gets an ID. If a newer scan starts, this one stops writing state,
+    // so a slow older scan can never overwrite a newer result.
+    const myScanId = ++scanIdRef.current;
+    const isCurrent = () => myScanId === scanIdRef.current;
+
+    // Clear any previous result BEFORE the limit check. Otherwise a blocked scan
+    // leaves the old token's score (e.g. "SAFE") showing for a token that was never scanned.
+    setIsScanning(false);
+    setScanResults([]);
+    setSelectedResult(null);
+    setScanBlocked(false);
+
+    // Check scan limit for free users
+    // Server-side scan limit check (atomic check + increment)
+    const allowed = await recordScan();
+    if (!isCurrent()) return;
+    if (!allowed) {
+      setScanBlocked(true);
+      setDisplayAddress(address);
+      toast.error(
+        `Daily scan limit reached (${dailyLimit} scans). Upgrade to Pro for unlimited scans!`,
+        {
+          action: {
+            label: "Upgrade",
+            onClick: () => window.location.href = "/subscription",
+          },
+        }
+      );
+      return;
+    }
+
+    // Apply OCR correction for common character misreads (O->0, l->1, etc.)
+    // A well-formed 0x + 40 hex address is already valid: never "correct" it.
+    const looksValidEvm = /^0x[a-fA-F0-9]{40}$/.test(address.trim());
+    const correctionResult = correctAddress(address);
+    const correctedAddress = !looksValidEvm && correctionResult.confidence > 0.3 ? correctionResult.corrected : address;
+
+    // Log OCR corrections for debugging
+    if (!looksValidEvm && correctionResult.corrections.length > 0) {
+      console.log(`[OCR Correction] Applied: ${correctionResult.corrections.join(', ')}, confidence: ${correctionResult.confidence}`);
+      if (correctionResult.confidence >= 0.5) {
+        toast.info(`Auto-corrected address (${correctionResult.corrections.length} fix${correctionResult.corrections.length > 1 ? 'es' : ''} applied)`);
+      }
+    }
+
+    // Security: Validate and sanitize contract address input
+    const addressValidation = sanitizeContractAddress(correctedAddress);
+    if (containsDangerousPatterns(correctedAddress)) {
+      toast.error("Invalid input detected. Please enter a valid contract address.");
+      return;
+    }
+
+    // Use the sanitized address for API calls
+    const sanitizedAddress = addressValidation.isValid ? addressValidation.sanitized : correctedAddress.trim();
+
+    setIsScanning(true);
+    setScanResults([]);
+    setSelectedResult(null);
+
+    try {
+      // Pairs for the scanned token, oriented per chain (quote-side pools are flipped
+      // where the token is mainly a quote asset, e.g. USDT) and sorted by liquidity,
+      // so pairs[0] of every chain is that chain's main pool.
+      const pairs = await getOrientedTokenPairs(sanitizedAddress);
+      if (!isCurrent()) return;
+
+      if (pairs.length === 0) {
+        setScanResults([]);
+        setIsScanning(false);
+        // Ensure display address is set so "Token Not Found" UI shows
+        if (!displayAddress) {
+          setDisplayAddress(address);
+        }
+        if (!tokenQuery) {
+          setTokenQuery(address);
+        }
+        toast.warning("Token not found on DEXScreener. It may not be listed on any DEX yet.");
+        return;
+      }
+
+      // Group pairs by chain (insertion order keeps highest-liquidity pair first)
+      const chainGroups: Record<string, DexPair[]> = {};
+      pairs.forEach(pair => {
+        const chain = pair.chainId;
+        if (!chainGroups[chain]) chainGroups[chain] = [];
+        chainGroups[chain].push(pair);
+      });
+
+      // Build results for each chain with market data + security data
+      const resultsWithData = await Promise.all(
+        Object.entries(chainGroups).map(async ([chainId, chainPairs]) => {
+          const mainPair = chainPairs[0];
+          const { score: dexScore, factors: dexFactors, hardCap: dexHardCap, marketOnlyCap } = analyzeTokenRisk(chainPairs);
+          const liquidity = mainPair.liquidity?.usd || 0;
+          const volume24h = mainPair.volume?.h24 || 0;
+          const hasSocials = !!(mainPair.info?.websites?.length || mainPair.info?.socials?.length);
+          const network = chainIdToNetwork[chainId] || chainId.toUpperCase();
+
+          // Fetch security data based on network
+          let securityData: SecurityData | undefined;
+          let securityFactors: RiskFactor[] = [];
+          let securityScore = 0;
+          let tokenLockInfo: LockInfo | undefined;
+          const apiSources: ApiSource[] = ["dexscreener"]; // Always used for market data
+
+          try {
+            if (network === 'SOL') {
+              // Use SolanaFM for Solana tokens
+              const solanaData = await getSolanaTokenSecurity(mainPair.baseToken.address);
+              if (solanaData) {
+                apiSources.push("solanafm");
+                const { score: sScore, factors: sFactors } = analyzeSolanaSecurity(solanaData);
+                securityScore = sScore;
+                securityFactors = sFactors;
+                securityData = {
+                  isHoneypot: false, // Solana doesn't have honeypots in the same way
+                  isVerified: true, // Solana programs are always visible
+                  holderCount: solanaData.holderCount,
+                  buyTax: 0,
+                  sellTax: 0,
+                  isMintable: solanaData.isMintAuthority,
+                  hasHiddenOwner: false,
+                  hasFreezeAuthority: solanaData.isFreezeAuthority,
+                };
+              }
+
+              // Also fetch GoPlus Solana data for enhanced analysis
+              try {
+                const { getGoPlusSolanaSecurity, analyzeGoPlusSolanaSecurity } = await import('@/lib/api/goplus');
+                const goPlusSolData = await getGoPlusSolanaSecurity(mainPair.baseToken.address);
+                if (goPlusSolData) {
+                  apiSources.push("goplus-sol");
+                  const { score: gpScore, factors: gpFactors } = analyzeGoPlusSolanaSecurity(goPlusSolData);
+                  // Merge GoPlus Solana with SolanaFM (average scores)
+                  securityScore = Math.round((securityScore + gpScore) / 2);
+                  // Add unique factors from GoPlus that aren't already present
+                  const existingFactorNames = new Set(securityFactors.map(f => f.name));
+                  const uniqueGpFactors = gpFactors.filter(f => !existingFactorNames.has(f.name));
+                  securityFactors = [...securityFactors, ...uniqueGpFactors];
+                  // Update security data with GoPlus insights
+                  if (securityData) {
+                    securityData.isMintable = securityData.isMintable || goPlusSolData.isMintable;
+                    securityData.hasFreezeAuthority = securityData.hasFreezeAuthority || goPlusSolData.isFreezeAuthority;
+                    if (goPlusSolData.holderCount) {
+                      securityData.holderCount = Math.max(securityData.holderCount, parseInt(goPlusSolData.holderCount) || 0);
+                    }
+                  }
+                }
+              } catch (goPlusSolError) {
+                console.error('GoPlus Solana API error:', goPlusSolError);
+              }
+
+              // Also fetch RugCheck data for enhanced Solana analysis
+              try {
+                const rugCheckData = await getRugCheckSecurity(mainPair.baseToken.address);
+                if (rugCheckData) {
+                  apiSources.push("rugcheck");
+                  const { score: rcScore, factors: rcFactors, rawScore: rcRawScore } = analyzeRugCheckSecurity(rugCheckData);
+
+                  // If RugCheck raw score is very low (critical risk), give it more weight
+                  // This prevents high-risk tokens from showing as safe due to other APIs
+                  if (rcRawScore < 20) {
+                    // Critical risk: RugCheck takes 70% weight
+                    securityScore = Math.round(securityScore * 0.3 + rcScore * 0.7);
+                  } else if (rcRawScore < 50) {
+                    // High risk: RugCheck takes 60% weight
+                    securityScore = Math.round(securityScore * 0.4 + rcScore * 0.6);
+                  } else {
+                    // Normal: average the scores
+                    securityScore = Math.round((securityScore + rcScore) / 2);
+                  }
+
+                  // Add unique factors from RugCheck that aren't already present
+                  const existingFactorNames = new Set(securityFactors.map(f => f.name));
+                  const uniqueRcFactors = rcFactors.filter(f => !existingFactorNames.has(f.name));
+                  securityFactors = [...securityFactors, ...uniqueRcFactors];
+                  // Update security data with RugCheck insights
+                  if (securityData) {
+                    securityData.isMintable = securityData.isMintable || !!rugCheckData.tokenMeta.mintAuthority;
+                    securityData.hasFreezeAuthority = securityData.hasFreezeAuthority || !!rugCheckData.tokenMeta.freezeAuthority;
+                  }
+                }
+
+                // Detect SPL token standard for Solana
+                try {
+                  const splStandardResult = await detectSPLStandard(mainPair.baseToken.address);
+                  if (splStandardResult && securityData) {
+                    securityData.splStandard = splStandardResult;
+                    // Add SPL standard risk factors
+                    const splFactors = getSPLStandardRiskFactors(splStandardResult);
+                    const existingSplFactorNames = new Set(securityFactors.map(f => f.name));
+                    const uniqueSplFactors = splFactors.filter(f => !existingSplFactorNames.has(f.name));
+                    securityFactors = [...securityFactors, ...uniqueSplFactors];
+                    // Apply score modifier
+                    securityScore += getSPLStandardScoreModifier(splStandardResult);
+                  }
+                } catch (splError) {
+                  console.error('SPL standard detection error:', splError);
+                }
+              } catch (rugCheckError) {
+                console.error('RugCheck API error:', rugCheckError);
+              }
+            } else {
+              // Use GoPlus for EVM chains
+              const goplusData = await getTokenSecurity(mainPair.baseToken.address, network);
+              if (goplusData) {
+                apiSources.push("goplus");
+                const { score: gScore, factors: gFactors } = analyzeGoPlusSecurity(goplusData);
+                securityScore = gScore;
+                securityFactors = gFactors;
+                securityData = {
+                  isHoneypot: goplusData.isHoneypot,
+                  isVerified: goplusData.isOpenSource,
+                  holderCount: parseInt(goplusData.holderCount) || 0,
+                  buyTax: parseFloat(goplusData.buyTax) * 100,
+                  sellTax: parseFloat(goplusData.sellTax) * 100,
+                  isMintable: goplusData.isMintable,
+                  hasHiddenOwner: goplusData.hiddenOwner,
+                  ercStandard: goplusData.ercStandard, // ERC token standard
+                };
+              }
+
+              // For BSC tokens, also fetch BSCTrace data for enhanced analysis
+              if (network === 'BSC') {
+                try {
+                  const bscTraceData = await getBSCTraceSecurity(mainPair.baseToken.address);
+                  if (bscTraceData) {
+                    apiSources.push("bsctrace");
+                    const { score: bscScore, factors: bscFactors } = analyzeBSCTraceSecurity(bscTraceData);
+                    // Merge BSCTrace data with GoPlus (BSCTrace provides more accurate honeypot detection)
+                    securityScore = Math.round((securityScore + bscScore) / 2);
+                    // Add unique factors from BSCTrace that aren't already present
+                    const existingFactorNames = new Set(securityFactors.map(f => f.name));
+                    const uniqueBscFactors = bscFactors.filter(f => !existingFactorNames.has(f.name));
+                    securityFactors = [...securityFactors, ...uniqueBscFactors];
+                    // Update security data with more accurate BSCTrace honeypot detection
+                    if (securityData) {
+                      securityData.isHoneypot = securityData.isHoneypot || bscTraceData.isHoneypot;
+                      securityData.buyTax = Math.max(securityData.buyTax, bscTraceData.buyTax * 100);
+                      securityData.sellTax = Math.max(securityData.sellTax, bscTraceData.sellTax * 100);
+                      // Store BEP token standard detection result
+                      securityData.bepStandard = bscTraceData.bepStandard;
+                    }
+                  }
+                } catch (bscTraceError) {
+                  console.error('BSCTrace API error:', bscTraceError);
+                }
+              }
+
+              // Fetch Unicrypt/Team Finance/PinkSale/DXSale liquidity lock data for EVM chains
+              try {
+                const lockInfo = await getLiquidityLockInfo(mainPair.baseToken.address, network, goplusData?.lpHolders);
+                if (lockInfo) {
+                  apiSources.push("unicrypt");
+                  tokenLockInfo = lockInfo;
+                  const { score: lockScore, factors: lockFactors } = analyzeLockSecurity(lockInfo);
+                  securityScore += lockScore;
+                  securityFactors = [...securityFactors, ...lockFactors];
+                }
+              } catch (lockError) {
+                console.error('Lock check error:', lockError);
+              }
+            }
+          } catch (error) {
+            console.error('Security fetch error:', error);
+          }
+
+          // Merge risk factors (security factors first, then DEX factors)
+          const allFactors = [...securityFactors, ...dexFactors];
+
+          // No contract-security source covered this chain (e.g. PulseChain): say so,
+          // instead of letting a market-only score look like a full safety check.
+          if (securityFactors.length === 0) {
+            allFactors.unshift({
+              name: 'No Security Data',
+              status: 'warning',
+              description: 'No contract security checks are available for this chain. Score is based on market data only.',
+            });
+          }
+
+          // Check for critical danger factors that should cap the score
+          const hasCriticalDanger = securityFactors.some(f => 
+            f.status === 'danger' && (
+              f.name.toLowerCase().includes('rugcheck') ||
+              f.name.toLowerCase().includes('honeypot') ||
+              f.description.toLowerCase().includes('critical')
+            )
+          );
+
+          // Combined score: weighted average of DEX (55%) and security (45%) if available.
+          // With NO security data, the market-only cap applies (market data can't see
+          // honeypots, mint rights, taxes or hidden owners).
+          let combinedScore = securityFactors.length > 0
+            ? Math.max(0, Math.min(100, Math.round(dexScore * 0.55 + (50 + securityScore) * 0.45)))
+            : Math.min(dexScore, marketOnlyCap);
+
+          // Hard cap from market signals (tiny liquidity, buys with no sells, brand-new pair)
+          combinedScore = Math.min(combinedScore, dexHardCap);
+
+          // Cap score at 39 (DANGER threshold) if critical dangers exist
+          if (hasCriticalDanger) {
+            combinedScore = Math.min(combinedScore, 39);
+          }
+
+          return {
+            network,
+            chainId,
+            found: true,
+            riskScore: combinedScore,
+            address: mainPair.baseToken.address,
+            pairAddress: mainPair.pairAddress,
+            dexUrl: mainPair.url,
+            pairs: chainPairs,
+            marketData: {
+              price: parseFloat(mainPair.priceUsd) || 0,
+              change24h: mainPair.priceChange?.h24 || 0,
+              marketCap: mainPair.marketCap || mainPair.fdv || 0,
+              volume24h,
+              liquidity,
+            },
+            riskFactors: allFactors,
+            securityData,
+            lockInfo: tokenLockInfo,
+            pumpDumpAnalysis: analyzePumpDump(chainPairs),
+            apiSources,
+            // Temp values for status calculation
+            _liquidity: liquidity,
+            _volume: volume24h,
+            _hasSocials: hasSocials,
+            _score: combinedScore,
+            _isHoneypot: securityData?.isHoneypot || false,
+          };
+        })
+      );
+
+      if (!isCurrent()) return;
+
+      // Determine original vs bridged/suspicious
+      // Original = known original network OR (highest liquidity + volume + has socials + good score)
+      // Bridged = similar token on different chain
+      // Suspicious = low liquidity, no socials, poor score, or honeypot
+
+
+      // Use known original networks (hardcoded list)
+      const mergedKnownNetworks = knownOriginalNetworks;
+
+      const maxLiquidity = Math.max(...resultsWithData.map(r => r._liquidity));
+
+      // First pass: identify if any result is on a known original network
+      const tokenSymbol = resultsWithData[0]?.pairs[0]?.baseToken.symbol.toUpperCase() || '';
+      let knownNetworks = mergedKnownNetworks[tokenSymbol] || [];
+
+      // If not in hardcoded mappings, check CoinGecko
+      if (knownNetworks.length === 0 && tokenSymbol) {
+        try {
+          const coinGeckoNetworks = await getTokenOriginalNetworks(tokenSymbol);
+          if (coinGeckoNetworks.length > 0) {
+            knownNetworks = coinGeckoNetworks;
+            // Also add CoinGecko as a source for all results
+            resultsWithData.forEach(r => {
+              if (!r.apiSources.includes('coingecko')) {
+                r.apiSources.push('coingecko');
+              }
+            });
+          }
+        } catch (error) {
+          console.warn('CoinGecko lookup failed:', error);
+        }
+      }
+
+      // Resolve the exact official contract address per network present in the results.
+      // This is what actually distinguishes a real token from a same-named copycat -
+      // liquidity and volume alone can't (a copycat can fund a big pool; it can't fake
+      // being the CoinGecko-listed contract). Address mismatch overrides the liquidity
+      // heuristic below so a well-funded fake can no longer be labeled "original".
+      const officialAddressByChain = new Map<string, string>(); // chainId (lowercase) -> official address (lowercase)
+      if (tokenSymbol) {
+        try {
+          const uniqueChainIds = [...new Set(resultsWithData.map(r => r.chainId.toLowerCase()))];
+          await Promise.all(
+            uniqueChainIds.map(async (chainId) => {
+              const network = chainIdToNetwork[chainId] || chainId;
+              const official = await getOfficialTokenAddress(tokenSymbol, network);
+              if (official) {
+                officialAddressByChain.set(chainId, official.address);
+                resultsWithData.forEach(r => {
+                  if (r.chainId.toLowerCase() === chainId && !r.apiSources.includes('coingecko')) {
+                    r.apiSources.push('coingecko');
+                  }
+                });
+              }
+            })
+          );
+        } catch (error) {
+          console.warn('Official address resolution failed:', error);
+        }
+      }
+
+      if (!isCurrent()) return;
+
+      const results: NetworkResult[] = resultsWithData.map(r => {
+        let tokenStatus: "original" | "bridged" | "suspicious";
+
+        // Check if this is the original (highest liquidity + volume, has socials)
+        const isHighestLiquidity = r._liquidity === maxLiquidity && maxLiquidity > 0;
+        const hasGoodLiquidity = r._liquidity >= 10000;
+        const hasGoodVolume = r._volume >= 1000;
+        const chainId = r.chainId.toLowerCase();
+
+        // Check if this is on a known original network for this token
+        const isKnownOriginal = knownNetworks.includes(chainId);
+
+        // Address verification against CoinGecko's official contract for this network.
+        // undefined = no official record found for this network (can't confirm either way).
+        const officialAddress = officialAddressByChain.get(chainId);
+        const isAddressVerified = officialAddress
+          ? officialAddress === r.address.toLowerCase()
+          : undefined;
+        const isConfirmedMismatch = officialAddress !== undefined && isAddressVerified === false;
+
+        if (r._isHoneypot || r._score < 30) {
+          // Honeypot or very low score = suspicious
+          tokenStatus = "suspicious";
+        } else if (isConfirmedMismatch) {
+          // An official contract exists for this network and this isn't it - this is
+          // squatting on the real project's name, not a legitimate bridge. Flag it,
+          // regardless of how much liquidity it's carrying.
+          tokenStatus = "suspicious";
+        } else if (isAddressVerified && hasGoodLiquidity) {
+          // Confirmed match against CoinGecko's official contract = original
+          tokenStatus = "original";
+        } else if (isKnownOriginal && hasGoodLiquidity && officialAddress === undefined) {
+          // Known original network with good liquidity, no official address to check
+          // against (fell back to the hardcoded network list) = original
+          tokenStatus = "original";
+        } else if (isHighestLiquidity && hasGoodLiquidity && hasGoodVolume && knownNetworks.length === 0 && officialAddress === undefined) {
+          // Best metrics, no known original network, AND no official record to
+          // contradict it = original (fallback for genuinely unlisted/new tokens)
+          tokenStatus = "original";
+        } else if (r._liquidity < 1000 || r._score < 40) {
+          // Low liquidity or poor score = suspicious
+          tokenStatus = "suspicious";
+        } else {
+          // Decent metrics but not confirmed original = bridged
+          tokenStatus = "bridged";
+        }
+
+        // Remove temp properties and add status + verification flag
+        const { _liquidity, _volume, _hasSocials, _score, _isHoneypot, ...rest } = r;
+        return { ...rest, tokenStatus, isAddressVerified };
+      });
+
+      // Sort results: original first, then by liquidity descending
+      const sortedResults = [...results].sort((a, b) => {
+        // Original tokens first
+        if (a.tokenStatus === "original" && b.tokenStatus !== "original") return -1;
+        if (b.tokenStatus === "original" && a.tokenStatus !== "original") return 1;
+        // Then suspicious last
+        if (a.tokenStatus === "suspicious" && b.tokenStatus !== "suspicious") return 1;
+        if (b.tokenStatus === "suspicious" && a.tokenStatus !== "suspicious") return -1;
+        // Then by liquidity
+        return (b.marketData?.liquidity || 0) - (a.marketData?.liquidity || 0);
+      });
+
+      setScanResults(sortedResults);
+
+      // Auto-select original or highest liquidity result
+      if (sortedResults.length > 0) {
+        const original = sortedResults.find(r => r.tokenStatus === "original");
+        const best = original || sortedResults.reduce((a, b) => 
+          (a.marketData?.liquidity || 0) > (b.marketData?.liquidity || 0) ? a : b
+        );
+        setSelectedResult(best);
+
+        // If URL specified a chain, prefer that result on first scan after mount
+        let shareResult = best;
+        if (preferredChainFromUrl.current && !hasAutoSelectedFromUrl.current) {
+          const preferred = sortedResults.find(r => r.network === preferredChainFromUrl.current);
+          if (preferred) {
+            setSelectedResult(preferred);
+            shareResult = preferred;
+          }
+          hasAutoSelectedFromUrl.current = true;
+        }
+
+        // Header (name, symbol, address, logo) comes from the SAME result that is
+        // selected, so the header and the score below it can never disagree.
+        const finalPair = shareResult.pairs[0];
+        setTokenInfo({
+          name: finalPair.baseToken.name,
+          symbol: finalPair.baseToken.symbol,
+          address: finalPair.baseToken.address,
+          chainId: finalPair.chainId,
+          imageUrl: finalPair.info?.imageUrl,
+        });
+        setDisplayAddress(finalPair.baseToken.address);
+
+        // Update URL to make result shareable
+        const chainSlug = shareResult.network.toLowerCase().replace("ethereum", "eth").replace("avalanche", "avax").replace("optimism", "op").replace("arbitrum", "arb").replace("polygon", "matic");
+        const newUrl = `${window.location.pathname}?address=${shareResult.address}&chain=${chainSlug}`;
+        window.history.replaceState(null, "", newUrl);
+      }
+    } catch (error) {
+      console.error('Scan error:', error);
+      if (isCurrent()) toast.error('Failed to scan token');
+    } finally {
+      if (isCurrent()) setIsScanning(false);
+    }
+  };
+
+  const handleScan = () => {
+    const address = displayAddress || tokenQuery;
+    handleScanWithAddress(address);
+  };
+
+  // Screenshot handlers
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDragIn = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragOut = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleFile = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const imageData = e.target?.result as string;
+      setUploadedImage(imageData);
+      setExtractedAddresses([]);
+      setExtractedConfidences([]);
+      setOcrStage("");
+      // Clear any previous result so the extracted-address list is visible
+      setScanResults([]);
+      setSelectedResult(null);
+      setScanBlocked(false);
+
+      // Auto-run OCR to extract addresses
+      toast.info("Analyzing screenshot for contract addresses...");
+      (window as any).gtag?.('event', 'screenshot_upload_start');
+      const { addresses, confidences } = await performOCR(imageData);
+
+      if (addresses.length > 0) {
+        const firstAddress = addresses[0];
+        (window as any).gtag?.('event', 'screenshot_upload_success', {
+          address_count: addresses.length,
+        });
+
+        // Only auto-scan an address that was CONFIRMED to exist on-chain.
+        // Anything else must be checked by the user first: one wrong character
+        // points at a different token, and a scan uses up a daily scan.
+        if ((confidences[0] ?? 0) >= VERIFIED_CONFIDENCE) {
+          setTokenQuery(firstAddress);
+          setDisplayAddress(firstAddress);
+          toast.success(`Found ${addresses.length} address${addresses.length > 1 ? 'es' : ''}! Auto-scanning first one...`);
+          handleScanWithAddress(firstAddress);
+        } else {
+          toast.warning("Address not confirmed on-chain. Check every character, then tap Scan.", { duration: 6000 });
+        }
+      } else {
+        toast.warning("No contract addresses found. Try pasting manually.");
+        (window as any).gtag?.('event', 'screenshot_upload_fail', {
+          reason: 'no_addresses_found',
+        });
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read image file");
+      (window as any).gtag?.('event', 'screenshot_upload_fail', {
+        reason: 'file_read_error',
+      });
+    };
+    reader.readAsDataURL(file);
+  }, [performOCR]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+  }, [handleFile]);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+    // Reset the input value so the same file can be re-selected
+    e.target.value = '';
+  };
+
+  const clearUpload = () => {
+    setUploadedImage(null);
+    setScanResults([]);
+    setSelectedResult(null);
+    setScanBlocked(false);
+    setTokenInfo(null);
+    setDisplayAddress("");
+    setTokenQuery("");
+    setExtractedAddresses([]);
+    setExtractedConfidences([]);
+    setOcrStage("");
+    setOcrProgress(0);
+  };
+
+  const formatCurrency = useCallback((value: number) => {
+    if (value >= 1000000000) return `$${(value / 1000000000).toFixed(2)}B`;
+    if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
+    if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`;
+    if (value >= 1) return `$${value.toFixed(2)}`;
+    if (value >= 0.0001) return `$${value.toFixed(4)}`;
+    return `$${value.toFixed(8)}`;
+  }, []);
+
+  const formatPrice = useCallback((value: number) => {
+    if (value >= 1) return `$${value.toFixed(2)}`;
+    if (value >= 0.0001) return `$${value.toFixed(6)}`;
+    return `$${value.toFixed(10)}`;
+  }, []);
+
+  // Memoized status icon to prevent re-renders
+  const StatusIcon = memo(function StatusIcon({ status }: { status: RiskFactor["status"] }) {
+    switch (status) {
+      case "safe": return <CheckCircle className="w-4 sm:w-5 h-4 sm:h-5 text-safe" />;
+      case "warning": return <AlertTriangle className="w-4 sm:w-5 h-4 sm:h-5 text-warning" />;
+      case "danger": return <XCircle className="w-4 sm:w-5 h-4 sm:h-5 text-danger" />;
+    }
+  });
+
+  const getStatusIcon = useCallback((status: RiskFactor["status"]) => {
+    return <StatusIcon status={status} />;
+  }, []);
+
+  const getTokenStatusBadge = (status: "original" | "bridged" | "suspicious", isHighlighted = false) => {
+    switch (status) {
+      case "original":
+        return (
+          <span className={cn(
+            "inline-flex items-center gap-1.5 rounded-full font-medium border",
+            isHighlighted 
+              ? "px-3 py-1 bg-safe/30 text-safe text-sm border-safe/50 shadow-lg shadow-safe/20 animate-pulse"
+              : "px-2 py-0.5 bg-safe/20 text-safe text-xs border-safe/30"
+          )}>
+            <BadgeCheck className={isHighlighted ? "w-4 h-4" : "w-3 h-3"} />
+            {isHighlighted ? "✓ ORIGINAL" : "Original"}
+          </span>
+        );
+      case "bridged":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium border border-primary/30">
+            <ArrowRightLeft className="w-3 h-3" />
+            Bridged
+          </span>
+        );
+      case "suspicious":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger/20 text-danger text-xs font-medium border border-danger/30">
+            <ShieldAlert className="w-3 h-3" />
+            Suspicious
+          </span>
+        );
+    }
+  };
+
+  const copyAddress = async (address: string) => {
+    await navigator.clipboard.writeText(address);
+    toast.success("Address copied!");
+  };
+
+  const truncateAddress = (address: string) => {
+    if (address.length <= 16) return address;
+    return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  };
+
+  const handleAddToWatchlist = async () => {
+    if (!selectedResult || !tokenInfo) return;
+
+    if (!isAuthenticated) {
+      toast.info("Sign in to save tokens to your watchlist", {
+        action: {
+          label: "Sign In",
+          onClick: () => window.location.href = "/auth"
+        }
+      });
+      return;
+    }
+
+    const added = await addToken({
+      address: selectedResult.address,
+      name: tokenInfo.name,
+      network: selectedResult.network as Network,
+      riskScore: selectedResult.riskScore,
+    });
+
+    if (added) {
+      toast.success(`${tokenInfo.name} added to watchlist!`);
+    } else {
+      toast.info("Already in watchlist");
+    }
+  };
+
+  const resetScan = () => {
+    setScanResults([]);
+    setSelectedResult(null);
+    setScanBlocked(false);
+    setTokenInfo(null);
+    setTokenQuery("");
+    setDisplayAddress("");
+    setUploadedImage(null);
+    setStructuredSecurityResult(null);
+    setRawJsonInput("");
+    setMergedSecurityResult(null);
+  };
+
+  // Merge JSON security data with live API results
+  const handleMergeWithLiveData = useCallback(async () => {
+    if (!structuredSecurityResult || scanResults.length === 0) {
+      toast.error("Need both JSON data and scan results to merge");
+      return;
+    }
+
+    setIsMerging(true);
+
+    try {
+      // Use the best/selected result for merging
+      const resultToMerge = selectedResult || scanResults[0];
+
+      // Prepare live security data
+      const liveSecurityData = resultToMerge.securityData ? {
+        isHoneypot: resultToMerge.securityData.isHoneypot,
+        isVerified: resultToMerge.securityData.isVerified,
+        holderCount: resultToMerge.securityData.holderCount,
+        buyTax: resultToMerge.securityData.buyTax,
+        sellTax: resultToMerge.securityData.sellTax,
+        isMintable: resultToMerge.securityData.isMintable,
+        hasHiddenOwner: resultToMerge.securityData.hasHiddenOwner,
+        hasFreezeAuthority: resultToMerge.securityData.hasFreezeAuthority,
+      } : undefined;
+
+      // Prepare live market data
+      const liveMarketData = resultToMerge.marketData ? {
+        price: resultToMerge.marketData.price,
+        change24h: resultToMerge.marketData.change24h,
+        marketCap: resultToMerge.marketData.marketCap,
+        volume24h: resultToMerge.marketData.volume24h,
+        liquidity: resultToMerge.marketData.liquidity,
+      } : undefined;
+
+      // Merge the data
+      const merged = mergeSecurityData(
+        structuredSecurityResult,
+        liveSecurityData,
+        resultToMerge.riskFactors,
+        resultToMerge.riskScore,
+        liveMarketData,
+        resultToMerge.apiSources
+      );
+
+      setMergedSecurityResult(merged);
+      toast.success("Successfully merged JSON data with live API results");
+    } catch (error) {
+      console.error("Merge error:", error);
+      toast.error("Failed to merge security data");
+    } finally {
+      setIsMerging(false);
+    }
+  }, [structuredSecurityResult, scanResults, selectedResult]);
+
+  // Check if input looks like JSON security data
+  const isJsonSecurityData = useCallback((text: string): boolean => {
+    const trimmed = text.trim();
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false;
+    return tryParseStructuredSecurityJson(trimmed) !== null;
+  }, []);
+
+  // Handle JSON security data input
+  const handleJsonSecurityInput = useCallback((jsonText: string) => {
+    const parsed = tryParseStructuredSecurityJson(jsonText);
+    if (parsed) {
+      const result = parseStructuredSecurityData(parsed);
+      setStructuredSecurityResult(result);
+      setRawJsonInput(jsonText);
+      setScanResults([]);
+      setSelectedResult(null);
+      setTokenInfo(null);
+      toast.success("Security data parsed successfully!");
+    }
+  }, []);
+
+  const foundNetworks = scanResults.filter(r => r.found);
+
+  // Generate one-sentence risk summary explaining the score
+  const generateRiskSummary = useCallback((result: NetworkResult): string => {
+    const { riskScore, riskFactors, securityData, lockInfo, marketData } = result;
+
+    // Determine risk level
+    const riskLevel = riskScore >= 70 ? "Low risk" : riskScore >= 40 ? "Medium risk" : "High risk";
+
+    // Collect key positive and negative factors
+    const positives: string[] = [];
+    const negatives: string[] = [];
+
+    // Check for critical issues first
+    if (securityData?.isHoneypot) {
+      return "⚠️ CRITICAL: Honeypot detected - tokens cannot be sold!";
+    }
+
+    // Check for dangerous factors
+    const dangerFactors = riskFactors.filter(f => f.status === "danger");
+    const warningFactors = riskFactors.filter(f => f.status === "warning");
+    const safeFactors = riskFactors.filter(f => f.status === "safe");
+
+    // Collect specific insights
+    if (lockInfo?.isLocked) {
+      positives.push(`liquidity locked (${lockInfo.lockPercentage}%)`);
+    }
+
+    if (securityData?.isVerified) {
+      positives.push("verified contract");
+    }
+
+    if (marketData && marketData.liquidity >= 100000) {
+      positives.push("strong liquidity");
+    } else if (marketData && marketData.liquidity >= 10000) {
+      positives.push("decent liquidity");
+    } else if (marketData && marketData.liquidity < 5000) {
+      negatives.push("low liquidity");
+    }
+
+    if (securityData?.holderCount && securityData.holderCount >= 1000) {
+      positives.push("many holders");
+    } else if (securityData?.holderCount && securityData.holderCount < 50) {
+      negatives.push("few holders");
+    }
+
+    // Check for specific risk factors
+    for (const factor of dangerFactors) {
+      const lowerName = factor.name.toLowerCase();
+      if (lowerName.includes("tax") && (lowerName.includes("buy") || lowerName.includes("sell"))) {
+        negatives.push("high taxes");
+      } else if (lowerName.includes("mint")) {
+        negatives.push("mintable supply");
+      } else if (lowerName.includes("owner") || lowerName.includes("hidden")) {
+        negatives.push("ownership risks");
+      } else if (lowerName.includes("holder") || lowerName.includes("concentration")) {
+        const match = factor.description.match(/(\d+(?:\.\d+)?%)/);
+        if (match) {
+          negatives.push(`dev/top holder owns ${match[1]}`);
+        } else {
+          negatives.push("high holder concentration");
+        }
+      } else if (lowerName.includes("freeze")) {
+        negatives.push("freeze authority enabled");
+      }
+    }
+
+    for (const factor of warningFactors) {
+      const lowerName = factor.name.toLowerCase();
+      if (lowerName.includes("holder") || lowerName.includes("concentration")) {
+        const match = factor.description.match(/(\d+(?:\.\d+)?%)/);
+        if (match && negatives.length < 2) {
+          negatives.push(`top holder owns ${match[1]}`);
+        }
+      }
+    }
+
+    // Build the summary sentence
+    if (dangerFactors.length > 0 && negatives.length > 0) {
+      const topNegatives = negatives.slice(0, 2).join(" and ");
+      if (positives.length > 0) {
+        const topPositives = positives.slice(0, 1)[0];
+        return `${riskLevel} — ${topPositives} but ${topNegatives}.`;
+      }
+      return `${riskLevel} — ${topNegatives}.`;
+    }
+
+    if (positives.length > 0 && negatives.length > 0) {
+      const topPositives = positives.slice(0, 1)[0];
+      const topNegatives = negatives.slice(0, 1)[0];
+      return `${riskLevel} — ${topPositives} but ${topNegatives}.`;
+    }
+
+    if (positives.length >= 2) {
+      return `${riskLevel} — ${positives.slice(0, 2).join(" and ")}.`;
+    }
+
+    if (positives.length === 1) {
+      return `${riskLevel} — ${positives[0]}.`;
+    }
+
+    if (negatives.length > 0) {
+      return `${riskLevel} — ${negatives.slice(0, 2).join(" and ")}.`;
+    }
+
+    // Default fallbacks based on score
+    if (riskScore >= 70) {
+      return "Low risk — no major issues detected.";
+    } else if (riskScore >= 40) {
+      return "Medium risk — proceed with caution.";
+    }
+    return "High risk — multiple warning signs detected.";
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      {/* Unified Token Search & Scan */}
+      {scanMode === "address" ? (
+        <div className="glass-card p-6 md:p-8 animate-fade-in relative overflow-hidden border border-primary/10 hover:border-primary/20 transition-colors">
+          {/* Decorative elements */}
+          <div className="absolute top-0 left-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute bottom-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          {/* Top neon accent line */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+
+          <div className="relative space-y-6">
+            {/* Header */}
+            <div className="text-center mb-2">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 mb-4">
+                <Scan className="w-7 h-7 text-primary" />
+              </div>
+              <h3 className="font-display text-xl text-foreground mb-1">Scan Any Token</h3>
+              <p className="text-sm text-muted-foreground">Multi-chain risk analysis powered by real-time data</p>
+
+              {/* Scan Usage Indicator */}
+              {!isPro && (
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/50">
+                  {canScan ? (
+                    <>
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: dailyLimit }).map((_, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "w-2 h-2 rounded-full transition-colors",
+                              i < scansUsedToday ? "bg-muted-foreground/30" : "bg-primary"
+                            )}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {remainingScans} scan{remainingScans !== 1 ? 's' : ''} left today
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3 h-3 text-destructive" />
+                      <span className="text-xs text-destructive">Daily limit reached</span>
+                      <Link 
+                        to="/subscription" 
+                        className="text-xs text-primary hover:underline font-medium"
+                      >
+                        Upgrade
+                      </Link>
+                    </>
+                  )}
+                </div>
+              )}
+              {isPro && (
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30">
+                  <Crown className="w-3 h-3 text-primary" />
+                  <span className="text-xs text-primary font-medium">Pro — Unlimited Scans</span>
+                </div>
+              )}
+            </div>
+
+            {/* Unified Smart Search Input */}
+            <div className="relative">
+              <div className="relative group">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-500" />
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    placeholder="Address or token name..."
+                    value={tokenQuery}
+                    onChange={(e) => {
+                      setTokenQuery(e.target.value);
+                      setScanResults([]);
+                      setSelectedResult(null);
+                      setScanBlocked(false);
+                    }}
+                    onPaste={(e: ClipboardEvent<HTMLInputElement>) => {
+                      e.preventDefault();
+                      const pastedText = e.clipboardData.getData('text').trim();
+
+                      // Check if it's JSON security data first
+                      if (isJsonSecurityData(pastedText)) {
+                        handleJsonSecurityInput(pastedText);
+                        setTokenQuery("[JSON Security Data]");
+                        return;
+                      }
+
+                      // Otherwise treat as address/token name
+                      setStructuredSecurityResult(null);
+                      setTokenQuery(pastedText);
+                      setDisplayAddress(pastedText);
+                      if (isContractAddress(pastedText)) {
+                        setTimeout(() => handleScanWithAddress(pastedText), 100);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && tokenQuery) {
+                        handleScan();
+                      }
+                    }}
+                    onFocus={() => tokenQuery.length >= 2 && !isContractAddress(tokenQuery) && setShowSuggestions(suggestions.length > 0)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    className="w-full bg-secondary/80 border-border/50 focus:border-primary/50 h-16 pl-12 pr-32 text-foreground placeholder:text-muted-foreground text-base rounded-xl font-mono truncate"
+                  />
+                  {isSearching && (
+                    <Loader2 className="absolute right-24 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
+                  )}
+                  <Button 
+                    onClick={handleScan}
+                    disabled={!tokenQuery || isScanning}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-12 px-4 sm:px-5 bg-primary hover:bg-primary/90 text-primary-foreground font-display rounded-lg shadow-lg shadow-primary/20 shrink-0 min-w-[80px]"
+                  >
+                    {isScanning ? (
+                      <Scan className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Scan className="w-4 h-4 sm:mr-2" />
+                        <span className="hidden sm:inline">SCAN</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Input Type Indicator */}
+              {tokenQuery && (
+                <div className="absolute -bottom-6 left-0">
+                  <span className="text-xs text-muted-foreground">
+                    {isContractAddress(tokenQuery) ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                        Contract address detected — scanning automatically
+                      </span>
+                    ) : tokenQuery.length >= 2 ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-accent/70" />
+                        Searching tokens across all chains...
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              )}
+
+              {/* Suggestions Dropdown: verified match first, unverified copies collapsed below */}
+              {showSuggestions && (
+                <div className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto">
+                  {/* Verified / established tokens */}
+                  {trustedSuggestions.length > 0 && (
+                    <div>
+                      <div className="px-4 py-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-400 bg-emerald-500/10 border-b border-emerald-500/20">
+                        <BadgeCheck className="w-3.5 h-3.5" />
+                        Verified match
+                      </div>
+                      {trustedSuggestions.map((s, index) => renderSuggestionRow(s, true, index))}
+                    </div>
+                  )}
+
+                  {/* Unverified copies */}
+                  {warnedSuggestions.length > 0 && (
+                    <div>
+                      {trustedSuggestions.length > 0 ? (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // keep the input focused so the list doesn't close
+                            setShowWarned((v) => !v);
+                          }}
+                          className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left text-xs bg-red-500/10 hover:bg-red-500/15 border-t border-red-500/30 text-red-400"
+                        >
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            {warnedSuggestions.length} unverified {warnedSuggestions.length === 1 ? "copy" : "copies"} with a similar name. Do not trust by name.
+                          </span>
+                          <span className="shrink-0 underline">{showWarned ? "Hide" : "Show"}</span>
+                        </button>
+                      ) : (
+                        <div className="px-4 py-2.5 flex items-center gap-1.5 text-xs text-red-400 bg-red-500/10 border-b border-red-500/20">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          No verified match found. Check the contract address before scanning.
+                        </div>
+                      )}
+                      {(showWarned || trustedSuggestions.length === 0) &&
+                        warnedSuggestions.map((s, index) => renderSuggestionRow(s, false, index))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Screenshot Toggle */}
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={() => { setScanMode("screenshot"); resetScan(); }}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm text-muted-foreground hover:text-primary bg-secondary/30 hover:bg-secondary/50 rounded-lg transition-all"
+              >
+                <Upload className="w-4 h-4" />
+                Or upload a screenshot
+              </button>
+            </div>
+
+            {/* Ghost description text */}
+            <p className="text-center text-xs text-muted-foreground/60 pt-2 max-w-md mx-auto leading-relaxed">
+              Analyzes liquidity, trading volume, holder distribution, and on-chain activity to detect potential rug pulls, honeypots, and scam patterns across ETH, BSC, Solana, Polygon, and more.
+            </p>
+          </div>
+        </div>
+      ) : (
+        // Upload Screenshot Mode
+        <div className="glass-card p-6 animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-lg text-foreground flex items-center gap-2">
+              <Image className="w-5 h-5 text-primary" />
+              Screenshot Analyzer
+            </h3>
+            <button
+              onClick={() => { setScanMode("address"); resetScan(); }}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary rounded-lg transition-colors"
+            >
+              <Search className="w-4 h-4" />
+              Back to Search
+            </button>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Upload a screenshot and we'll automatically extract contract addresses using OCR
+          </p>
+
+          {!uploadedImage ? (
+            <div
+              onDragEnter={handleDragIn}
+              onDragLeave={handleDragOut}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              className={cn(
+                "relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300",
+                isDragging 
+                  ? "border-primary bg-primary/5" 
+                  : "border-border/50 hover:border-border"
+              )}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileInput}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <Upload className={cn(
+                "w-12 h-12 mx-auto mb-4 transition-colors",
+                isDragging ? "text-primary" : "text-muted-foreground"
+              )} />
+              <p className="font-medium text-foreground mb-1">
+                {isDragging ? "Drop your screenshot here" : "Drag & drop screenshot"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                or click to browse files
+              </p>
+              <p className="text-xs text-primary mt-3">
+                📸 OCR enabled - Contract addresses will be extracted and scanned automatically
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="relative rounded-xl overflow-hidden border border-border/50">
+                <img 
+                  src={uploadedImage} 
+                  alt="Uploaded screenshot" 
+                  className="w-full h-48 object-cover"
+                />
+                <button
+                  onClick={clearUpload}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-background/80 backdrop-blur flex items-center justify-center hover:bg-background transition-colors"
+                >
+                  <X className="w-4 h-4 text-foreground" />
+                </button>
+
+                {/* OCR Processing Overlay */}
+                {isOcrProcessing && (
+                  <div className="absolute inset-0 bg-background/85 backdrop-blur-md flex flex-col items-center justify-center px-4">
+                    <div className="scan-line" />
+                    <Loader2 className="w-12 h-12 text-primary animate-spin mb-3" />
+                    <p className="font-display text-primary text-sm tracking-wider mb-1">
+                      OCR PROCESSING — {ocrProgress}%
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3 text-center">
+                      {ocrStage || "Extracting contract addresses…"}
+                    </p>
+                    <div className="w-full max-w-xs h-1.5 rounded-full bg-secondary/60 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary via-accent to-primary transition-all duration-300"
+                        style={{ width: `${ocrProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Analysis Summary - Shows after successful scan */}
+              {selectedResult && tokenInfo && !isScanning && !isOcrProcessing && (
+                <div className="p-4 rounded-xl border border-border/50 bg-gradient-to-br from-secondary/50 to-secondary/20 space-y-4 animate-fade-in">
+                  {/* Token Header */}
+                  <div className="flex items-center gap-3">
+                    {tokenInfo.imageUrl && (
+                      <img 
+                        src={tokenInfo.imageUrl} 
+                        alt={tokenInfo.symbol}
+                        className="w-12 h-12 rounded-full bg-secondary ring-2 ring-border/50"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-display text-lg text-foreground truncate">{tokenInfo.name}</h4>
+                        <span className="text-sm text-muted-foreground">({tokenInfo.symbol})</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">
+                          {selectedResult.network}
+                        </span>
+                        {getTokenStatusBadge(selectedResult.tokenStatus)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(window.location.href);
+                        toast("Link copied!", {
+                          description: "Anyone with this link can view this scan result.",
+                        });
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors shrink-0"
+                      aria-label="Share scan result link"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      Share
+                    </button>
+                  </div>
+
+                  {/* Risk Score Display */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-background/50 border border-border/30">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center font-display text-lg font-bold",
+                        selectedResult.riskScore >= 70 ? "bg-safe/20 text-safe border-2 border-safe/30" :
+                        selectedResult.riskScore >= 40 ? "bg-warning/20 text-warning border-2 border-warning/30" :
+                        "bg-danger/20 text-danger border-2 border-danger/30"
+                      )}>
+                        {selectedResult.riskScore}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {selectedResult.riskScore >= 70 ? "Low Risk" :
+                           selectedResult.riskScore >= 40 ? "Medium Risk" : "High Risk"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Safety Score</p>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium",
+                      selectedResult.riskScore >= 70 ? "bg-safe/10 text-safe" :
+                      selectedResult.riskScore >= 40 ? "bg-warning/10 text-warning" :
+                      "bg-danger/10 text-danger"
+                    )}>
+                      {selectedResult.riskScore >= 70 ? "SAFE" :
+                       selectedResult.riskScore >= 40 ? "CAUTION" : "DANGER"}
+                    </div>
+                  </div>
+
+                  {/* Risk Trend Analysis */}
+                  {selectedResult.marketData && (
+                    <RiskTrendBadge 
+                      data={calculateRiskTrend(
+                        selectedResult.riskScore,
+                        selectedResult.marketData.change24h,
+                        undefined,
+                        undefined
+                      )} 
+                    />
+                  )}
+
+                  {/* Key Metrics Grid */}
+                  {selectedResult.marketData && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          <Droplets className="w-3 h-3" /> Liquidity
+                        </p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatCurrency(selectedResult.marketData.liquidity)}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          <BarChart3 className="w-3 h-3" /> 24h Volume
+                        </p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatCurrency(selectedResult.marketData.volume24h)}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">Price</p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatPrice(selectedResult.marketData.price)}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background/50 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">24h Change</p>
+                        <p className={cn(
+                          "font-display text-sm",
+                          selectedResult.marketData.change24h >= 0 ? "text-safe" : "text-danger"
+                        )}>
+                          {selectedResult.marketData.change24h >= 0 ? "+" : ""}
+                          {selectedResult.marketData.change24h.toFixed(2)}%
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Risk Warnings */}
+                  {selectedResult.riskFactors.filter(f => f.status === "danger" || f.status === "warning").length > 0 && (
+                    <div className="p-3 rounded-lg bg-danger/5 border border-danger/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-danger" />
+                        <h5 className="text-sm font-medium text-danger">Risk Warnings</h5>
+                        <span className="text-[10px] text-muted-foreground ml-auto">Tap for details</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedResult.riskFactors
+                          .filter(f => f.status === "danger" || f.status === "warning")
+                          .slice(0, 5)
+                          .map((factor, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              {factor.status === "danger" ? (
+                                <XCircle className="w-3.5 h-3.5 text-danger shrink-0 mt-0.5" />
+                              ) : (
+                                <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
+                              )}
+                              <RiskFactorTooltip
+                                factorName={factor.name}
+                                status={factor.status}
+                                description={factor.description}
+                              />
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Safe Indicators */}
+                  {selectedResult.riskScore >= 70 && (
+                    <div className="p-3 rounded-lg bg-safe/5 border border-safe/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="w-4 h-4 text-safe" />
+                        <h5 className="text-sm font-medium text-safe">Positive Indicators</h5>
+                      </div>
+                      <div className="space-y-1.5">
+                        {selectedResult.riskFactors
+                          .filter(f => f.status === "safe")
+                          .slice(0, 4)
+                          .map((factor, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              <CheckCircle className="w-3.5 h-3.5 text-safe shrink-0 mt-0.5" />
+                              <span className="text-safe">{factor.name}: {factor.description}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleAddToWatchlist}
+                      disabled={isInWatchlist(selectedResult.address)}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 gap-2"
+                    >
+                      <Star className={cn("w-4 h-4", isInWatchlist(selectedResult.address) && "fill-warning text-warning")} />
+                      {isInWatchlist(selectedResult.address) ? "Watching" : "Add to Watchlist"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      className="gap-2"
+                    >
+                      <a href={selectedResult.dexUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="w-4 h-4" />
+                        View on DEX
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Extracted Addresses Section */}
+              {extractedAddresses.length > 0 && !isOcrProcessing && !selectedResult && (
+                <div className="p-4 rounded-xl border border-primary/30 bg-primary/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 text-primary" />
+                    <h4 className="font-display text-sm text-primary uppercase">
+                      Extracted Addresses ({extractedAddresses.length})
+                    </h4>
+                    {extractedAddresses.length > 1 && (
+                      <span className="ml-auto text-[10px] uppercase tracking-wider text-accent bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full">
+                        Multi-token
+                      </span>
+                    )}
+                  </div>
+
+                  {/* OCR Warning */}
+                  <div className="flex items-start gap-2 mb-3 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                    <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-yellow-500/90">
+                      Check every character before scanning. Look-alikes such as 9/o, f/t and 5/S are easy to misread, and one wrong character points to a different token.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {extractedAddresses.map((address, i) => {
+                      const conf = extractedConfidences[i] ?? 40;
+                      const confTone =
+                        conf >= 85 ? "bg-safe/15 text-safe border-safe/30"
+                        : conf >= 65 ? "bg-warning/15 text-warning border-warning/30"
+                        : "bg-danger/15 text-danger border-danger/30";
+                      return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setTokenQuery(address);
+                          setDisplayAddress(address);
+                          handleScanWithAddress(address);
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between gap-2 p-2 rounded-lg bg-background/50 border border-border/50 hover:border-primary/50 transition-colors text-left",
+                          tokenQuery === address && "border-primary bg-primary/10"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className={cn(
+                            "text-[10px] font-display px-1.5 py-0.5 rounded border shrink-0",
+                            confTone
+                          )}>
+                            {conf}%
+                          </span>
+                          <code className="text-xs text-foreground font-mono truncate flex-1">
+                            {address}
+                          </code>
+                        </div>
+                        <span className="text-xs text-primary shrink-0">
+                          {tokenQuery === address ? "Selected" : "Scan"}
+                        </span>
+                      </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Manual Address Input (fallback) */}
+              {!isOcrProcessing && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {extractedAddresses.length > 0 ? "Or enter address manually:" : "No addresses found. Enter manually:"}
+                  </p>
+                  <div className="flex gap-3">
+                    <Input
+                      placeholder="Paste contract address..."
+                      value={tokenQuery}
+                      onChange={(e) => {
+                        setTokenQuery(e.target.value);
+                        setDisplayAddress(e.target.value);
+                      }}
+                      className="flex-1 bg-secondary/50 border-border/50 h-12 font-mono text-sm"
+                    />
+                    <Button 
+                      onClick={handleScan}
+                      disabled={!tokenQuery || isScanning}
+                      className="h-12 px-6 bg-primary hover:bg-primary/90"
+                    >
+                      {isScanning ? <Scan className="w-5 h-5 animate-spin" /> : "SCAN"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Scanning Animation */}
+      {isScanning && (
+        <div className="glass-card p-12 relative overflow-hidden">
+          <div className="scan-line" />
+          <div className="flex flex-col items-center justify-center">
+            <Scan className="w-16 h-16 text-primary animate-scan mb-4" />
+            <p className="font-display text-primary animate-pulse">
+              FETCHING LIVE DATA...
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Querying DEXScreener across all chains
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Merged Security Data Display */}
+      {mergedSecurityResult && !isScanning && (
+        <div className="glass-card p-6 animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-lg text-foreground flex items-center gap-2">
+              <GitMerge className="w-5 h-5 text-primary" />
+              Merged Security Analysis
+            </h3>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                setMergedSecurityResult(null);
+              }}
+              className="gap-2"
+            >
+              <X className="w-4 h-4" />
+              Close
+            </Button>
+          </div>
+
+          <p className="text-sm text-muted-foreground mb-4">
+            {generateMergedRiskSummary(mergedSecurityResult)}
+          </p>
+
+          <MergedSecurityDisplay result={mergedSecurityResult} />
+        </div>
+      )}
+
+      {/* Structured Security Data Display */}
+      {structuredSecurityResult && !isScanning && !mergedSecurityResult && (
+        <div className="glass-card p-6 animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-lg text-foreground flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              JSON Security Analysis
+            </h3>
+            <div className="flex items-center gap-2">
+              {scanResults.length > 0 && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleMergeWithLiveData}
+                  disabled={isMerging}
+                  className="gap-2"
+                >
+                  {isMerging ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <GitMerge className="w-4 h-4" />
+                  )}
+                  Merge with Live Data
+                </Button>
+              )}
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  setStructuredSecurityResult(null);
+                  setRawJsonInput("");
+                  setTokenQuery("");
+                }}
+                className="gap-2"
+              >
+                <X className="w-4 h-4" />
+                Clear
+              </Button>
+            </div>
+          </div>
+
+          <p className="text-sm text-muted-foreground mb-4">
+            {generateStructuredRiskSummary(structuredSecurityResult)}
+          </p>
+
+          {/* If no scan results, show prompt to scan a token */}
+          {scanResults.length === 0 && (
+            <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <div className="text-xs text-primary">
+                  <p className="font-medium mb-1">Merge with Live Data</p>
+                  <p className="text-primary/80">
+                    Enter a contract address and scan to merge this JSON analysis with real-time API data from multiple sources.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <StructuredSecurityDisplay result={structuredSecurityResult} />
+
+          {/* Show Raw JSON toggle */}
+          <details className="mt-4">
+            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+              View raw JSON data
+            </summary>
+            <pre className="mt-2 p-3 rounded-lg bg-secondary/50 text-xs text-muted-foreground overflow-x-auto">
+              {rawJsonInput}
+            </pre>
+          </details>
+        </div>
+      )}
+
+      {/* Not scanned: the free daily limit was used up, so there is NO result for this token */}
+      {scanBlocked && !isScanning && (
+        <div className="glass-card p-8 text-center animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-warning" />
+          </div>
+          <h3 className="font-display text-xl text-foreground mb-2">Not scanned</h3>
+          <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+            Your free daily scans are used up, so this token has not been checked. No safety score is shown.
+          </p>
+          <Button asChild className="mt-2">
+            <Link to="/subscription">Upgrade for unlimited scans</Link>
+          </Button>
+        </div>
+      )}
+
+      {/* No Results Found */}
+      {scanResults.length === 0 && !isScanning && !scanBlocked && !structuredSecurityResult && tokenQuery && displayAddress && (
+        <div className="glass-card p-8 text-center animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto mb-4">
+            <Search className="w-8 h-8 text-warning" />
+          </div>
+          <h3 className="font-display text-xl text-foreground mb-2">Token Not Found</h3>
+          <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+            No trading pairs found for this address on DEXScreener.
+          </p>
+          <div className="bg-secondary/30 border border-border/30 rounded-lg p-4 max-w-md mx-auto">
+            <h4 className="text-sm font-medium text-foreground mb-2 flex items-center justify-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-warning" />
+              Possible Reasons
+            </h4>
+            <ul className="text-sm text-muted-foreground space-y-1 text-left">
+              <li>• Token is not listed on any DEX yet</li>
+              <li>• Contract address may be incorrect</li>
+              <li>• Token has no liquidity or trading activity</li>
+              <li>• Try searching by token name instead</li>
+            </ul>
+          </div>
+          <Button onClick={resetScan} variant="outline" className="mt-6">
+            Try Another Search
+          </Button>
+        </div>
+      )}
+
+      {/* Results */}
+      {scanResults.length > 0 && !isScanning && foundNetworks.length > 0 && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Token Header */}
+          <div className="glass-card p-6">
+            <div className="flex items-start gap-4 mb-4">
+              {tokenInfo?.imageUrl && (
+                <img 
+                  src={tokenInfo.imageUrl} 
+                  alt={tokenInfo.symbol}
+                  className="w-12 h-12 rounded-full bg-secondary"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display text-2xl text-foreground">
+                  {tokenInfo?.name} <span className="text-muted-foreground">({tokenInfo?.symbol})</span>
+                </h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="text-sm text-muted-foreground font-mono truncate">
+                    {tokenInfo?.address}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => tokenInfo && copyAddress(tokenInfo.address)}
+                    className="h-6 w-6 p-0"
+                    aria-label="Copy token address"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+              Found on {foundNetworks.length} chain{foundNetworks.length !== 1 ? 's' : ''}
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {scanResults.map((result, index) => {
+                const isOriginal = result.tokenStatus === "original";
+                const isFirstOriginal = isOriginal && index === 0;
+
+                return (
+                  <div
+                    key={result.chainId}
+                    className={cn(
+                      "p-4 rounded-lg border transition-all relative",
+                      isFirstOriginal && "ring-2 ring-safe/50 shadow-lg shadow-safe/10",
+                      result.found 
+                        ? selectedResult?.chainId === result.chainId
+                          ? "border-primary bg-primary/20"
+                          : isOriginal
+                            ? "border-safe/50 bg-safe/10 hover:bg-safe/20 hover:border-safe"
+                            : "border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50"
+                        : "border-border/30 bg-secondary/10 opacity-50"
+                    )}
+                  >
+                    {isFirstOriginal && (
+                      <div className="absolute -top-2 -right-2 z-10">
+                        <span className="flex items-center gap-1 px-2 py-1 bg-safe text-safe-foreground text-[10px] font-bold rounded-full shadow-lg uppercase tracking-wider">
+                          <BadgeCheck className="w-3 h-3" />
+                          Verified
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (!result.found) return;
+                        setSelectedResult(result);
+                        // Keep the header in step with the card the user picked
+                        const p = result.pairs[0];
+                        if (p) {
+                          setTokenInfo({
+                            name: p.baseToken.name,
+                            symbol: p.baseToken.symbol,
+                            address: p.baseToken.address,
+                            chainId: p.chainId,
+                            imageUrl: p.info?.imageUrl,
+                          });
+                        }
+                      }}
+                      disabled={!result.found}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">{result.network}</span>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {result.network !== 'SOL' && (
+                              <LockStatusBadge lockInfo={result.lockInfo} compact />
+                            )}
+                            {result.securityData && (
+                              <>
+                                {result.securityData.isHoneypot && (
+                                  <span className="px-1.5 py-0.5 text-[10px] rounded bg-danger/30 text-danger border border-danger/50 flex items-center gap-0.5" title="Honeypot Detected!">
+                                    <ShieldAlert className="w-2.5 h-2.5" />
+                                    HP
+                                  </span>
+                                )}
+                                {!result.securityData.isHoneypot && result.securityData.isVerified && (
+                                  <span className="px-1.5 py-0.5 text-[10px] rounded bg-safe/20 text-safe border border-safe/40 flex items-center gap-0.5" title="Verified Contract">
+                                    <BadgeCheck className="w-2.5 h-2.5" />
+                                  </span>
+                                )}
+                                {result.securityData.holderCount > 0 && (
+                                  <span className={cn(
+                                    "px-1.5 py-0.5 text-[10px] rounded flex items-center gap-0.5",
+                                    result.securityData.holderCount >= 1000 
+                                      ? "bg-safe/20 text-safe border border-safe/40" 
+                                      : result.securityData.holderCount >= 100 
+                                        ? "bg-warning/20 text-warning border border-warning/40"
+                                        : "bg-danger/20 text-danger border border-danger/40"
+                                  )} title={`${result.securityData.holderCount.toLocaleString()} holders`}>
+                                    <Users className="w-2.5 h-2.5" />
+                                    {result.securityData.holderCount >= 1000 
+                                      ? `${(result.securityData.holderCount / 1000).toFixed(0)}K`
+                                      : result.securityData.holderCount}
+                                  </span>
+                                )}
+                                {/* BEP Standard Badge for BSC tokens */}
+                                {result.network === 'BSC' && result.securityData.bepStandard && (
+                                  <BEPStandardIndicator standard={result.securityData.bepStandard.standard} compact />
+                                )}
+                                {/* ERC Standard Badge for other EVM chains */}
+                                {result.network !== 'BSC' && result.network !== 'SOL' && result.securityData.ercStandard && (
+                                  <ERCStandardIndicator standard={result.securityData.ercStandard.standard} compact />
+                                )}
+                                {/* SPL Standard Badge for Solana tokens */}
+                                {result.network === 'SOL' && result.securityData.splStandard && (
+                                  <SPLStandardIndicator standard={result.securityData.splStandard.standard} compact />
+                                )}
+                              </>
+                            )}
+                            <PumpDumpBadge analysis={result.pumpDumpAnalysis} compact />
+                            {result.found && result.marketData && (
+                              <RiskTrendBadge 
+                                data={calculateRiskTrend(
+                                  result.riskScore,
+                                  result.marketData.change24h,
+                                  undefined,
+                                  undefined
+                                )} 
+                                compact 
+                              />
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {result.found && getTokenStatusBadge(result.tokenStatus, isFirstOriginal)}
+                        </div>
+                      </div>
+                      {result.found && (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className={cn(
+                              "font-display text-lg",
+                              result.riskScore >= 70 ? "text-safe" : 
+                              result.riskScore >= 40 ? "text-warning" : "text-danger"
+                            )}>
+                              {result.riskScore}
+                            </span>
+                            <span className="text-muted-foreground text-xs ml-1">/ 100</span>
+                          </div>
+                          {result.marketData && (
+                            <div className="text-right">
+                              <div className="text-xs text-muted-foreground">Liquidity</div>
+                              <div className="text-sm font-medium text-foreground">
+                                {formatCurrency(result.marketData.liquidity)}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Compact risk summary for grid cards */}
+                      {result.found && (
+                        <p className={cn(
+                          "text-[10px] leading-tight mt-2 line-clamp-2",
+                          result.riskScore >= 70 ? "text-safe/80" : 
+                          result.riskScore >= 40 ? "text-warning/80" : "text-danger/80"
+                        )}>
+                          {generateRiskSummary(result)}
+                        </p>
+                      )}
+                      {/* API Sources indicator */}
+                      {result.found && result.apiSources && result.apiSources.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border/20">
+                          <ApiSourcesBadge sources={result.apiSources} compact />
+                        </div>
+                      )}
+                    </button>
+
+                    {result.found && tokenInfo && (
+                      <div className="mt-3 pt-3 border-t border-border/30">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!isAuthenticated) {
+                              toast.info("Sign in to save tokens to your watchlist", {
+                                action: { label: "Sign In", onClick: () => window.location.href = "/auth" }
+                              });
+                              return;
+                            }
+                            const added = await addToken({
+                              address: result.address,
+                              name: tokenInfo.name,
+                              network: result.network as Network,
+                              riskScore: result.riskScore,
+                            });
+                            if (added) {
+                              toast.success(`${tokenInfo.name} (${result.network}) added to watchlist!`);
+                            } else {
+                              toast.info("Already in watchlist");
+                            }
+                          }}
+                          disabled={isInWatchlist(result.address)}
+                          className="w-full gap-2 h-8 text-xs"
+                        >
+                          <Star className={cn(
+                            "w-3.5 h-3.5",
+                            isInWatchlist(result.address) && "fill-warning text-warning"
+                          )} />
+                          {isInWatchlist(result.address) ? "In Watchlist" : "Add to Watchlist"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Selected Network Details */}
+          {selectedResult && (
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Risk Score */}
+              <div className="glass-card p-6 flex flex-col items-center justify-center relative">
+                {/* Share button */}
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href).then(() => {
+                      toast("Link copied!", {
+                        description: "Share this to let others view this scan.",
+                        duration: 2500,
+                      });
+                    });
+                  }}
+                  className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/60 border border-border/50 text-xs text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+                  title="Copy shareable link"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  Share
+                </button>
+
+                <div className="flex items-center gap-3 mb-1">
+                  <h3 className="font-display text-xl text-foreground">{tokenInfo?.name}</h3>
+                  {getTokenStatusBadge(selectedResult.tokenStatus)}
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm text-primary">
+                    {selectedResult.network} Network
+                  </p>
+                  {selectedResult.apiSources && selectedResult.apiSources.length > 0 && (
+                    <ApiSourcesCount sources={selectedResult.apiSources} />
+                  )}
+                </div>
+                <RiskGauge score={selectedResult.riskScore} />
+
+                {/* One-sentence risk summary */}
+                <p className={cn(
+                  "text-sm text-center mt-3 px-4 py-2 rounded-lg max-w-sm",
+                  selectedResult.riskScore >= 70 
+                    ? "bg-safe/10 text-safe border border-safe/20" 
+                    : selectedResult.riskScore >= 40 
+                      ? "bg-warning/10 text-warning border border-warning/20"
+                      : "bg-danger/10 text-danger border border-danger/20"
+                )}>
+                  {generateRiskSummary(selectedResult)}
+                </p>
+
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    onClick={handleAddToWatchlist}
+                    disabled={isInWatchlist(selectedResult.address)}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Star className={cn("w-4 h-4", isInWatchlist(selectedResult.address) && "fill-warning text-warning")} />
+                    {isInWatchlist(selectedResult.address) ? "Watching" : "Watch"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    asChild
+                    className="gap-2"
+                  >
+                    <a href={selectedResult.dexUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="w-4 h-4" />
+                      DEXScreener
+                    </a>
+                  </Button>
+                </div>
+              </div>
+
+              {/* AI Risk Explanation */}
+              <AIRiskExplanation
+                tokenData={{
+                  name: tokenInfo?.name || 'Unknown',
+                  symbol: tokenInfo?.symbol || '???',
+                  network: selectedResult.network,
+                  riskScore: selectedResult.riskScore,
+                  riskFactors: selectedResult.riskFactors,
+                  marketData: selectedResult.marketData ? {
+                    price: selectedResult.marketData.price,
+                    liquidity: selectedResult.marketData.liquidity,
+                    volume24h: selectedResult.marketData.volume24h,
+                    marketCap: selectedResult.marketData.marketCap,
+                  } : undefined,
+                  securityData: selectedResult.securityData ? {
+                    isHoneypot: selectedResult.securityData.isHoneypot,
+                    isVerified: selectedResult.securityData.isVerified,
+                    buyTax: selectedResult.securityData.buyTax,
+                    sellTax: selectedResult.securityData.sellTax,
+                    holderCount: selectedResult.securityData.holderCount,
+                    isMintable: selectedResult.securityData.isMintable,
+                    hasHiddenOwner: selectedResult.securityData.hasHiddenOwner,
+                  } : undefined,
+                  lockInfo: selectedResult.lockInfo ? {
+                    isLocked: selectedResult.lockInfo.isLocked,
+                    lockPercentage: selectedResult.lockInfo.lockPercentage,
+                    unlockDate: typeof selectedResult.lockInfo.unlockDate === 'string' 
+                      ? selectedResult.lockInfo.unlockDate 
+                      : selectedResult.lockInfo.unlockDate 
+                        ? new Date(selectedResult.lockInfo.unlockDate).toISOString()
+                        : '',
+                  } : undefined,
+                }}
+                autoGenerate={false}
+                className="md:col-span-2"
+              />
+
+              {/* Pump/Dump Analysis */}
+              {selectedResult.pumpDumpAnalysis && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-primary" />
+                    Pump/Dump Detection
+                  </h3>
+                  <PumpDumpBadge analysis={selectedResult.pumpDumpAnalysis} showDetails />
+                </div>
+              )}
+
+              {/* Risk Factors */}
+              <div className="glass-card p-4 sm:p-6">
+                <h3 className="font-display text-base sm:text-lg text-foreground mb-3 sm:mb-4 flex items-center gap-2">
+                  Risk Analysis
+                  <Info className="w-4 h-4 text-muted-foreground" />
+                </h3>
+                <div className="space-y-2 sm:space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                  {selectedResult.riskFactors.map((factor, index) => (
+                    <div 
+                      key={factor.name}
+                      className={cn(
+                        "flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-secondary/30 border border-border/30",
+                        "animate-fade-in"
+                      )}
+                      style={{ animationDelay: `${index * 50}ms` }}
+                    >
+                      {getStatusIcon(factor.status)}
+                      <div className="flex-1 min-w-0">
+                        <RiskFactorTooltip
+                          factorName={factor.name}
+                          status={factor.status}
+                          description={factor.description}
+                          className="text-sm"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data Sources */}
+              {selectedResult.apiSources && selectedResult.apiSources.length > 1 && (
+                <div className="glass-card p-4 sm:p-6">
+                  <h3 className="font-display text-base sm:text-lg text-foreground mb-3 sm:mb-4 flex items-center gap-2">
+                    <Layers className="w-4 sm:w-5 h-4 sm:h-5 text-primary" />
+                    Data Sources
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({selectedResult.apiSources.length} APIs)
+                    </span>
+                  </h3>
+                  <div className="space-y-2">
+                    <ApiSourcesBadge sources={selectedResult.apiSources} />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Security analysis powered by multiple independent sources for enhanced accuracy.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Security Summary - GoPlus Data */}
+              {selectedResult.securityData && (
+                <div className="glass-card p-4 sm:p-6 md:col-span-2">
+                  <h3 className="font-display text-base sm:text-lg text-foreground mb-3 sm:mb-4 flex items-center gap-2">
+                    <ShieldCheck className="w-4 sm:w-5 h-4 sm:h-5 text-primary" />
+                    Contract Security
+                  </h3>
+
+                  {/* Honeypot Warning Banner */}
+                  {selectedResult.securityData.isHoneypot && (
+                    <div className="mb-3 sm:mb-4 p-3 sm:p-4 rounded-lg bg-danger/20 border border-danger/50 flex items-start sm:items-center gap-2 sm:gap-3">
+                      <ShieldAlert className="w-6 sm:w-8 h-6 sm:h-8 text-danger flex-shrink-0" />
+                      <div>
+                        <p className="font-display text-sm sm:text-lg text-danger">⚠️ HONEYPOT DETECTED</p>
+                        <p className="text-xs sm:text-sm text-danger/80">This token cannot be sold! Do not buy.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+                    {/* Contract Verification */}
+                    <div className={cn(
+                      "p-2 sm:p-4 rounded-lg border",
+                      selectedResult.securityData.isVerified 
+                        ? "bg-safe/10 border-safe/30" 
+                        : "bg-warning/10 border-warning/30"
+                    )}>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <FileText className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Contract</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-sm sm:text-lg",
+                        selectedResult.securityData.isVerified ? "text-safe" : "text-warning"
+                      )}>
+                        {selectedResult.securityData.isVerified ? "Verified ✓" : "Unverified"}
+                      </p>
+                    </div>
+
+                    {/* Holder Count */}
+                    <div className={cn(
+                      "p-2 sm:p-4 rounded-lg border",
+                      selectedResult.securityData.holderCount >= 1000 
+                        ? "bg-safe/10 border-safe/30" 
+                        : selectedResult.securityData.holderCount >= 100 
+                          ? "bg-warning/10 border-warning/30"
+                          : "bg-danger/10 border-danger/30"
+                    )}>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <Users className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Holders</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-sm sm:text-lg",
+                        selectedResult.securityData.holderCount >= 1000 
+                          ? "text-safe" 
+                          : selectedResult.securityData.holderCount >= 100 
+                            ? "text-warning"
+                            : "text-danger"
+                      )}>
+                        {selectedResult.securityData.holderCount.toLocaleString()}
+                      </p>
+                    </div>
+
+                    {/* Buy Tax */}
+                    <div className={cn(
+                      "p-2 sm:p-4 rounded-lg border",
+                      selectedResult.securityData.buyTax <= 5 
+                        ? "bg-safe/10 border-safe/30" 
+                        : selectedResult.securityData.buyTax <= 10 
+                          ? "bg-warning/10 border-warning/30"
+                          : "bg-danger/10 border-danger/30"
+                    )}>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <TrendingUp className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Buy Tax</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-sm sm:text-lg",
+                        selectedResult.securityData.buyTax <= 5 
+                          ? "text-safe" 
+                          : selectedResult.securityData.buyTax <= 10 
+                            ? "text-warning"
+                            : "text-danger"
+                      )}>
+                        {selectedResult.securityData.buyTax.toFixed(1)}%
+                      </p>
+                    </div>
+
+                    {/* Sell Tax */}
+                    <div className={cn(
+                      "p-2 sm:p-4 rounded-lg border",
+                      selectedResult.securityData.sellTax <= 5 
+                        ? "bg-safe/10 border-safe/30" 
+                        : selectedResult.securityData.sellTax <= 10 
+                          ? "bg-warning/10 border-warning/30"
+                          : "bg-danger/10 border-danger/30"
+                    )}>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <TrendingDown className="w-3 sm:w-4 h-3 sm:h-4" />
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Sell Tax</p>
+                      </div>
+                      <p className={cn(
+                        "font-display text-sm sm:text-lg",
+                        selectedResult.securityData.sellTax <= 5 
+                          ? "text-safe" 
+                          : selectedResult.securityData.sellTax <= 10 
+                            ? "text-warning"
+                            : "text-danger"
+                      )}>
+                        {selectedResult.securityData.sellTax.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Additional Security Flags */}
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {/* BEP Token Standard Badge for BSC tokens */}
+                    {selectedResult.network === 'BSC' && selectedResult.securityData.bepStandard && (
+                      <BEPStandardBadge result={selectedResult.securityData.bepStandard} />
+                    )}
+                    {/* ERC Standard Badge for other EVM chains */}
+                    {selectedResult.network !== 'BSC' && selectedResult.network !== 'SOL' && selectedResult.securityData.ercStandard && (
+                      <ERCStandardBadge result={selectedResult.securityData.ercStandard} />
+                    )}
+                    {/* SPL Standard Badge for Solana tokens */}
+                    {selectedResult.network === 'SOL' && selectedResult.securityData.splStandard && (
+                      <SPLStandardBadge result={selectedResult.securityData.splStandard} />
+                    )}
+                    {selectedResult.securityData.isMintable && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">
+                        {selectedResult.network === 'SOL' ? 'Mint Authority Active' : 'Mintable'}
+                      </span>
+                    )}
+                    {selectedResult.securityData.hasFreezeAuthority && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-warning/20 text-warning border border-warning/30">
+                        Freeze Authority Active
+                      </span>
+                    )}
+                    {selectedResult.securityData.hasHiddenOwner && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-danger/20 text-danger border border-danger/30">
+                        Hidden Owner
+                      </span>
+                    )}
+                    {!selectedResult.securityData.isHoneypot && !selectedResult.securityData.isMintable && !selectedResult.securityData.hasHiddenOwner && !selectedResult.securityData.hasFreezeAuthority && selectedResult.securityData.isVerified && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-safe/20 text-safe border border-safe/30">
+                        ✓ No Critical Issues
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Liquidity Lock Status - Prominent Display */}
+              {selectedResult.network !== 'SOL' && (
+                <div className="glass-card p-6 md:col-span-2">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Droplets className="w-5 h-5 text-primary" />
+                    Liquidity Lock Status
+                  </h3>
+                  <LockStatusBadge lockInfo={selectedResult.lockInfo} />
+                </div>
+              )}
+
+              {/* Market Data - Enhanced */}
+              {selectedResult.marketData && (
+                <div className="glass-card p-6 md:col-span-2">
+                  <h3 className="font-display text-lg text-foreground mb-4">Live Market Data</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">Price</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatPrice(selectedResult.marketData.price)}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">24h Change</p>
+                      <p className={cn(
+                        "font-display text-lg",
+                        selectedResult.marketData.change24h >= 0 ? "text-safe" : "text-danger"
+                      )}>
+                        {selectedResult.marketData.change24h >= 0 ? "+" : ""}
+                        {selectedResult.marketData.change24h.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">Market Cap</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatCurrency(selectedResult.marketData.marketCap)}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">24h Volume</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatCurrency(selectedResult.marketData.volume24h)}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
+                      <p className="text-xs text-muted-foreground mb-1">Liquidity</p>
+                      <p className="font-display text-lg text-foreground">
+                        {formatCurrency(selectedResult.marketData.liquidity)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Price Changes at Multiple Timeframes */}
+              {selectedResult.pairs[0] && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-primary" />
+                    Price Performance
+                  </h3>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: "5m", value: selectedResult.pairs[0].priceChange?.m5 },
+                      { label: "1h", value: selectedResult.pairs[0].priceChange?.h1 },
+                      { label: "6h", value: selectedResult.pairs[0].priceChange?.h6 },
+                      { label: "24h", value: selectedResult.pairs[0].priceChange?.h24 },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="p-3 rounded-lg bg-secondary/30 border border-border/30 text-center">
+                        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                        <p className={cn(
+                          "font-display text-base",
+                          value === undefined ? "text-muted-foreground" :
+                          value >= 0 ? "text-safe" : "text-danger"
+                        )}>
+                          {value !== undefined ? `${value >= 0 ? "+" : ""}${value.toFixed(2)}%` : "N/A"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transaction Activity */}
+              {selectedResult.pairs[0]?.txns && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-primary" />
+                    Trading Activity (24h)
+                  </h3>
+                  <div className="space-y-4">
+                    {/* Buy/Sell Summary */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-lg bg-safe/10 border border-safe/30">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-muted-foreground">Buys (24h)</span>
+                          <TrendingUp className="w-4 h-4 text-safe" />
+                        </div>
+                        <p className="font-display text-2xl text-safe">
+                          {selectedResult.pairs[0].txns.h24?.buys || 0}
+                        </p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-danger/10 border border-danger/30">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-muted-foreground">Sells (24h)</span>
+                          <TrendingDown className="w-4 h-4 text-danger" />
+                        </div>
+                        <p className="font-display text-2xl text-danger">
+                          {selectedResult.pairs[0].txns.h24?.sells || 0}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Transaction breakdown by timeframe */}
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      {[
+                        { label: "5m", data: selectedResult.pairs[0].txns.m5 },
+                        { label: "1h", data: selectedResult.pairs[0].txns.h1 },
+                        { label: "6h", data: selectedResult.pairs[0].txns.h6 },
+                        { label: "24h", data: selectedResult.pairs[0].txns.h24 },
+                      ].map(({ label, data }) => (
+                        <div key={label} className="p-2 rounded bg-secondary/30 border border-border/20">
+                          <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                          <div className="flex items-center justify-center gap-1 text-xs">
+                            <span className="text-safe">{data?.buys || 0}</span>
+                            <span className="text-muted-foreground">/</span>
+                            <span className="text-danger">{data?.sells || 0}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Volume Breakdown */}
+              {selectedResult.pairs[0]?.volume && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-primary" />
+                    Volume Breakdown
+                  </h3>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: "5m", value: selectedResult.pairs[0].volume.m5 },
+                      { label: "1h", value: selectedResult.pairs[0].volume.h1 },
+                      { label: "6h", value: selectedResult.pairs[0].volume.h6 },
+                      { label: "24h", value: selectedResult.pairs[0].volume.h24 },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="p-3 rounded-lg bg-secondary/30 border border-border/30 text-center">
+                        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                        <p className="font-display text-sm text-foreground">
+                          {formatCurrency(value || 0)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pair & DEX Info */}
+              {selectedResult.pairs[0] && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-primary" />
+                    Pair Information
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">DEX</span>
+                      <span className="text-sm font-medium text-foreground capitalize">
+                        {selectedResult.pairs[0].dexId}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">Trading Pair</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {selectedResult.pairs[0].baseToken.symbol}/{selectedResult.pairs[0].quoteToken.symbol}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">Pair Address</span>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs font-mono text-foreground">
+                          {truncateAddress(selectedResult.pairAddress)}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyAddress(selectedResult.pairAddress)}
+                          className="h-6 w-6 p-0"
+                          aria-label="Copy pair address"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                      <span className="text-sm text-muted-foreground">Price (Native)</span>
+                      <span className="text-sm font-mono text-foreground">
+                        {parseFloat(selectedResult.pairs[0].priceNative).toFixed(8)} {selectedResult.pairs[0].quoteToken.symbol}
+                      </span>
+                    </div>
+                    {selectedResult.pairs[0].fdv && (
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
+                        <span className="text-sm text-muted-foreground">Fully Diluted Value</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {formatCurrency(selectedResult.pairs[0].fdv)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Social Links & Websites */}
+              {(selectedResult.pairs[0]?.info?.websites?.length || selectedResult.pairs[0]?.info?.socials?.length) && (
+                <div className="glass-card p-6">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-primary" />
+                    Links & Socials
+                  </h3>
+                  <div className="space-y-3">
+                    {/* Websites */}
+                    {selectedResult.pairs[0]?.info?.websites?.map((site, idx) => (
+                      <a
+                        key={idx}
+                        href={site.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                          <span className="text-sm text-foreground">{site.label || "Website"}</span>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                      </a>
+                    ))}
+                    {/* Social Links */}
+                    {selectedResult.pairs[0]?.info?.socials?.map((social, idx) => (
+                      <a
+                        key={idx}
+                        href={social.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+{social.type === "twitter" && <span className="w-4 h-4 text-muted-foreground group-hover:text-primary font-bold text-xs flex items-center justify-center">𝕏</span>}
+                          {social.type === "telegram" && <MessageCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                          {social.type === "discord" && <Users className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                          {!["twitter", "telegram", "discord"].includes(social.type) && <LinkIcon className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
+                          <span className="text-sm text-foreground capitalize">{social.type === "twitter" ? "X" : social.type}</span>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Multiple Trading Pools */}
+              {selectedResult.pairs.length > 1 && (
+                <div className="glass-card p-6 md:col-span-2">
+                  <h3 className="font-display text-lg text-foreground mb-4 flex items-center gap-2">
+                    <Droplets className="w-5 h-5 text-primary" />
+                    All Trading Pools ({selectedResult.pairs.length})
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border/30">
+                          <th className="text-left p-3 text-muted-foreground font-medium">DEX</th>
+                          <th className="text-left p-3 text-muted-foreground font-medium">Pair</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">Liquidity</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">Volume 24h</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">Price</th>
+                          <th className="text-center p-3 text-muted-foreground font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedResult.pairs.slice(0, 10).map((pair, idx) => (
+                          <tr key={idx} className="border-b border-border/20 hover:bg-secondary/20">
+                            <td className="p-3 capitalize">{pair.dexId}</td>
+                            <td className="p-3 font-mono text-xs">
+                              {pair.baseToken.symbol}/{pair.quoteToken.symbol}
+                            </td>
+                            <td className="p-3 text-right">{formatCurrency(pair.liquidity?.usd || 0)}</td>
+                            <td className="p-3 text-right">{formatCurrency(pair.volume?.h24 || 0)}</td>
+                            <td className="p-3 text-right">{formatPrice(parseFloat(pair.priceUsd) || 0)}</td>
+                            <td className="p-3 text-center">
+                              <a
+                                href={pair.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+                              >
+                                View <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {selectedResult.pairs.length > 10 && (
+                      <p className="text-xs text-muted-foreground text-center mt-3">
+                        + {selectedResult.pairs.length - 10} more pools
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
