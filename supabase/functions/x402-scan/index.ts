@@ -1,8 +1,9 @@
 // supabase/functions/x402-scan/index.ts
 // x402 v2 paywall in front of AIDYOR's existing scan function.
-// Flow: no payment -> 402 | verify -> run scan -> settle (only if scan ok) -> 200 + PAYMENT-RESPONSE
+// Flow: no payment -> 402 (always) | payment -> validate input -> verify -> run scan -> settle (only if scan ok) -> 200 + PAYMENT-RESPONSE
 // Deploy with "Verify JWT" OFF (agents have no Supabase JWT).
 // Supports Coinbase CDP facilitator (mainnet) via Ed25519 API key, or keyless testnet facilitator.
+// v4: adds Bazaar discovery metadata + service metadata; 402 is returned even when input is missing (needed for Bazaar probing).
 
 const env = (k: string, d = "") => Deno.env.get(k) ?? d;
 
@@ -17,6 +18,11 @@ const SCAN_FUNCTION = env("X402_SCAN_FUNCTION", "risk-orchestrator"); // verifie
 const SUPABASE_URL = env("SUPABASE_URL");
 const SERVICE_KEY = env("SUPABASE_SERVICE_ROLE_KEY");
 
+// Public absolute URL of THIS function (must be absolute https for Bazaar)
+const PUBLIC_URL = env("X402_PUBLIC_URL", `${SUPABASE_URL}/functions/v1/x402-scan`);
+// Optional icon (PNG/JPG/WebP/GIF, NOT svg), absolute https URL
+const ICON_URL = env("X402_ICON_URL");
+
 // Coinbase CDP credentials (only needed for the CDP facilitator)
 const CDP_KEY_ID = env("CDP_API_KEY_ID");
 const CDP_KEY_SECRET = env("CDP_API_KEY_SECRET"); // Ed25519 secret (base64), NOT an ECDSA PEM
@@ -30,8 +36,63 @@ const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "content-type, payment-signature",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE",
+  "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE, EXTENSION-RESPONSES",
 };
+
+// ---- Bazaar discovery metadata (x402 v2 extension) ----
+const EXAMPLE_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH on Ethereum
+const DISCOVERY = {
+  bazaar: {
+    info: {
+      input: {
+        type: "http",
+        method: "GET",
+        queryParams: { address: EXAMPLE_ADDRESS, chain: "ethereum" },
+      },
+      output: { type: "json" },
+    },
+    schema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        input: {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "http" },
+            method: { type: "string", enum: ["GET", "HEAD", "DELETE"] },
+            queryParams: {
+              type: "object",
+              properties: {
+                address: {
+                  type: "string",
+                  description: "Token contract address (EVM 0x... or Solana base58 mint)",
+                },
+                chain: {
+                  type: "string",
+                  description: "Blockchain network of the token",
+                  enum: [...CHAINS],
+                },
+              },
+              required: ["address"],
+            },
+          },
+          required: ["type"],
+          additionalProperties: false,
+        },
+        output: {
+          type: "object",
+          properties: {
+            type: { type: "string" },
+            example: { type: "object" },
+          },
+          required: ["type"],
+        },
+      },
+      required: ["input"],
+    },
+  },
+};
+// -------------------------------------------------------
 
 const b64 = (o: unknown) => btoa(JSON.stringify(o));
 
@@ -93,14 +154,18 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}) {
   });
 }
 
-function paymentRequired(url: string, error?: string) {
-  const body = {
+function offerBody(error?: string) {
+  return {
     x402Version: 2,
     ...(error ? { error } : {}),
     resource: {
-      url,
-      description: "AIDYOR token security scan (honeypot / rug-pull / scam risk)",
+      url: PUBLIC_URL,
+      description:
+        "Crypto token security scan. Takes a token contract address and chain and returns a JSON risk report covering honeypot, rug-pull and scam indicators. Supports Ethereum, BNB Chain, Solana, Polygon, Arbitrum, Base, Avalanche, Fantom and Optimism.",
       mimeType: "application/json",
+      serviceName: "AIDYOR",
+      tags: ["security", "crypto", "token", "honeypot", "rug-pull"],
+      ...(ICON_URL ? { iconUrl: ICON_URL } : {}),
     },
     accepts: [{
       scheme: "exact",
@@ -111,7 +176,12 @@ function paymentRequired(url: string, error?: string) {
       maxTimeoutSeconds: 60,
       extra: { name: EIP712_NAME, version: EIP712_VERSION },
     }],
+    extensions: DISCOVERY,
   };
+}
+
+function paymentRequired(error?: string) {
+  const body = offerBody(error);
   return json(body, 402, { "PAYMENT-REQUIRED": b64(body) });
 }
 
@@ -149,7 +219,11 @@ Deno.serve(async (req) => {
     return json({ error: "server_misconfigured_cdp_keys" }, 500);
   }
 
-  // 1) Validate input BEFORE asking for money
+  // 1) No payment header -> ALWAYS 402 (agents and Bazaar must see the paywall even without input)
+  const header = req.headers.get("payment-signature");
+  if (!header) return paymentRequired();
+
+  // 2) Validate input BEFORE verifying/settling (invalid input is never charged)
   const u = new URL(req.url);
   let address = u.searchParams.get("address") ?? "";
   let chain = (u.searchParams.get("chain") ?? "").toLowerCase();
@@ -167,23 +241,18 @@ Deno.serve(async (req) => {
     return json({ error: "invalid_input", supported_chains: [...CHAINS] }, 400);
   }
 
-  // 2) No payment -> 402 with price
-  const header = req.headers.get("payment-signature");
-  const offer = paymentRequired(req.url);
-  if (!header) return offer;
-
   let payload: unknown;
   try {
     payload = JSON.parse(atob(header));
   } catch {
-    return paymentRequired(req.url, "invalid_payment_header");
+    return paymentRequired("invalid_payment_header");
   }
-  const requirements = (await offer.clone().json()).accepts[0];
+  const reqs = offerBody().accepts[0];
 
   // 3) Verify (read-only, nothing charged yet)
   try {
-    const v = await facilitator("verify", payload, requirements);
-    if (!v.isValid) return paymentRequired(req.url, v.invalidReason ?? "invalid_payment");
+    const v = await facilitator("verify", payload, reqs);
+    if (!v.isValid) return paymentRequired(v.invalidReason ?? "invalid_payment");
   } catch (e) {
     return json({ error: "facilitator_unavailable", detail: String(e) }, 502);
   }
@@ -209,8 +278,8 @@ Deno.serve(async (req) => {
 
   // 5) Settle on-chain, then return result + receipt
   try {
-    const s = await facilitator("settle", payload, requirements);
-    if (!s.success) return paymentRequired(req.url, s.errorReason ?? "settlement_failed");
+    const s = await facilitator("settle", payload, reqs);
+    if (!s.success) return paymentRequired(s.errorReason ?? "settlement_failed");
     return json(result, 200, { "PAYMENT-RESPONSE": b64(s) });
   } catch (e) {
     return json({ error: "settlement_unavailable", detail: String(e) }, 502);
