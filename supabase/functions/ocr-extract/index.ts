@@ -5,6 +5,12 @@ const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 const GEMINI_PRO_MODEL = Deno.env.get("GEMINI_OCR_PRO_MODEL") || "gemini-3.1-pro-preview";
 const GEMINI_FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.6-flash";
 
+// ---------- On-chain verification config ----------
+// Optional secret. A dedicated RPC (Helius, QuickNode...) is more reliable than the public one.
+const SOLANA_RPC_URL = Deno.env.get("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
+const VERIFY_TIMEOUT_MS = 4000;
+const MAX_VERIFY = 6;
+
 // ---------- Daily OCR quotas (UTC day) ----------
 const WEB_DAILY_LIMIT_PER_IP = 3;
 const TELEGRAM_DAILY_LIMIT_PER_USER = 5;
@@ -90,6 +96,7 @@ const CHAR_CORRECTIONS = {
 };
 
 const HEX_CHARS = new Set('0123456789abcdefABCDEF');
+const BASE58_CLASS = '[1-9A-HJ-NP-Za-km-z]';
 // A repaired address may differ from what the model read by at most this many
 // characters. More than that is a guess, and a guessed address can belong to a
 // different token, so it is rejected instead of scanned.
@@ -194,13 +201,15 @@ function correctTronAddress(rawAddress) {
     }
   }
 
-  const TRON_CORRECTIONS = { '0': 'O', 'O': 'o', 'I': '1', 'l': '1' };
+  // Capital O and zero are not Base58; lowercase o is.
+  const TRON_CORRECTIONS = { '0': 'o', 'O': 'o', 'I': '1', 'l': '1' };
+  const base58Re = new RegExp(`^${BASE58_CLASS}$`);
   let corrected = 'T';
   let changesCount = 0;
   let dropped = 0;
   for (let i = 1; i < normalized.length; i++) {
     const char = normalized[i];
-    if (/[A-Za-z1-9]/.test(char)) {
+    if (base58Re.test(char)) {
       corrected += char;
     } else if (TRON_CORRECTIONS[char]) {
       corrected += TRON_CORRECTIONS[char];
@@ -245,10 +254,166 @@ function correctAddress(rawAddress) {
   return { type: 'unknown', corrected: trimmed, confidence: 0, corrections: ['Unable to determine address type'] };
 }
 
+// EVM addresses are case-insensitive. Solana and Tron addresses are NOT: two
+// strings that differ only by case are two different addresses.
+function addrKey(addr) {
+  return addr.startsWith('0x') ? addr.toLowerCase() : addr;
+}
+
 function parseDataUrl(input) {
   const match = input.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]*)$/);
   if (match) return { mimeType: match[1], data: match[2] };
   return { mimeType: 'image/png', data: input };
+}
+
+// ---------- On-chain verification ----------
+// Solana addresses have no checksum, so a misread character still produces a
+// perfectly valid-looking address. Only checking that it exists catches that.
+async function fetchJsonWithTimeout(url, init) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), VERIFY_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...(init || {}), signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// true = has trading pairs, false = DexScreener knows nothing, null = lookup failed
+async function dexHasPairs(addr) {
+  const data = await fetchJsonWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(addr)}`);
+  if (!data) return null;
+  return Array.isArray(data.pairs) && data.pairs.length > 0;
+}
+
+// true = account exists, false = does not exist, null = lookup failed
+async function solanaAccountExists(addr) {
+  const data = await fetchJsonWithTimeout(SOLANA_RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getAccountInfo',
+      params: [addr, { encoding: 'base64', dataSlice: { offset: 0, length: 0 } }],
+    }),
+  });
+  if (!data || data.error || !data.result) return null;
+  return data.result.value !== null && data.result.value !== undefined;
+}
+
+// Returns 'verified' | 'not_found' | 'unknown'.
+// 'not_found' is only ever returned for Solana, where a token mint must exist as an account.
+// For other chains a failed lookup proves nothing, so it stays 'unknown'.
+async function verifyAddress(addr, type) {
+  if (type === 'solana') {
+    const exists = await solanaAccountExists(addr);
+    if (exists === true) return 'verified';
+    if (exists === false) return 'not_found';
+    const pairs = await dexHasPairs(addr);
+    return pairs === true ? 'verified' : 'unknown';
+  }
+  if (type === 'ethereum') {
+    const pairs = await dexHasPairs(addr);
+    return pairs === true ? 'verified' : 'unknown';
+  }
+  return 'unknown';
+}
+
+// Turns raw candidates into final addresses with honest confidence:
+//  - exists on-chain            -> 95-100%
+//  - not found on Solana        -> dropped (almost certainly a misread)
+//  - both models agree          -> up to 85%
+//  - only one model, no proof   -> up to 60%
+//  - models disagree, no proof  -> up to 40% (user must confirm)
+async function finalizeCandidates(addressMap, hits, ran) {
+  const bothRan = ran.has('pro') && ran.has('flash');
+  const plausible = Array.from(addressMap.entries()).filter(([, p]) => p.confidence >= 0.5);
+
+  // Which address types each model returned, used to detect disagreement
+  const typesBySource = { pro: new Set(), flash: new Set() };
+  for (const [key, p] of plausible) {
+    const srcs = hits.get(key) || new Set();
+    if (srcs.has('pro')) typesBySource.pro.add(p.type);
+    if (srcs.has('flash')) typesBySource.flash.add(p.type);
+  }
+
+  // Verify the most promising candidates only, to bound latency and external calls
+  const toVerify = plausible
+    .sort((a, b) => ((hits.get(b[0])?.size || 0) - (hits.get(a[0])?.size || 0)) || (b[1].confidence - a[1].confidence))
+    .slice(0, MAX_VERIFY);
+
+  const verification = new Map();
+  await Promise.all(toVerify.map(async ([key, p]) => {
+    verification.set(key, await verifyAddress(p.corrected, p.type));
+  }));
+
+  const results = [];
+  for (const [key, p] of addressMap.entries()) {
+    const srcs = hits.get(key) || new Set();
+    const fromPro = srcs.has('pro');
+    const fromFlash = srcs.has('flash');
+    const agreed = fromPro && fromFlash;
+    const otherSet = fromPro && !fromFlash ? typesBySource.flash : (fromFlash && !fromPro ? typesBySource.pro : null);
+    const conflict = bothRan && !agreed && otherSet !== null && otherSet.has(p.type);
+    const check = verification.get(key); // undefined when not checked
+
+    let conf;
+    let status;
+    if (check === 'verified') {
+      conf = agreed ? 1.0 : 0.95;
+      status = 'verified';
+    } else if (check === 'not_found') {
+      conf = 0.2;
+      status = 'not_found';
+    } else if (p.confidence < 0.5) {
+      conf = p.confidence;
+      status = 'unverified';
+    } else if (agreed) {
+      conf = Math.min(p.confidence, 0.85);
+      status = 'unverified';
+    } else if (conflict) {
+      conf = Math.min(p.confidence, 0.4);
+      status = 'conflict';
+    } else {
+      conf = Math.min(p.confidence, 0.6);
+      status = 'unverified';
+    }
+
+    results.push({ ...p, key, confidence: conf, status });
+  }
+
+  // Drop junk, proven misreads, and conflicting guesses next to a verified address of the same type
+  const verifiedTypes = new Set(results.filter((r) => r.status === 'verified').map((r) => r.type));
+  let kept = results.filter((r) => r.confidence >= 0.3);
+  kept = kept.filter((r) => !(r.status === 'conflict' && verifiedTypes.has(r.type)));
+
+  // Drop fragments that are just part of a longer kept address (wrapped lines)
+  kept = kept.filter((r) =>
+    !kept.some((o) => o !== r && o.corrected.length > r.corrected.length && r.corrected.length >= 20 && o.corrected.includes(r.corrected))
+  );
+
+  kept.sort((a, b) => b.confidence - a.confidence);
+
+  return {
+    addresses: kept.map((r) => r.corrected),
+    addressConfidences: kept.map((r) => Math.round(r.confidence * 100)),
+    addressStatuses: kept.map((r) => r.status),
+    needsConfirmation: kept.length === 0 || kept[0].status !== 'verified',
+    details: kept.map((r) => ({
+      original: r.original,
+      corrected: r.corrected,
+      type: r.type,
+      confidence: r.confidence,
+      corrections: r.corrections,
+      status: r.status,
+    })),
+    totalCorrections: kept.reduce((s, r) => s + r.corrections.length, 0),
+  };
 }
 
 // Calls Gemini. Retries 5xx on the same model, and if the model is retired (404)
@@ -322,7 +487,7 @@ SUPPORTED ADDRESS FORMATS:
   Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
 - Solana: Base58 encoded, 32-44 characters (no 0, O, I, l)
   Example: So11111111111111111111111111111112
-- Tron: T followed by 33 alphanumeric characters
+- Tron: T followed by 33 Base58 characters (no 0, O, I, l)
   Example: T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb
 
 CRITICAL INSTRUCTIONS:
@@ -334,18 +499,22 @@ CRITICAL INSTRUCTIONS:
    - 5 (five) vs S (letter S)
    - 6 (six) vs G (letter G) vs b (letter b)
    - 2 (two) vs Z (letter Z)
+   - 9 (nine) vs g vs q
+   - f vs t, T vs i1
+   Solana and Tron addresses can NEVER contain 0 (zero), O (capital o), I (capital i) or l (lowercase L).
 3. The address MUST be exactly the right length (40 hex chars for ETH after 0x)
-4. EXTRACT ALL ADDRESSES VISIBLE — do not stop after the first one. A screenshot
+4. If an address wraps across two or more lines, JOIN the lines into ONE address. Never output the second line as a separate address.
+5. EXTRACT ALL ADDRESSES VISIBLE — do not stop after the first one. A screenshot
    may contain multiple tokens (lists, comparisons, swap pairs, portfolio views).
-5. Return results in this EXACT format (one item per line):
+6. Return results in this EXACT format (one item per line):
    - Full valid addresses: just the address on its own line
    - If an address is TRUNCATED (shows "..." or "…" or only shows start and end), output: TRUNCATED:visible_start...visible_end
    - Token name if visible: TOKEN_NAME:the_token_name
    - Token symbol if visible: TOKEN_SYMBOL:the_symbol
    - Blockchain network if visible anywhere (a network tab, chain badge, or label such as BSC, BNB Chain, Ethereum, Solana, Base, Polygon, Arbitrum, Optimism, Avalanche, Tron): NETWORK:the_network_name
-6. If you see "contract:" or similar labels, the address follows it
-7. If no addresses AND no token info found, return "NONE"
-8. Do NOT include explanations, markdown, or formatting
+7. If you see "contract:" or similar labels, the address follows it
+8. If no addresses AND no token info found, return "NONE"
+9. Do NOT include explanations, markdown, or formatting
 
 EXAMPLE OUTPUT for a screenshot showing "SUBHUB" token on BSC with truncated address "0x9efd...25068c":
 TOKEN_NAME:SUBHUB
@@ -366,8 +535,9 @@ STEP-BY-STEP APPROACH:
 1. First scan the ENTIRE image for any text that looks like a blockchain address
 2. Look for common UI patterns: "Contract:", "Token Address:", "CA:", copy buttons next to addresses
 3. Read each character individually - zoom into the address mentally
-4. Cross-check ambiguous characters using context (hex addresses only use 0-9 and a-f)
-5. Verify the address length is correct before outputting
+4. Cross-check ambiguous characters using context (hex addresses only use 0-9 and a-f; Solana and Tron addresses never contain 0, O, I or l)
+5. If an address wraps across lines, join the lines into ONE address
+6. Verify the address length is correct before outputting
 
 SUPPORTED FORMATS:
 - Ethereum/EVM: 0x + exactly 40 hex chars → Example: 0x6982508145454Ce325dDbE47a25d4ec3d2311933
@@ -377,6 +547,7 @@ SUPPORTED FORMATS:
 COMMON OCR TRAPS TO AVOID:
 - "rn" can look like "m" → read carefully
 - "cl" can look like "d" → verify
+- f vs t, T vs i1, 9 vs o, 5 vs S, 8 vs B
 - Dark mode screenshots may have inverted contrast
 - Small/low-res text needs extra care on hex chars
 
@@ -416,6 +587,7 @@ CHARACTER DISAMBIGUATION RULES (apply during transcription):
 - If context is Base58: 0→o, O→o, I→1, l→1
 - Adjacent character patterns help: "0x" prefix means hex follows
 - "T" at position 0 followed by 33 alphanumerics = Tron
+- An address wrapped across lines is ONE address
 
 OUTPUT FORMAT (one per line, no markdown, no explanation):
 - RAW_TEXT:the_raw_transcribed_text (for each text block found)
@@ -451,7 +623,7 @@ function extractAddressesFromRawText(text) {
   if (ethMatches) found.push(...ethMatches);
   const solMatches = text.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g);
   if (solMatches) found.push(...solMatches.filter(m => !m.startsWith('0x')));
-  const tronMatches = text.match(/T[A-Za-z1-9]{33}/g);
+  const tronMatches = text.match(/T[1-9A-HJ-NP-Za-km-z]{33}/g);
   if (tronMatches) found.push(...tronMatches);
   return found;
 }
@@ -519,7 +691,7 @@ function processAddresses(rawAddresses) {
       } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(corrected)) {
         validAddresses.push(corrected);
         totalCorrections += result.corrections.length;
-      } else if (/^T[A-Za-z1-9]{33}$/.test(corrected)) {
+      } else if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(corrected)) {
         validAddresses.push(corrected);
         totalCorrections += result.corrections.length;
       }
@@ -612,15 +784,25 @@ Deno.serve(async (req) => {
     const proProcessed = processAddresses(proParsed.rawAddresses);
     const flashProcessed = processAddresses(flashParsed.rawAddresses);
 
+    // Candidates keyed by address (case-sensitive for Solana/Tron), plus which
+    // pass/model produced each one. Agreement between models drives confidence.
     const addressMap = new Map();
-    for (const p of [...proProcessed.processedAddresses, ...flashProcessed.processedAddresses]) {
-      const key = p.corrected.toLowerCase();
-      const existing = addressMap.get(key);
-      if (!existing || p.confidence > existing.confidence) addressMap.set(key, p);
-    }
-    let processedAddresses = Array.from(addressMap.values());
-    let validAddresses = processedAddresses.filter((p) => p.confidence >= 0.5).map((p) => p.corrected);
-    let totalCorrections = processedAddresses.reduce((s, p) => s + p.corrections.length, 0);
+    const hits = new Map();
+    const ran = new Set();
+    const addCandidates = (processed, source) => {
+      for (const p of processed.processedAddresses) {
+        const key = addrKey(p.corrected);
+        const existing = addressMap.get(key);
+        if (!existing || p.confidence > existing.confidence) addressMap.set(key, p);
+        if (!hits.has(key)) hits.set(key, new Set());
+        hits.get(key).add(source);
+      }
+    };
+    const hasPlausible = () => Array.from(addressMap.values()).some((p) => p.confidence >= 0.5);
+
+    if (proResult.ok) { ran.add('pro'); addCandidates(proProcessed, 'pro'); }
+    if (flashResult.ok) { ran.add('flash'); addCandidates(flashProcessed, 'flash'); }
+
     let parsed = {
       rawAddresses: [...proParsed.rawAddresses, ...flashParsed.rawAddresses],
       truncatedFragments: Array.from(new Set([...proParsed.truncatedFragments, ...flashParsed.truncatedFragments])),
@@ -643,7 +825,7 @@ Deno.serve(async (req) => {
     }
 
     let pass2Attempted = false;
-    if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
+    if (!hasPlausible() && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
       pass2Attempted = true;
       const pass2Result = await callGemini(GEMINI_API_KEY, GEMINI_PRO_MODEL, ENHANCED_SYSTEM_PROMPT, ENHANCED_USER_PROMPT, imageInline, 2048, 0.2);
 
@@ -652,14 +834,7 @@ Deno.serve(async (req) => {
         const pass2Parsed = parseVLMResponse(pass2Content);
         const pass2Processed = processAddresses(pass2Parsed.rawAddresses);
 
-        for (const p of pass2Processed.processedAddresses) {
-          const key = p.corrected.toLowerCase();
-          const existing = addressMap.get(key);
-          if (!existing || p.confidence > existing.confidence) addressMap.set(key, p);
-        }
-        processedAddresses = Array.from(addressMap.values());
-        validAddresses = processedAddresses.filter((p) => p.confidence >= 0.5).map((p) => p.corrected);
-        totalCorrections = processedAddresses.reduce((s, p) => s + p.corrections.length, 0);
+        addCandidates(pass2Processed, 'pass2');
         if (pass2Processed.validAddresses.length > 0) content = pass2Content;
 
         if (!parsed.tokenName && pass2Parsed.tokenName) parsed.tokenName = pass2Parsed.tokenName;
@@ -672,7 +847,7 @@ Deno.serve(async (req) => {
     }
 
     let pass3Attempted = false;
-    if (validAddresses.length === 0 && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
+    if (!hasPlausible() && !parsed.tokenName && !parsed.tokenSymbol && parsed.truncatedFragments.length === 0) {
       pass3Attempted = true;
       const pass3Result = await callGemini(GEMINI_API_KEY, GEMINI_PRO_MODEL, PIXEL_LEVEL_SYSTEM_PROMPT, PIXEL_LEVEL_USER_PROMPT, imageInline, 3000, 0.3);
 
@@ -681,14 +856,7 @@ Deno.serve(async (req) => {
         const pass3Parsed = parseVLMResponse(pass3Content);
         const pass3Processed = processAddresses(pass3Parsed.rawAddresses);
 
-        for (const p of pass3Processed.processedAddresses) {
-          const key = p.corrected.toLowerCase();
-          const existing = addressMap.get(key);
-          if (!existing || p.confidence > existing.confidence) addressMap.set(key, p);
-        }
-        processedAddresses = Array.from(addressMap.values());
-        validAddresses = processedAddresses.filter((p) => p.confidence >= 0.5).map((p) => p.corrected);
-        totalCorrections = processedAddresses.reduce((s, p) => s + p.corrections.length, 0);
+        addCandidates(pass3Processed, 'pass3');
         if (pass3Processed.validAddresses.length > 0) content = pass3Content;
 
         if (!parsed.tokenName && pass3Parsed.tokenName) parsed.tokenName = pass3Parsed.tokenName;
@@ -700,27 +868,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Verify on-chain and score by model agreement
+    const final = await finalizeCandidates(addressMap, hits, ran);
+
     const passCount = pass3Attempted ? 3 : (pass2Attempted ? 2 : 1);
     const modelUsed = pass3Attempted
       ? `${GEMINI_PRO_MODEL}+${GEMINI_MODEL}(parallel)+${GEMINI_PRO_MODEL}-forensic+${GEMINI_PRO_MODEL}-pixel`
       : (pass2Attempted ? `${GEMINI_PRO_MODEL}+${GEMINI_MODEL}(parallel)+${GEMINI_PRO_MODEL}-forensic` : `${GEMINI_PRO_MODEL}+${GEMINI_MODEL}(parallel)`);
 
-    console.log(`[ocr-extract] Final: ${validAddresses.length} valid, ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, network: ${parsed.networkHint}, passes: ${passCount}`);
-
-    const addressConfidences = validAddresses.map((addr) => {
-      const p = addressMap.get(addr.toLowerCase());
-      return p ? Math.round(p.confidence * 100) : 50;
-    });
+    console.log(`[ocr-extract] Final: ${final.addresses.length} kept (${final.addressStatuses.join(',')}), ${parsed.truncatedFragments.length} truncated, token: ${parsed.tokenName}/${parsed.tokenSymbol}, network: ${parsed.networkHint}, passes: ${passCount}`);
 
     return new Response(JSON.stringify({
-      addresses: validAddresses,
-      addressConfidences,
+      addresses: final.addresses,
+      addressConfidences: final.addressConfidences,
+      addressStatuses: final.addressStatuses,
+      needsConfirmation: final.needsConfirmation,
       raw: content,
       tokenName: parsed.tokenName || null,
       tokenSymbol: parsed.tokenSymbol || null,
       networkHint: parsed.networkHint || null,
       truncatedAddresses: parsed.truncatedFragments.length > 0 ? parsed.truncatedFragments : null,
-      corrections: { applied: totalCorrections > 0, count: totalCorrections, details: processedAddresses },
+      corrections: { applied: final.totalCorrections > 0, count: final.totalCorrections, details: final.details },
       metadata: { model: modelUsed, passes: passCount, parallel: true }
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
