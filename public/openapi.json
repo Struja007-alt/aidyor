@@ -1,0 +1,29 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AIDYOR Token Security Scan",
+    "version": "1.0.0",
+    "description": "Pay-per-scan crypto token risk report (honeypot, rug-pull, scam indicators) across 9 chains."
+  },
+  "servers": [{ "url": "https://aidyor.app" }],
+  "paths": {
+    "/api/x402/scan": {
+      "get": {
+        "operationId": "scanToken",
+        "summary": "Scan a token contract for scam risk",
+        "x-payment-info": {
+          "price": { "mode": "fixed", "currency": "USD", "amount": "0.05" },
+          "protocols": [{ "x402": {} }]
+        },
+        "parameters": [
+          { "name": "address", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "chain", "in": "query", "schema": { "type": "string", "enum": ["ethereum","bsc","solana","polygon","arbitrum","base","avalanche","fantom","optimism"] } }
+        ],
+        "responses": {
+          "200": { "description": "Risk report" },
+          "402": { "description": "Payment Required" }
+        }
+      }
+    }
+  }
+}
