@@ -1,5 +1,9 @@
 {
   "rewrites": [
+    {
+      "source": "/api/x402/scan",
+      "destination": "https://lerromdxykuydrpttfif.supabase.co/functions/v1/x402-scan"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
